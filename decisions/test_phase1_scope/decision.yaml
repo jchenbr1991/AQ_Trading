@@ -1,0 +1,15 @@
+id: test_phase1_scope
+title: Should Phase 1 MVP include basic Greeks display?
+options:
+  A: Include basic delta/theta display in dashboard from start
+  B: Defer all Greeks to Phase 3, keep Phase 1 minimal
+constraints:
+  - Single developer
+  - 4-6 weeks for Phase 1
+  - Stability over features
+  - Trading options from day one
+stop_rule:
+  max_agents: 5
+  stop_when:
+    - failure_modes_repeat
+    - no_new_risk
