@@ -1,8 +1,11 @@
 # backend/tests/market_data/test_models.py
 """Tests for market data models."""
 
+import tempfile
 from datetime import datetime, timedelta
 from decimal import Decimal
+
+import pytest
 
 
 class TestQuoteSnapshot:
@@ -146,3 +149,61 @@ class TestFaultConfig:
         assert config.enabled is True
         assert config.delay_probability == 0.1
         assert config.duplicate_probability == 0.05
+
+
+class TestMarketDataConfig:
+    def test_default_values(self):
+        """MarketDataConfig has sensible defaults."""
+        from src.market_data.models import MarketDataConfig
+
+        config = MarketDataConfig()
+
+        assert config.queue_max_size == 1000
+        assert config.default_tick_interval_ms == 100
+        assert config.staleness_threshold_ms == 5000
+        assert config.symbols == {}
+        assert config.faults.enabled is False
+
+    def test_from_yaml(self):
+        """Load MarketDataConfig from YAML file."""
+        from src.market_data.models import MarketDataConfig
+
+        yaml_content = """
+market_data:
+  queue_max_size: 500
+  default_tick_interval_ms: 50
+  staleness_threshold_ms: 3000
+  symbols:
+    AAPL:
+      scenario: "volatile"
+      base_price: "150.00"
+      tick_interval_ms: 25
+    SPY:
+      scenario: "flat"
+      base_price: "450.00"
+  faults:
+    enabled: true
+    delay_probability: 0.1
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            f.flush()
+
+            config = MarketDataConfig.from_yaml(f.name)
+
+        assert config.queue_max_size == 500
+        assert config.default_tick_interval_ms == 50
+        assert config.staleness_threshold_ms == 3000
+        assert len(config.symbols) == 2
+        assert config.symbols["AAPL"].scenario == "volatile"
+        assert config.symbols["AAPL"].base_price == Decimal("150.00")
+        assert config.symbols["SPY"].scenario == "flat"
+        assert config.faults.enabled is True
+        assert config.faults.delay_probability == 0.1
+
+    def test_from_yaml_missing_file(self):
+        """Raise error for missing YAML file."""
+        from src.market_data.models import MarketDataConfig
+
+        with pytest.raises(FileNotFoundError):
+            MarketDataConfig.from_yaml("/nonexistent/path.yaml")
