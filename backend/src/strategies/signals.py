@@ -21,3 +21,20 @@ class Signal:
     limit_price: Decimal | None = None
     reason: str = ""
     timestamp: datetime = field(default_factory=datetime.utcnow)
+
+
+@dataclass
+class OrderFill:
+    """
+    Represents a fill (execution) of an order.
+
+    CRITICAL: fill_id is the broker's unique trade/execution ID.
+    Used for idempotency to prevent processing the same fill twice.
+    """
+    fill_id: str  # Broker's unique trade ID - CRITICAL for idempotency
+    order_id: str  # Broker's order ID
+    symbol: str
+    side: Literal["buy", "sell"]
+    quantity: int
+    price: Decimal
+    timestamp: datetime
