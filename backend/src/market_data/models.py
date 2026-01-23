@@ -4,10 +4,12 @@
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from src.strategies.base import MarketData
+
+ScenarioType = Literal["flat", "trend_up", "trend_down", "volatile", "jump", "stale"]
 
 
 @dataclass
@@ -49,3 +51,27 @@ class QuoteSnapshot:
             timestamp=data.timestamp,
             cached_at=datetime.utcnow(),
         )
+
+
+@dataclass
+class SymbolScenario:
+    """Configuration for per-symbol mock data generation."""
+
+    symbol: str
+    scenario: ScenarioType
+    base_price: Decimal
+    tick_interval_ms: int = 100
+
+
+@dataclass
+class FaultConfig:
+    """Configuration for fault injection."""
+
+    enabled: bool = False
+    delay_probability: float = 0.0
+    delay_ms_range: tuple[int, int] = (100, 500)
+    duplicate_probability: float = 0.0
+    out_of_order_probability: float = 0.0
+    out_of_order_offset_ms: int = 200
+    stale_window_probability: float = 0.0
+    stale_window_duration_ms: tuple[int, int] = (2000, 5000)
