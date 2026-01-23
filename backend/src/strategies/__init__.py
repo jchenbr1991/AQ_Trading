@@ -3,6 +3,7 @@ from src.strategies.signals import Signal
 from src.strategies.base import MarketData, OrderFill, Strategy
 from src.strategies.context import StrategyContext
 from src.strategies.registry import StrategyRegistry
+from src.strategies.engine import StrategyEngine
 
 __all__ = [
     "Signal",
@@ -11,4 +12,5 @@ __all__ = [
     "Strategy",
     "StrategyContext",
     "StrategyRegistry",
+    "StrategyEngine",
 ]
