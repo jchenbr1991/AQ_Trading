@@ -1,2 +1,6 @@
 # backend/src/market_data/sources/__init__.py
-"""Market data sources package."""
+"""Data source implementations."""
+
+from src.market_data.sources.base import DataSource
+
+__all__ = ["DataSource"]
