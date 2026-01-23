@@ -65,6 +65,33 @@ class RiskManager:
 
         return True
 
+    async def _check_position_limits(self, signal: Signal) -> bool:
+        """Check position-level limits."""
+        # Sells always pass position limits
+        if signal.action == "sell":
+            return True
+
+        # Check max quantity per order
+        if signal.quantity > self._config.max_quantity_per_order:
+            return False
+
+        # Get current price
+        price = await self._get_current_price(signal.symbol)
+        position_value = Decimal(str(signal.quantity)) * price
+
+        # Check max position value
+        if position_value > self._config.max_position_value:
+            return False
+
+        # Check max position as % of portfolio
+        account = await self._portfolio.get_account(self._config.account_id)
+        position_pct = (position_value / account.total_equity) * 100
+
+        if position_pct > self._config.max_position_pct:
+            return False
+
+        return True
+
     async def evaluate(self, signal: Signal) -> RiskResult:
         """Run all risk checks on a signal."""
         # Kill switch check
@@ -94,11 +121,20 @@ class RiskManager:
                 checks_failed=["symbol_allowed"],
             )
 
+        # Position limits check
+        if not await self._check_position_limits(signal):
+            return RiskResult(
+                approved=False,
+                signal=signal,
+                rejection_reason="position_limits",
+                checks_failed=["position_limits"],
+            )
+
         # Placeholder for remaining checks (implemented in later tasks)
         return RiskResult(
             approved=True,
             signal=signal,
-            checks_passed=["kill_switch", "strategy_paused", "symbol_allowed"],
+            checks_passed=["kill_switch", "strategy_paused", "symbol_allowed", "position_limits"],
         )
 
     async def _get_current_price(self, symbol: str) -> Decimal:
