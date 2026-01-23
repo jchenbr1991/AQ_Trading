@@ -1,0 +1,19 @@
+risk:
+  account_id: "default"
+
+  # Position limits
+  max_position_value: 10000      # Max $ per position
+  max_position_pct: 5            # Max % of portfolio per position
+  max_quantity_per_order: 500    # Max shares per order
+
+  # Portfolio limits
+  max_positions: 20              # Max concurrent positions
+  max_exposure_pct: 80           # Max % of equity in positions
+
+  # Loss limits
+  daily_loss_limit: 1000         # Max $ loss per day
+  max_drawdown_pct: 10           # Max % drawdown from peak
+
+  # Symbol restrictions (optional)
+  blocked_symbols: []            # Never trade these
+  allowed_symbols: []            # If set, only trade these
