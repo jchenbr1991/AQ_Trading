@@ -53,6 +53,18 @@ class RiskManager:
         """Check if a strategy is paused."""
         return strategy_id in self._paused_strategies
 
+    def _check_symbol_allowed(self, signal: Signal) -> bool:
+        """Check if symbol is allowed to trade."""
+        # Blocked list takes precedence
+        if signal.symbol in self._config.blocked_symbols:
+            return False
+
+        # If allowed list is set, symbol must be in it
+        if self._config.allowed_symbols:
+            return signal.symbol in self._config.allowed_symbols
+
+        return True
+
     async def evaluate(self, signal: Signal) -> RiskResult:
         """Run all risk checks on a signal."""
         # Kill switch check
@@ -73,9 +85,20 @@ class RiskManager:
                 checks_failed=["strategy_paused"],
             )
 
+        # Symbol allowed check
+        if not self._check_symbol_allowed(signal):
+            return RiskResult(
+                approved=False,
+                signal=signal,
+                rejection_reason="symbol_allowed",
+                checks_failed=["symbol_allowed"],
+            )
+
         # Placeholder for remaining checks (implemented in later tasks)
         return RiskResult(
-            approved=True, signal=signal, checks_passed=["kill_switch", "strategy_paused"]
+            approved=True,
+            signal=signal,
+            checks_passed=["kill_switch", "strategy_paused", "symbol_allowed"],
         )
 
     async def _get_current_price(self, symbol: str) -> Decimal:
