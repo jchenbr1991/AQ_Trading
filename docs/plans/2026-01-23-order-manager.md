@@ -27,12 +27,18 @@ from src.orders.models import Order, OrderStatus
 class TestOrderStatus:
     def test_all_statuses_exist(self):
         """All order statuses are defined."""
+        # Active states
         assert OrderStatus.PENDING.value == "pending"
         assert OrderStatus.SUBMITTED.value == "submitted"
         assert OrderStatus.PARTIAL_FILL.value == "partial"
+        assert OrderStatus.CANCEL_REQUESTED.value == "cancel_req"
+        # Terminal states
         assert OrderStatus.FILLED.value == "filled"
         assert OrderStatus.CANCELLED.value == "cancelled"
         assert OrderStatus.REJECTED.value == "rejected"
+        # Phase 2 placeholders
+        assert OrderStatus.EXPIRED.value == "expired"
+        assert OrderStatus.UNKNOWN.value == "unknown"
 
 
 class TestOrder:
@@ -139,12 +145,20 @@ from src.strategies.signals import Signal
 
 
 class OrderStatus(Enum):
+    # Active states
     PENDING = "pending"
     SUBMITTED = "submitted"
     PARTIAL_FILL = "partial"
+    CANCEL_REQUESTED = "cancel_req"
+
+    # Terminal states
     FILLED = "filled"
     CANCELLED = "cancelled"
     REJECTED = "rejected"
+
+    # Phase 2 placeholders
+    EXPIRED = "expired"
+    UNKNOWN = "unknown"
 
 
 @dataclass
@@ -926,6 +940,7 @@ class TestFillHandling:
         order = await order_manager.process_signal(signal)
 
         fill = OrderFill(
+            fill_id="FILL-001",  # CRITICAL: unique fill ID
             order_id="BRK-001",
             symbol="AAPL",
             side="buy",
@@ -947,6 +962,7 @@ class TestFillHandling:
         order = await order_manager.process_signal(signal)
 
         fill = OrderFill(
+            fill_id="FILL-001",
             order_id="BRK-001",
             symbol="AAPL",
             side="buy",
@@ -967,10 +983,12 @@ class TestFillHandling:
         order = await order_manager.process_signal(signal)
 
         fill1 = OrderFill(
+            fill_id="FILL-001",  # Different fill_id for each fill
             order_id="BRK-001", symbol="AAPL", side="buy",
             quantity=60, price=Decimal("150.00"), timestamp=datetime.utcnow()
         )
         fill2 = OrderFill(
+            fill_id="FILL-002",  # Different fill_id
             order_id="BRK-001", symbol="AAPL", side="buy",
             quantity=40, price=Decimal("151.00"), timestamp=datetime.utcnow()
         )
@@ -989,10 +1007,12 @@ class TestFillHandling:
 
         # 60 @ 150 + 40 @ 160 = 9000 + 6400 = 15400 / 100 = 154
         fill1 = OrderFill(
+            fill_id="FILL-001",
             order_id="BRK-001", symbol="AAPL", side="buy",
             quantity=60, price=Decimal("150.00"), timestamp=datetime.utcnow()
         )
         fill2 = OrderFill(
+            fill_id="FILL-002",
             order_id="BRK-001", symbol="AAPL", side="buy",
             quantity=40, price=Decimal("160.00"), timestamp=datetime.utcnow()
         )
@@ -1009,6 +1029,7 @@ class TestFillHandling:
         await order_manager.process_signal(signal)
 
         fill = OrderFill(
+            fill_id="FILL-001",
             order_id="BRK-001", symbol="AAPL", side="buy",
             quantity=100, price=Decimal("150.00"), timestamp=datetime.utcnow()
         )
@@ -1024,6 +1045,7 @@ class TestFillHandling:
         await order_manager.process_signal(signal)
 
         fill = OrderFill(
+            fill_id="FILL-001",
             order_id="BRK-001", symbol="AAPL", side="buy",
             quantity=100, price=Decimal("150.00"), timestamp=datetime.utcnow()
         )
@@ -1042,6 +1064,7 @@ class TestFillHandling:
         order_id = order.order_id
 
         fill = OrderFill(
+            fill_id="FILL-001",
             order_id="BRK-001", symbol="AAPL", side="buy",
             quantity=100, price=Decimal("150.00"), timestamp=datetime.utcnow()
         )
@@ -1049,6 +1072,52 @@ class TestFillHandling:
         await order_manager.handle_fill(fill)
 
         assert order_id not in order_manager.active_orders
+
+
+class TestFillIdempotency:
+    """CRITICAL: Tests for fill deduplication."""
+
+    @pytest.mark.asyncio
+    async def test_duplicate_fill_ignored(self, order_manager, mock_portfolio):
+        """Same fill_id is only processed once."""
+        signal = Signal(strategy_id="test", symbol="AAPL", action="buy", quantity=100)
+        order = await order_manager.process_signal(signal)
+
+        fill = OrderFill(
+            fill_id="FILL-001",
+            order_id="BRK-001", symbol="AAPL", side="buy",
+            quantity=100, price=Decimal("150.00"), timestamp=datetime.utcnow()
+        )
+
+        # Process same fill twice
+        await order_manager.handle_fill(fill)
+        await order_manager.handle_fill(fill)  # Duplicate!
+
+        # Should only update portfolio once
+        assert mock_portfolio.record_fill.call_count == 1
+        assert order.filled_qty == 100  # Not 200!
+
+    @pytest.mark.asyncio
+    async def test_different_fill_ids_processed(self, order_manager, mock_portfolio):
+        """Different fill_ids are all processed."""
+        signal = Signal(strategy_id="test", symbol="AAPL", action="buy", quantity=100)
+        await order_manager.process_signal(signal)
+
+        fill1 = OrderFill(
+            fill_id="FILL-001",
+            order_id="BRK-001", symbol="AAPL", side="buy",
+            quantity=50, price=Decimal("150.00"), timestamp=datetime.utcnow()
+        )
+        fill2 = OrderFill(
+            fill_id="FILL-002",  # Different ID
+            order_id="BRK-001", symbol="AAPL", side="buy",
+            quantity=50, price=Decimal("151.00"), timestamp=datetime.utcnow()
+        )
+
+        await order_manager.handle_fill(fill1)
+        await order_manager.handle_fill(fill2)
+
+        assert mock_portfolio.record_fill.call_count == 2
 ```
 
 **Update `backend/src/orders/manager.py`:**
@@ -1056,8 +1125,36 @@ class TestFillHandling:
 ```python
 # Add to OrderManager class
 
+# In __init__, add:
+self._processed_fills: set[str] = set()  # For idempotency
+self._loop: asyncio.AbstractEventLoop = None
+
+# In start(), add:
+async def start(self) -> None:
+    self._loop = asyncio.get_running_loop()
+    # CRITICAL: Use sync wrapper for broker callback
+    self._broker.subscribe_fills(self._on_fill_sync)
+    # ... rest of start
+
+# Sync wrapper for thread-safe callback
+def _on_fill_sync(self, fill: OrderFill) -> None:
+    """
+    Sync callback for broker fills.
+    IMPORTANT: Futu SDK calls this from a different thread.
+    """
+    if self._loop and self._loop.is_running():
+        asyncio.run_coroutine_threadsafe(
+            self.handle_fill(fill),
+            self._loop
+        )
+
 async def handle_fill(self, fill: OrderFill) -> None:
-    """Handle fill notification from broker."""
+    """Handle fill notification from broker (idempotent)."""
+    # IDEMPOTENCY CHECK - Must be first!
+    if fill.fill_id in self._processed_fills:
+        return  # Duplicate, ignore
+    self._processed_fills.add(fill.fill_id)
+
     order_id = self._broker_id_map.get(fill.order_id)
     if not order_id:
         return  # Unknown order
@@ -1237,6 +1334,7 @@ def from_json(cls, data: str) -> "Signal":
 # Add to OrderFill class (or create if not exists)
 @dataclass
 class OrderFill:
+    fill_id: str  # CRITICAL: Broker's unique trade ID for idempotency
     order_id: str
     symbol: str
     side: Literal["buy", "sell"]
@@ -1246,6 +1344,7 @@ class OrderFill:
 
     def to_json(self) -> str:
         return json.dumps({
+            "fill_id": self.fill_id,
             "order_id": self.order_id,
             "symbol": self.symbol,
             "side": self.side,
@@ -1258,6 +1357,7 @@ class OrderFill:
     def from_json(cls, data: str) -> "OrderFill":
         d = json.loads(data)
         return cls(
+            fill_id=d["fill_id"],
             order_id=d["order_id"],
             symbol=d["symbol"],
             side=d["side"],
@@ -1473,16 +1573,26 @@ __all__ = [
 
 | Task | Description | Tests |
 |------|-------------|-------|
-| 1 | Order and OrderStatus models | 4 |
+| 1 | Order and OrderStatus models (with Phase 2 placeholders) | 5 |
 | 2 | Broker protocol and errors | 4 |
-| 3 | PaperBroker implementation | 6 |
-| 4 | OrderManager core | 5 |
-| 5 | Fill handling | 7 |
-| 6 | Signal JSON serialization | 3 |
+| 3 | PaperBroker implementation (realistic: partials, rejections, slippage) | 8 |
+| 4 | OrderManager core (persist PENDING before submit) | 6 |
+| 5 | Fill handling (with idempotency via fill_id) | 9 |
+| 6 | Signal JSON serialization (with fill_id) | 4 |
 | 7 | Broker configuration | 3 |
 | 8 | Package exports | - |
 
-**Total: 8 tasks, ~32 tests**
+**Total: 8 tasks, ~39 tests**
+
+## Critical Fixes (from code review)
+
+These fixes are incorporated into the tasks above:
+
+1. **Fill Idempotency** (Task 5) - Deduplicate by fill_id to prevent position doubling
+2. **Sync/Async Callback** (Task 4) - Use `asyncio.run_coroutine_threadsafe` for Futu thread callbacks
+3. **Persist Before Submit** (Task 4) - Write PENDING order to DB before broker submit
+4. **Realistic PaperBroker** (Task 3) - Partial fills, rejections, slippage variance
+5. **Order State Placeholders** (Task 1) - CANCEL_REQUESTED, EXPIRED, UNKNOWN for Phase 2
 
 ## Execution
 
@@ -1490,3 +1600,10 @@ Run tests with:
 ```bash
 cd backend && pytest tests/orders/ tests/broker/ -v
 ```
+
+## Phase 2 Extensions
+
+- Order recovery on restart (sync with broker)
+- Cancel/Replace flow with CANCEL_REQUESTED state
+- Redis Streams with consumer groups
+- Execution metrics (slippage, latency)
