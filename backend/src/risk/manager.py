@@ -53,6 +53,15 @@ class RiskManager:
         """Check if a strategy is paused."""
         return strategy_id in self._paused_strategies
 
+    # P&L tracking
+    def update_daily_pnl(self, pnl_change: Decimal) -> None:
+        """Update daily P&L with a change."""
+        self._daily_pnl += pnl_change
+
+    def reset_daily_stats(self) -> None:
+        """Reset daily statistics. Called at start of trading day."""
+        self._daily_pnl = Decimal("0")
+
     def _check_symbol_allowed(self, signal: Signal) -> bool:
         """Check if symbol is allowed to trade."""
         # Blocked list takes precedence
@@ -127,6 +136,29 @@ class RiskManager:
 
         return True
 
+    async def _check_loss_limits(self, signal: Signal) -> bool:
+        """Check loss limits (daily loss, drawdown)."""
+        # Check daily loss limit
+        if self._daily_pnl < -self._config.daily_loss_limit:
+            self.activate_kill_switch("Daily loss limit exceeded")
+            return False
+
+        # Check drawdown
+        account = await self._portfolio.get_account(self._config.account_id)
+
+        # Update peak equity if new high
+        if account.total_equity > self._peak_equity:
+            self._peak_equity = account.total_equity
+
+        # Calculate drawdown (handle initial case)
+        if self._peak_equity > 0:
+            drawdown_pct = (self._peak_equity - account.total_equity) / self._peak_equity * 100
+            if drawdown_pct > self._config.max_drawdown_pct:
+                self.activate_kill_switch(f"Drawdown {drawdown_pct:.1f}% exceeded limit")
+                return False
+
+        return True
+
     async def evaluate(self, signal: Signal) -> RiskResult:
         """Run all risk checks on a signal."""
         # Kill switch check
@@ -174,7 +206,15 @@ class RiskManager:
                 checks_failed=["portfolio_limits"],
             )
 
-        # Placeholder for remaining checks (implemented in later tasks)
+        # Loss limits check
+        if not await self._check_loss_limits(signal):
+            return RiskResult(
+                approved=False,
+                signal=signal,
+                rejection_reason="loss_limits",
+                checks_failed=["loss_limits"],
+            )
+
         return RiskResult(
             approved=True,
             signal=signal,
@@ -184,6 +224,7 @@ class RiskManager:
                 "symbol_allowed",
                 "position_limits",
                 "portfolio_limits",
+                "loss_limits",
             ],
         )
 
