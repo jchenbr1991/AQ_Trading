@@ -92,6 +92,41 @@ class RiskManager:
 
         return True
 
+    async def _check_portfolio_limits(self, signal: Signal) -> bool:
+        """Check portfolio-level limits."""
+        account = await self._portfolio.get_account(self._config.account_id)
+        if not account:
+            return False
+
+        positions = await self._portfolio.get_positions(self._config.account_id)
+
+        # Check max positions (only for new positions, only for buys)
+        if signal.action == "buy":
+            existing = await self._portfolio.get_position(
+                self._config.account_id, signal.symbol, signal.strategy_id
+            )
+            if not existing and len(positions) >= self._config.max_positions:
+                return False
+
+        # Calculate exposure
+        total_exposure = sum(p.market_value for p in positions)
+        price = await self._get_current_price(signal.symbol)
+        new_exposure = (
+            Decimal(str(signal.quantity)) * price if signal.action == "buy" else Decimal("0")
+        )
+        exposure_pct = (total_exposure + new_exposure) / account.total_equity * 100
+
+        if exposure_pct > self._config.max_exposure_pct:
+            return False
+
+        # Check buying power (only for buys)
+        if signal.action == "buy":
+            required = Decimal(str(signal.quantity)) * price
+            if required > account.buying_power:
+                return False
+
+        return True
+
     async def evaluate(self, signal: Signal) -> RiskResult:
         """Run all risk checks on a signal."""
         # Kill switch check
@@ -130,11 +165,26 @@ class RiskManager:
                 checks_failed=["position_limits"],
             )
 
+        # Portfolio limits check
+        if not await self._check_portfolio_limits(signal):
+            return RiskResult(
+                approved=False,
+                signal=signal,
+                rejection_reason="portfolio_limits",
+                checks_failed=["portfolio_limits"],
+            )
+
         # Placeholder for remaining checks (implemented in later tasks)
         return RiskResult(
             approved=True,
             signal=signal,
-            checks_passed=["kill_switch", "strategy_paused", "symbol_allowed", "position_limits"],
+            checks_passed=[
+                "kill_switch",
+                "strategy_paused",
+                "symbol_allowed",
+                "position_limits",
+                "portfolio_limits",
+            ],
         )
 
     async def _get_current_price(self, symbol: str) -> Decimal:
