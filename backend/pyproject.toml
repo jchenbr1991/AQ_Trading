@@ -13,6 +13,7 @@ dependencies = [
     "alembic>=1.13.0",
     "redis>=5.0.0",
     "httpx>=0.26.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

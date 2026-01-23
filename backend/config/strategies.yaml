@@ -1,0 +1,11 @@
+# backend/config/strategies.yaml
+strategies:
+  - name: momentum_v1
+    class: src.strategies.examples.momentum.MomentumStrategy
+    account_id: "ACC001"
+    symbols: ["AAPL", "TSLA", "NVDA"]
+    params:
+      lookback_period: 20
+      threshold: 0.02
+      position_size: 100
+    enabled: false  # Disabled until strategy is implemented
