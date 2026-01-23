@@ -8,4 +8,4 @@ strategies:
       lookback_period: 20
       threshold: 0.02
       position_size: 100
-    enabled: false  # Disabled until strategy is implemented
+    enabled: true
