@@ -38,11 +38,52 @@ The Market Data Service generates, caches, and distributes market quotes for the
 3. **asyncio.Queue** - Distributes to StrategyEngine with backpressure
 4. **Redis Cache** - Cross-module state reference (NOT a data source for indicators)
 
+## Queue Overflow Strategy
+
+**Policy: Drop oldest, keep newest**
+
+When `queue_max_size` is reached:
+- Discard the oldest quote in the queue
+- Insert the new quote
+- Log a warning (for monitoring)
+
+**Rationale:**
+- Market data has "latest is best" semantics - old quotes are less valuable
+- Strategies care about current state, not historical ticks
+- Prevents unbounded memory growth under backpressure
+- Better than blocking producer (would cause cascade delays)
+
+**Implementation location:** `MarketDataService._enqueue()` method
+
+```python
+async def _enqueue(self, quote: MarketData) -> None:
+    """Enqueue quote with drop-oldest overflow policy."""
+    if self._stream.full():
+        try:
+            self._stream.get_nowait()  # Drop oldest
+            self._overflow_count += 1
+            logger.warning(f"Queue overflow, dropped oldest. Total drops: {self._overflow_count}")
+        except asyncio.QueueEmpty:
+            pass
+    await self._stream.put(quote)
+```
+
 ## Data Models
 
-### MarketData (existing)
+### Semantic Distinction
 
-Already defined in `strategies/base.py`:
+Two related but distinct concepts:
+
+| Concept | Purpose | Location |
+|---------|---------|----------|
+| `MarketData` | Event flowing through queue | `strategies/base.py` (existing) |
+| `QuoteSnapshot` | Cached state with system metadata | `market_data/models.py` (new) |
+
+Even though fields are 90% similar, keeping them semantically separate prevents confusion and makes Phase 2 integration cleaner.
+
+### MarketData (existing, unchanged)
+
+Already defined in `strategies/base.py` - used in queue distribution:
 
 ```python
 @dataclass
@@ -53,6 +94,40 @@ class MarketData:
     ask: Decimal
     volume: int
     timestamp: datetime
+```
+
+### QuoteSnapshot (new)
+
+Stored in Redis - includes system metadata:
+
+```python
+@dataclass
+class QuoteSnapshot:
+    """Cached quote state with system metadata."""
+    symbol: str
+    price: Decimal
+    bid: Decimal
+    ask: Decimal
+    volume: int
+    timestamp: datetime      # Event-time (from source)
+    cached_at: datetime      # System-time (when cached, for debugging)
+
+    def is_stale(self, threshold_ms: int) -> bool:
+        """Check staleness using event-time, NOT cached_at."""
+        age_ms = (datetime.utcnow() - self.timestamp).total_seconds() * 1000
+        return age_ms > threshold_ms
+
+    @classmethod
+    def from_market_data(cls, data: MarketData) -> "QuoteSnapshot":
+        return cls(
+            symbol=data.symbol,
+            price=data.price,
+            bid=data.bid,
+            ask=data.ask,
+            volume=data.volume,
+            timestamp=data.timestamp,
+            cached_at=datetime.utcnow(),
+        )
 ```
 
 ### Redis Cache Schema
@@ -72,9 +147,10 @@ Value: JSON
 ```
 
 **Staleness detection:**
-- `timestamp` = quote's original timestamp from source
-- `cached_at` = when written to Redis
-- Consumer checks: `now - cached_at > threshold` → stale
+- `timestamp` = quote's original timestamp from source (event-time)
+- `cached_at` = when written to Redis (for debugging only)
+- Consumer checks: `now - timestamp > threshold` → stale
+- **Important:** Always use event-time (`timestamp`) for staleness, NOT `cached_at`. This ensures correct behavior in Phase 2 with real data (delayed arrival, out-of-order, replay/catch-up scenarios).
 - No TTL expiry; stale quotes remain visible with staleness flag
 
 ### SymbolScenario
@@ -161,10 +237,10 @@ class MarketDataService:
         Can be called before or after start().
         """
 
-    def get_quote(self, symbol: str) -> MarketData | None:
+    def get_quote(self, symbol: str) -> QuoteSnapshot | None:
         """
-        Get latest cached quote. Sync, non-blocking.
-        Returns None if no quote available.
+        Get latest cached quote snapshot. Sync, non-blocking.
+        Returns QuoteSnapshot (with staleness check) or None if unavailable.
         """
 
     def get_stream(self) -> asyncio.Queue[MarketData]:
@@ -198,7 +274,7 @@ backend/src/
 │   │   ├── __init__.py
 │   │   ├── base.py         # DataSource protocol (for future Futu)
 │   │   └── mock.py         # MockDataSource with scenarios
-│   ├── models.py           # SymbolScenario, FaultConfig, MarketDataConfig
+│   ├── models.py           # QuoteSnapshot, SymbolScenario, FaultConfig, MarketDataConfig
 │   └── processor.py        # QuoteProcessor (fault injection, Redis write)
 
 backend/tests/
