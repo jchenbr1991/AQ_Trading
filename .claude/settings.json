@@ -1,0 +1,90 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pytest:*)",
+      "Bash(cd backend && pytest:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(git status)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git checkout -b *)",
+      "Bash(git branch *)",
+      "Bash(git switch *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(pip install *)",
+      "Bash(pip list *)",
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(python *)",
+      "Bash(uvicorn *)",
+      "Bash(alembic *)",
+      "Bash(mkdir *)",
+      "Bash(pre-commit *)",
+      "Bash(ruff *)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -r *)",
+      "Bash(sudo *)",
+      "Bash(chmod 777 *)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(ssh *)",
+      "Bash(scp *)",
+      "Bash(rsync *)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -f *)",
+      "Bash(git checkout main)",
+      "Bash(git checkout master)",
+      "Bash(git switch main)",
+      "Bash(git switch master)",
+      "Bash(docker run *)",
+      "Bash(eval *)",
+      "Bash(exec *)",
+      "Bash(> /dev/*)",
+      "Bash(| sh)",
+      "Bash(| bash)"
+    ],
+    "ask": [
+      "Bash(rm *)",
+      "Bash(git push *)",
+      "Bash(docker *)"
+    ]
+  },
+  "filePermissions": {
+    "allow": [
+      "backend/src/**/*",
+      "backend/tests/**/*",
+      "backend/alembic/**/*",
+      "config/**/*",
+      "docs/**/*",
+      ".claude/**/*",
+      ".pre-commit-config.yaml",
+      "pyproject.toml",
+      "requirements*.txt"
+    ],
+    "deny": [
+      "**/.env",
+      "**/.env.*",
+      "**/secrets.*",
+      "**/credentials.*",
+      "**/*.pem",
+      "**/*.key",
+      "strategies/live/**/*"
+    ],
+    "ask": [
+      "frontend/**/*",
+      ".github/**/*"
+    ]
+  },
+  "autoUpdate": false,
+  "verbose": false
+}

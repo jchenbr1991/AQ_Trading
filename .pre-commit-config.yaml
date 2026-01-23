@@ -1,0 +1,55 @@
+# Pre-commit hooks for AQ Trading
+# Run: pre-commit install
+# Test: pre-commit run --all-files
+
+repos:
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: no-commit-to-branch
+        args: ['--branch', 'main', '--branch', 'master']
+
+  # Python linting with Ruff (fast)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  # Type checking (optional - can be slow)
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.8.0
+  #   hooks:
+  #     - id: mypy
+  #       files: ^backend/src/
+  #       additional_dependencies: [types-PyYAML]
+
+# Local hooks for project-specific checks
+  - repo: local
+    hooks:
+      # Prevent secrets in code
+      - id: no-secrets
+        name: Check for secrets
+        entry: bash -c 'grep -rn "password\s*=\s*[\"'\''][^\"'\'']*[\"'\'']" --include="*.py" backend/ && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+
+      # Run tests before commit (only changed files' related tests)
+      - id: pytest-check
+        name: Run pytest
+        entry: bash -c 'cd backend && python -m pytest tests/ -x -q --tb=no 2>/dev/null || (echo "Tests failed! Fix before committing." && exit 1)'
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
