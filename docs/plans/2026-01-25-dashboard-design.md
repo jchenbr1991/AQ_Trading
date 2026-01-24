@@ -10,8 +10,9 @@ Single-page React application that displays portfolio state and provides emergen
 - Scope: Minimal MVP (single page, not multi-page)
 - Data: TanStack Query polling every 5 seconds
 - Safety: Confirmation modals for all destructive actions
-- Freshness: Visual indicators for data staleness
+- Freshness: Visual indicators for data staleness (manual calculation)
 - Alerts: Reconciliation discrepancies displayed for operator awareness
+- State: Trading state visible in header with explicit state machine
 
 ## Tech Stack
 
@@ -29,7 +30,7 @@ Single-page React application that displays portfolio state and provides emergen
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  AQ Trading Dashboard                    [Kill Switch]│
+│  AQ Trading    [🟢 RUNNING]              [Kill Switch]│
 ├─────────────────────────────────────────────────────┤
 │  Account Summary                                     │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐            │
@@ -51,6 +52,69 @@ Single-page React application that displays portfolio state and provides emergen
 └─────────────────────────────────────────────────────┘
 ```
 
+## Trading State Machine
+
+### States
+
+| State | Badge | Description | Allowed Actions |
+|-------|-------|-------------|-----------------|
+| `RUNNING` | 🟢 Green | Normal trading | All |
+| `PAUSED` | 🟡 Yellow | No new signals, existing orders active | Close position, Cancel |
+| `HALTED` | 🔴 Red | Emergency stop, all trading frozen | Resume only (manual) |
+
+### State Transitions
+
+```
+RUNNING ──[pause]──> PAUSED ──[resume]──> RUNNING
+    │                   │
+    └──[kill-switch]────┴──────────────> HALTED
+                                            │
+                                    [manual resume]
+                                            │
+                                            v
+                                        RUNNING
+```
+
+### Kill Switch Definition (Critical)
+
+**Kill Switch is a compound action that executes in order:**
+
+1. **HALT** - Set trading state to HALTED (latched, requires manual resume)
+2. **CANCEL_ALL** - Cancel all pending/open orders
+3. **FLATTEN_ALL** - Submit market orders to close all positions
+
+**API Response includes executed sub-actions:**
+
+```typescript
+// POST /api/risk/kill-switch response
+interface KillSwitchResult {
+  success: boolean;
+  state: "HALTED";
+  actions_executed: {
+    halted: boolean;
+    orders_cancelled: number;
+    positions_flattened: number;
+    flatten_orders: string[];  // Order IDs for tracking
+  };
+  errors: string[];  // Any failures during execution
+  timestamp: string;
+  triggered_by: string;  // "dashboard" | "api" | "auto"
+}
+```
+
+**Explicit API Design (Split Actions):**
+
+| Endpoint | Method | Purpose | When to Use |
+|----------|--------|---------|-------------|
+| `POST /api/risk/halt` | POST | Stop new trading only | Pause for investigation |
+| `POST /api/risk/cancel-all` | POST | Cancel pending orders | Clear order book |
+| `POST /api/risk/flatten-all` | POST | Market close all positions | Emergency exit |
+| `POST /api/risk/kill-switch` | POST | All three above in sequence | Nuclear option |
+| `POST /api/risk/resume` | POST | Resume from HALTED/PAUSED | Manual recovery |
+| `GET /api/risk/state` | GET | Current trading state | Dashboard polling |
+
+**UI Kill Switch Button calls `/api/risk/kill-switch` which executes all three.**
+
 ## Safety Controls
 
 ### Double-Tap Confirmation Pattern
@@ -62,10 +126,13 @@ All destructive actions require a confirmation modal:
 │  ⚠️  Confirm Kill Switch               │
 ├─────────────────────────────────────────┤
 │                                         │
-│  This will:                             │
-│  • Close ALL open positions             │
-│  • Cancel ALL pending orders            │
-│  • Halt ALL trading                     │
+│  This will immediately:                 │
+│  1. HALT all trading                    │
+│  2. CANCEL all pending orders           │
+│  3. FLATTEN all positions (market)      │
+│                                         │
+│  System will remain HALTED until        │
+│  manually resumed.                      │
 │                                         │
 │  Are you sure?                          │
 │                                         │
@@ -85,39 +152,133 @@ All destructive actions require a confirmation modal:
 - Loading state disables buttons during API call
 - Kill switch button is red with warning icon
 
+## Close Position Semantics
+
+### Request Schema
+
+```typescript
+// POST /api/orders/close
+interface ClosePositionRequest {
+  symbol: string;
+  quantity: number | "all";      // Explicit: full or partial
+  order_type: "market" | "limit";
+  limit_price?: number;          // Required if order_type=limit
+  reduce_only: true;             // Always true for close (enforced)
+  time_in_force: "GTC" | "DAY" | "IOC";
+}
+```
+
+### Constraints
+
+| Field | Dashboard Default | Notes |
+|-------|-------------------|-------|
+| `quantity` | `"all"` | Full position close |
+| `order_type` | `"market"` | Immediate execution |
+| `reduce_only` | `true` | Cannot increase position |
+| `time_in_force` | `"IOC"` | Immediate or cancel |
+
+### Behavior by Trading State
+
+| State | Close Button | Behavior |
+|-------|--------------|----------|
+| `RUNNING` | Enabled | Normal close |
+| `PAUSED` | Enabled | Allowed (controlled exit) |
+| `HALTED` | **Disabled** | No orders allowed; use Resume first |
+
+**Note:** In HALTED state, positions were already flattened by kill switch. If operator needs manual close after resume, they must first resume trading.
+
 ## Data Freshness & Error States
 
-### Last Updated Indicator
+### Freshness Calculation (Manual, not TanStack isStale)
 
-Every data section shows when it was last successfully fetched.
+**IMPORTANT:** Do NOT use TanStack Query's `isStale` - it's cache semantics, not data trust.
+
+```typescript
+function calculateFreshness(dataUpdatedAt: number): FreshnessState {
+  const ageMs = Date.now() - dataUpdatedAt;
+  const ageSeconds = ageMs / 1000;
+
+  if (ageSeconds < 10) return 'live';
+  if (ageSeconds < 30) return 'stale';
+  return 'error';
+}
+```
 
 ### Staleness States
 
 | State | Indicator | Condition |
 |-------|-----------|-----------|
-| Live | 🟢 Green | Updated < 10s ago |
-| Stale | 🟡 Yellow | Updated 10-30s ago |
-| Error | 🔴 Red | Fetch failed or > 30s |
+| Live | 🟢 Green | `now - dataUpdatedAt` < 10s |
+| Stale | 🟡 Yellow | `now - dataUpdatedAt` 10-30s |
+| Error | 🔴 Red | `now - dataUpdatedAt` > 30s OR fetch failed |
+
+### Error State Differentiation
+
+| Error Type | Indicator | Condition | User Message |
+|------------|-----------|-----------|--------------|
+| **Hard Error** | 🔴 + Banner | 3+ consecutive fetch failures | "Connection lost" |
+| **Soft Stale** | 🟡 | No failure but data > 30s old | "Data may be outdated" |
+| **Recovering** | 🟡 + spinner | After failure, retrying | "Reconnecting..." |
 
 ### Error Banner
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ ⚠️  Connection Error                    [Retry Now] │
-│ Failed to fetch data. Last successful: 10:30:12    │
+│ 🔴 Connection Error (3 failures)        [Retry Now] │
+│ Last successful update: 10:30:12 (2 min ago)        │
 └─────────────────────────────────────────────────────┘
 ```
 
-### TanStack Query Integration
+### TanStack Query Configuration
 
 ```typescript
-const { data, dataUpdatedAt, isError, isStale, refetch } = useQuery({
+const { data, dataUpdatedAt, isError, failureCount, refetch } = useQuery({
   queryKey: ['positions'],
   queryFn: fetchPositions,
   refetchInterval: 5000,
-  staleTime: 10000,
+  retry: 2,
+  retryDelay: 1000,
 });
+
+// Custom freshness hook
+const freshness = useFreshness(dataUpdatedAt, isError, failureCount);
+// Returns: { state: 'live'|'stale'|'error', ageSeconds, failureCount }
 ```
+
+## Trading State Visibility
+
+### Header State Badge
+
+```
+┌─────────────────────────────────────────────────────┐
+│  AQ Trading    [🟢 RUNNING]              [Kill Switch]│
+│                 ▲                                    │
+│                 └── State badge with color           │
+└─────────────────────────────────────────────────────┘
+```
+
+**Badge States:**
+
+| State | Display | Color |
+|-------|---------|-------|
+| RUNNING | `🟢 RUNNING` | Green background |
+| PAUSED | `🟡 PAUSED` | Yellow background |
+| HALTED | `🔴 HALTED` | Red background, pulsing |
+
+### State API
+
+```typescript
+// GET /api/risk/state
+interface TradingState {
+  state: "RUNNING" | "PAUSED" | "HALTED";
+  since: string;           // ISO timestamp of last state change
+  changed_by: string;      // "dashboard" | "api" | "auto" | "system"
+  reason?: string;         // Why state changed (e.g., "daily loss limit")
+  can_resume: boolean;     // Whether resume is allowed
+}
+```
+
+**Polling:** State endpoint polled every 5 seconds along with other data.
 
 ## Reconciliation Alerts Panel
 
@@ -150,8 +311,13 @@ Decide: Investigate or Kill Switch
 | `/api/health` | GET | Backend health check | ✅ Exists |
 | `/api/portfolio/account/{id}` | GET | Account summary | 🆕 Need |
 | `/api/portfolio/positions/{id}` | GET | Positions list | 🆕 Need |
-| `/api/risk/kill-switch` | POST | Trigger kill switch | ✅ Exists |
-| `/api/orders` | POST | Submit close order | ✅ Exists |
+| `/api/risk/state` | GET | Current trading state | 🆕 Need |
+| `/api/risk/kill-switch` | POST | Emergency stop (compound) | 🔄 Enhance |
+| `/api/risk/halt` | POST | Stop trading only | 🆕 Need |
+| `/api/risk/cancel-all` | POST | Cancel all orders | 🆕 Need |
+| `/api/risk/flatten-all` | POST | Close all positions | 🆕 Need |
+| `/api/risk/resume` | POST | Resume trading | 🆕 Need |
+| `/api/orders/close` | POST | Close single position | 🆕 Need |
 | `/api/reconciliation/recent` | GET | Last 10 alerts | 🆕 Need |
 
 ### Response Schemas
@@ -177,6 +343,40 @@ interface Position {
   market_value: number;
   unrealized_pnl: number;
   strategy_id: string | null;
+}
+
+// GET /api/risk/state
+interface TradingState {
+  state: "RUNNING" | "PAUSED" | "HALTED";
+  since: string;
+  changed_by: string;
+  reason?: string;
+  can_resume: boolean;
+}
+
+// POST /api/risk/kill-switch
+interface KillSwitchResult {
+  success: boolean;
+  state: "HALTED";
+  actions_executed: {
+    halted: boolean;
+    orders_cancelled: number;
+    positions_flattened: number;
+    flatten_orders: string[];
+  };
+  errors: string[];
+  timestamp: string;
+  triggered_by: string;
+}
+
+// POST /api/orders/close
+interface ClosePositionRequest {
+  symbol: string;
+  quantity: number | "all";
+  order_type: "market" | "limit";
+  limit_price?: number;
+  reduce_only: true;
+  time_in_force: "GTC" | "DAY" | "IOC";
 }
 
 // GET /api/reconciliation/recent
@@ -215,24 +415,28 @@ aq_trading/
     │   │
     │   ├── components/
     │   │   ├── Header.tsx
+    │   │   ├── TradingStateBadge.tsx
     │   │   ├── AccountSummary.tsx
     │   │   ├── PositionsTable.tsx
     │   │   ├── AlertsPanel.tsx
     │   │   ├── ConfirmModal.tsx
-    │   │   ├── StatusIndicator.tsx
+    │   │   ├── FreshnessIndicator.tsx
     │   │   └── ErrorBanner.tsx
     │   │
     │   ├── hooks/
     │   │   ├── useAccount.ts
     │   │   ├── usePositions.ts
-    │   │   └── useAlerts.ts
+    │   │   ├── useTradingState.ts
+    │   │   ├── useAlerts.ts
+    │   │   └── useFreshness.ts
     │   │
     │   └── types/
     │       └── index.ts
     │
     └── tests/
         └── components/
-            └── ConfirmModal.test.tsx
+            ├── ConfirmModal.test.tsx
+            └── FreshnessIndicator.test.tsx
 ```
 
 ## Testing Strategy
@@ -246,11 +450,15 @@ aq_trading/
 **Key Test Cases:**
 
 - ConfirmModal: confirm/cancel behavior, escape key, severity styling
-- PositionsTable: rendering, close button, P&L colors
-- usePositions: fetch on mount, refetch interval, error states
+- PositionsTable: rendering, close button disabled in HALTED state
+- FreshnessIndicator: correct state for age thresholds
+- TradingStateBadge: correct color/text for each state
+- useFreshness: manual calculation from dataUpdatedAt
 
 **MVP Test Coverage Target:**
 - ConfirmModal: 100% (safety-critical)
+- FreshnessIndicator: 100% (safety-critical)
+- TradingStateBadge: 100% (safety-critical)
 - API hooks: 80%
 - Other components: 60%
 
@@ -259,16 +467,18 @@ aq_trading/
 1. **Project Setup** - Vite + React + TypeScript + Tailwind
 2. **API Client** - Axios instance, endpoint functions
 3. **Types** - TypeScript interfaces for API responses
-4. **ConfirmModal** - Reusable confirmation dialog
-5. **StatusIndicator** - Freshness indicator component
-6. **ErrorBanner** - Connection error display
-7. **Header** - Logo + Kill Switch button
-8. **AccountSummary** - Equity/Cash/P&L cards
-9. **PositionsTable** - Positions with Close buttons
-10. **AlertsPanel** - Reconciliation alerts display
-11. **App Integration** - Wire up all components
-12. **Backend API** - Add missing endpoints
-13. **Testing** - Component and hook tests
+4. **useFreshness Hook** - Manual freshness calculation
+5. **ConfirmModal** - Reusable confirmation dialog
+6. **FreshnessIndicator** - 🟢🟡🔴 with age display
+7. **ErrorBanner** - Connection error with failure count
+8. **TradingStateBadge** - State display in header
+9. **Header** - Logo + State Badge + Kill Switch
+10. **AccountSummary** - Equity/Cash/P&L cards
+11. **PositionsTable** - Positions with Close buttons (state-aware)
+12. **AlertsPanel** - Reconciliation alerts display
+13. **App Integration** - Wire up all components
+14. **Backend API** - Add/enhance endpoints (state, kill-switch, close)
+15. **Testing** - Component and hook tests
 
 ## Future Considerations (Phase 2+)
 
@@ -277,3 +487,4 @@ aq_trading/
 - Strategy pause/resume controls
 - Dark mode toggle
 - Mobile responsive design
+- Audit log for state changes
