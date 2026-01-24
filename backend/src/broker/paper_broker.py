@@ -1,12 +1,15 @@
 # backend/src/broker/paper_broker.py
 """Simulated broker for paper trading."""
+
 import asyncio
 import random
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
-from typing import Callable
 
 from src.broker.errors import OrderCancelError
+from src.broker.query import BrokerAccount, BrokerPosition
+from src.models.position import AssetType
 from src.orders.models import Order, OrderStatus
 from src.strategies.signals import OrderFill
 
@@ -27,7 +30,7 @@ class PaperBroker:
         fill_delay: float = 0.1,
         default_price: Decimal = Decimal("100"),
         slippage_bps: int = 5,  # Basis points of slippage
-        partial_fill_probability: float = 0.0  # 0 = always full fill
+        partial_fill_probability: float = 0.0,  # 0 = always full fill
     ):
         self._fill_delay = fill_delay
         self._default_price = default_price
@@ -40,6 +43,11 @@ class PaperBroker:
         self._order_statuses: dict[str, OrderStatus] = {}
         self._filled_qty: dict[str, int] = {}
         self._cancelled: set[str] = set()
+        # BrokerQuery state
+        self._positions: dict[
+            str, dict[str, BrokerPosition]
+        ] = {}  # account_id -> symbol -> position
+        self._accounts: dict[str, BrokerAccount] = {}
 
     async def submit_order(self, order: Order) -> str:
         """Submit order and schedule simulated fill."""
@@ -91,9 +99,11 @@ class PaperBroker:
                 return
 
             # Determine fill quantity
-            if (self._partial_fill_probability > 0 and
-                random.random() < self._partial_fill_probability and
-                remaining_qty > 1):
+            if (
+                self._partial_fill_probability > 0
+                and random.random() < self._partial_fill_probability
+                and remaining_qty > 1
+            ):
                 # Partial fill: random portion
                 fill_qty = random.randint(1, remaining_qty - 1)
             else:
@@ -115,7 +125,7 @@ class PaperBroker:
                 side=order.side,
                 quantity=fill_qty,
                 price=fill_price,
-                timestamp=datetime.utcnow()
+                timestamp=datetime.utcnow(),
             )
 
             # Update tracking
@@ -151,10 +161,68 @@ class PaperBroker:
         else:
             # Market orders have slippage
             base_price = self._default_price
-            slippage_pct = Decimal(random.uniform(-self._slippage_bps, self._slippage_bps)) / Decimal("10000")
+            slippage_pct = Decimal(
+                random.uniform(-self._slippage_bps, self._slippage_bps)
+            ) / Decimal("10000")
 
             # Adverse slippage: buy high, sell low
             if order.side == "buy":
                 return base_price * (Decimal("1") + abs(slippage_pct))
             else:
                 return base_price * (Decimal("1") - abs(slippage_pct))
+
+    # BrokerQuery protocol implementation
+
+    def add_position(
+        self,
+        account_id: str,
+        symbol: str,
+        quantity: int,
+        avg_cost: Decimal,
+        market_value: Decimal,
+        asset_type: AssetType = AssetType.STOCK,
+    ) -> None:
+        """Add or update a simulated position for testing."""
+        if account_id not in self._positions:
+            self._positions[account_id] = {}
+        self._positions[account_id][symbol] = BrokerPosition(
+            symbol=symbol,
+            quantity=quantity,
+            avg_cost=avg_cost,
+            market_value=market_value,
+            asset_type=asset_type,
+        )
+
+    def set_account(
+        self,
+        account_id: str,
+        cash: Decimal,
+        buying_power: Decimal,
+        total_equity: Decimal,
+        margin_used: Decimal,
+    ) -> None:
+        """Set simulated account state for testing."""
+        self._accounts[account_id] = BrokerAccount(
+            account_id=account_id,
+            cash=cash,
+            buying_power=buying_power,
+            total_equity=total_equity,
+            margin_used=margin_used,
+        )
+
+    async def get_positions(self, account_id: str) -> list[BrokerPosition]:
+        """Get all positions from simulated broker."""
+        return list(self._positions.get(account_id, {}).values())
+
+    async def get_account(self, account_id: str) -> BrokerAccount:
+        """Get account balances from simulated broker."""
+        if account_id in self._accounts:
+            return self._accounts[account_id]
+        # Return default paper trading account
+        return BrokerAccount(
+            account_id=account_id,
+            cash=Decimal("100000.00"),
+            buying_power=Decimal("200000.00"),
+            total_equity=Decimal("100000.00"),
+            margin_used=Decimal("0.00"),
+        )

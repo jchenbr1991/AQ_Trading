@@ -1,10 +1,11 @@
 # backend/tests/broker/test_paper_broker.py
-import pytest
 import asyncio
 from decimal import Decimal
-from unittest.mock import MagicMock, AsyncMock
 
+import pytest
 from src.broker.paper_broker import PaperBroker
+from src.broker.query import BrokerAccount, BrokerPosition, BrokerQuery
+from src.models.position import AssetType
 from src.orders.models import Order, OrderStatus
 from src.strategies.signals import OrderFill
 
@@ -27,7 +28,7 @@ class TestPaperBroker:
             quantity=100,
             order_type="market",
             limit_price=None,
-            status=OrderStatus.PENDING
+            status=OrderStatus.PENDING,
         )
 
         broker_id = await paper_broker.submit_order(order)
@@ -38,14 +39,26 @@ class TestPaperBroker:
     async def test_generates_unique_broker_ids(self, paper_broker):
         """Each order gets a unique broker ID."""
         order1 = Order(
-            order_id="ord-1", broker_order_id=None, strategy_id="test",
-            symbol="AAPL", side="buy", quantity=100,
-            order_type="market", limit_price=None, status=OrderStatus.PENDING
+            order_id="ord-1",
+            broker_order_id=None,
+            strategy_id="test",
+            symbol="AAPL",
+            side="buy",
+            quantity=100,
+            order_type="market",
+            limit_price=None,
+            status=OrderStatus.PENDING,
         )
         order2 = Order(
-            order_id="ord-2", broker_order_id=None, strategy_id="test",
-            symbol="AAPL", side="buy", quantity=100,
-            order_type="market", limit_price=None, status=OrderStatus.PENDING
+            order_id="ord-2",
+            broker_order_id=None,
+            strategy_id="test",
+            symbol="AAPL",
+            side="buy",
+            quantity=100,
+            order_type="market",
+            limit_price=None,
+            status=OrderStatus.PENDING,
         )
 
         id1 = await paper_broker.submit_order(order1)
@@ -64,9 +77,15 @@ class TestPaperBroker:
         paper_broker.subscribe_fills(on_fill)
 
         order = Order(
-            order_id="ord-123", broker_order_id=None, strategy_id="test",
-            symbol="AAPL", side="buy", quantity=100,
-            order_type="market", limit_price=None, status=OrderStatus.PENDING
+            order_id="ord-123",
+            broker_order_id=None,
+            strategy_id="test",
+            symbol="AAPL",
+            side="buy",
+            quantity=100,
+            order_type="market",
+            limit_price=None,
+            status=OrderStatus.PENDING,
         )
 
         broker_id = await paper_broker.submit_order(order)
@@ -87,10 +106,15 @@ class TestPaperBroker:
         paper_broker.subscribe_fills(lambda f: fills_received.append(f))
 
         order = Order(
-            order_id="ord-123", broker_order_id=None, strategy_id="test",
-            symbol="AAPL", side="buy", quantity=100,
-            order_type="limit", limit_price=Decimal("150.00"),
-            status=OrderStatus.PENDING
+            order_id="ord-123",
+            broker_order_id=None,
+            strategy_id="test",
+            symbol="AAPL",
+            side="buy",
+            quantity=100,
+            order_type="limit",
+            limit_price=Decimal("150.00"),
+            status=OrderStatus.PENDING,
         )
 
         await paper_broker.submit_order(order)
@@ -104,9 +128,15 @@ class TestPaperBroker:
     async def test_cancel_order(self, paper_broker):
         """Can cancel a pending order."""
         order = Order(
-            order_id="ord-123", broker_order_id=None, strategy_id="test",
-            symbol="AAPL", side="buy", quantity=100,
-            order_type="market", limit_price=None, status=OrderStatus.PENDING
+            order_id="ord-123",
+            broker_order_id=None,
+            strategy_id="test",
+            symbol="AAPL",
+            side="buy",
+            quantity=100,
+            order_type="market",
+            limit_price=None,
+            status=OrderStatus.PENDING,
         )
 
         broker_id = await paper_broker.submit_order(order)
@@ -118,9 +148,15 @@ class TestPaperBroker:
     async def test_get_order_status(self, paper_broker):
         """Can get order status."""
         order = Order(
-            order_id="ord-123", broker_order_id=None, strategy_id="test",
-            symbol="AAPL", side="buy", quantity=100,
-            order_type="market", limit_price=None, status=OrderStatus.PENDING
+            order_id="ord-123",
+            broker_order_id=None,
+            strategy_id="test",
+            symbol="AAPL",
+            side="buy",
+            quantity=100,
+            order_type="market",
+            limit_price=None,
+            status=OrderStatus.PENDING,
         )
 
         broker_id = await paper_broker.submit_order(order)
@@ -141,9 +177,15 @@ class TestPaperBroker:
         paper_broker.subscribe_fills(lambda f: fills_received.append(f))
 
         order = Order(
-            order_id="ord-123", broker_order_id=None, strategy_id="test",
-            symbol="AAPL", side="buy", quantity=100,
-            order_type="market", limit_price=None, status=OrderStatus.PENDING
+            order_id="ord-123",
+            broker_order_id=None,
+            strategy_id="test",
+            symbol="AAPL",
+            side="buy",
+            quantity=100,
+            order_type="market",
+            limit_price=None,
+            status=OrderStatus.PENDING,
         )
 
         await paper_broker.submit_order(order)
@@ -163,9 +205,15 @@ class TestPaperBroker:
         # Submit multiple orders to test slippage variance
         for i in range(5):
             order = Order(
-                order_id=f"ord-{i}", broker_order_id=None, strategy_id="test",
-                symbol="AAPL", side="buy", quantity=100,
-                order_type="market", limit_price=None, status=OrderStatus.PENDING
+                order_id=f"ord-{i}",
+                broker_order_id=None,
+                strategy_id="test",
+                symbol="AAPL",
+                side="buy",
+                quantity=100,
+                order_type="market",
+                limit_price=None,
+                status=OrderStatus.PENDING,
             )
             await paper_broker.submit_order(order)
 
@@ -175,3 +223,60 @@ class TestPaperBroker:
         prices = [f.price for f in fills_received]
         # All prices should be positive
         assert all(p > 0 for p in prices)
+
+
+class TestPaperBrokerQuery:
+    """Tests for PaperBroker implementing BrokerQuery."""
+
+    @pytest.fixture
+    def paper_broker(self):
+        return PaperBroker(fill_delay=0.01)
+
+    def test_implements_broker_query(self, paper_broker):
+        """PaperBroker should implement BrokerQuery protocol."""
+        assert isinstance(paper_broker, BrokerQuery)
+
+    @pytest.mark.asyncio
+    async def test_get_positions_empty(self, paper_broker):
+        """Returns empty list when no positions."""
+        positions = await paper_broker.get_positions("ACC001")
+        assert positions == []
+
+    @pytest.mark.asyncio
+    async def test_get_positions_returns_broker_positions(self, paper_broker):
+        """Returns positions in BrokerPosition format."""
+        # Add a simulated position
+        paper_broker.add_position(
+            account_id="ACC001",
+            symbol="AAPL",
+            quantity=100,
+            avg_cost=Decimal("150.00"),
+            market_value=Decimal("15500.00"),
+            asset_type=AssetType.STOCK,
+        )
+        positions = await paper_broker.get_positions("ACC001")
+        assert len(positions) == 1
+        assert isinstance(positions[0], BrokerPosition)
+        assert positions[0].symbol == "AAPL"
+        assert positions[0].quantity == 100
+
+    @pytest.mark.asyncio
+    async def test_get_account(self, paper_broker):
+        """Returns account in BrokerAccount format."""
+        paper_broker.set_account(
+            account_id="ACC001",
+            cash=Decimal("50000.00"),
+            buying_power=Decimal("100000.00"),
+            total_equity=Decimal("150000.00"),
+            margin_used=Decimal("25000.00"),
+        )
+        account = await paper_broker.get_account("ACC001")
+        assert isinstance(account, BrokerAccount)
+        assert account.account_id == "ACC001"
+        assert account.cash == Decimal("50000.00")
+
+    @pytest.mark.asyncio
+    async def test_get_account_default(self, paper_broker):
+        """Returns default account values when not set."""
+        account = await paper_broker.get_account("ACC001")
+        assert account.cash == Decimal("100000.00")  # Default paper trading balance
