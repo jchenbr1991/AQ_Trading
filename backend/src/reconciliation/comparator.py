@@ -119,7 +119,22 @@ class Comparator:
             )
 
         # Check equity with percentage tolerance
-        if local_equity != Decimal("0"):
+        if local_equity == Decimal("0"):
+            # If local is zero but broker is not, flag as equity mismatch
+            if broker.total_equity != Decimal("0"):
+                discrepancies.append(
+                    Discrepancy(
+                        type=DiscrepancyType.EQUITY_MISMATCH,
+                        severity=DEFAULT_SEVERITY_MAP[DiscrepancyType.EQUITY_MISMATCH],
+                        symbol=None,
+                        local_value=local_equity,
+                        broker_value=broker.total_equity,
+                        timestamp=now,
+                        account_id=self._config.account_id,
+                    )
+                )
+        else:
+            # Normal percentage-based comparison
             equity_diff_pct = abs(local_equity - broker.total_equity) / local_equity * 100
             if equity_diff_pct > self._config.equity_tolerance_pct:
                 discrepancies.append(

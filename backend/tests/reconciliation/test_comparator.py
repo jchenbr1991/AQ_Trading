@@ -233,3 +233,18 @@ class TestAccountComparison:
         )
         discrepancies = comp.compare_account(Decimal("10000.00"), Decimal("100000.00"), broker)
         assert discrepancies == []
+
+    def test_zero_local_equity_nonzero_broker_flagged(self, comparator):
+        """Zero local equity with non-zero broker equity is flagged."""
+        broker = BrokerAccount(
+            account_id="ACC001",
+            cash=Decimal("10000.00"),
+            buying_power=Decimal("20000.00"),
+            total_equity=Decimal("50000.00"),
+            margin_used=Decimal("0.00"),
+        )
+        discrepancies = comparator.compare_account(Decimal("10000.00"), Decimal("0"), broker)
+        equity_discrepancies = [
+            d for d in discrepancies if d.type == DiscrepancyType.EQUITY_MISMATCH
+        ]
+        assert len(equity_discrepancies) == 1
