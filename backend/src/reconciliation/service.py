@@ -16,6 +16,7 @@ from src.reconciliation.models import (
     ReconciliationConfig,
     ReconciliationResult,
 )
+from src.strategies.signals import OrderFill
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,8 @@ class ReconciliationService:
         self._comparator = Comparator(config)
         self._running = False
         self._periodic_task: asyncio.Task | None = None
+        self._pending_fill_task: asyncio.Task | None = None
+        self._last_fill: OrderFill | None = None
 
     async def reconcile(self, context: dict[str, Any] | None = None) -> ReconciliationResult:
         """
@@ -197,3 +200,37 @@ class ReconciliationService:
                 await self.reconcile(context={"trigger": "periodic"})
             except Exception as e:
                 logger.exception("Periodic reconciliation failed, will retry next interval: %s", e)
+
+    async def on_fill(self, fill: OrderFill) -> None:
+        """
+        Called after a fill - triggers reconciliation with fill context.
+        Debounced to avoid excessive checks on rapid fills.
+        """
+        if not self._config.enabled:
+            return
+
+        self._last_fill = fill
+
+        # Cancel any pending debounced reconciliation
+        if self._pending_fill_task and not self._pending_fill_task.done():
+            self._pending_fill_task.cancel()
+            try:
+                await self._pending_fill_task
+            except asyncio.CancelledError:
+                pass
+
+        # Schedule new debounced reconciliation
+        self._pending_fill_task = asyncio.create_task(self._debounced_post_fill())
+
+    async def _debounced_post_fill(self) -> None:
+        """Wait for debounce period then run post-fill reconciliation."""
+        await asyncio.sleep(self._config.post_fill_delay_seconds)
+
+        if self._last_fill:
+            context = {
+                "trigger": "post_fill",
+                "order_id": self._last_fill.order_id,
+                "fill_id": self._last_fill.fill_id,
+                "symbol": self._last_fill.symbol,
+            }
+            await self.reconcile(context=context)

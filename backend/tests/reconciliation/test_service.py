@@ -248,3 +248,83 @@ class TestPeriodicReconciliation:
             c for c in result_calls if json.loads(c[0][1])["context"]["trigger"] == "periodic"
         ]
         assert len(periodic_calls) >= 1
+
+
+class TestPostFillReconciliation:
+    @pytest.mark.asyncio
+    async def test_on_fill_triggers_reconciliation(self, service, mock_redis, config):
+        """on_fill triggers reconciliation with fill context."""
+        from datetime import datetime
+
+        from src.strategies.signals import OrderFill
+
+        config.post_fill_delay_seconds = 0.01  # Fast for testing
+
+        fill = OrderFill(
+            fill_id="FILL-001",
+            order_id="ORD-001",
+            symbol="AAPL",
+            side="buy",
+            quantity=100,
+            price=Decimal("150.00"),
+            timestamp=datetime.utcnow(),
+        )
+
+        await service.on_fill(fill)
+        await asyncio.sleep(0.05)
+
+        result_calls = [
+            c for c in mock_redis.publish.call_args_list if c[0][0] == "reconciliation:result"
+        ]
+        assert len(result_calls) == 1
+
+        payload = json.loads(result_calls[0][0][1])
+        assert payload["context"]["trigger"] == "post_fill"
+        assert payload["context"]["order_id"] == "ORD-001"
+        assert payload["context"]["fill_id"] == "FILL-001"
+        assert payload["context"]["symbol"] == "AAPL"
+
+    @pytest.mark.asyncio
+    async def test_post_fill_debounced(self, service, mock_redis, config):
+        """Multiple rapid fills are debounced to single reconciliation."""
+        from datetime import datetime
+
+        from src.strategies.signals import OrderFill
+
+        config.post_fill_delay_seconds = 0.1
+
+        fill1 = OrderFill(
+            "FILL-001", "ORD-001", "AAPL", "buy", 50, Decimal("150.00"), datetime.utcnow()
+        )
+        fill2 = OrderFill(
+            "FILL-002", "ORD-001", "AAPL", "buy", 50, Decimal("150.00"), datetime.utcnow()
+        )
+
+        # Fire two fills rapidly
+        await service.on_fill(fill1)
+        await asyncio.sleep(0.02)  # Before debounce expires
+        await service.on_fill(fill2)
+        await asyncio.sleep(0.15)  # After debounce expires
+
+        # Should only have one reconciliation (debounced)
+        result_calls = [
+            c for c in mock_redis.publish.call_args_list if c[0][0] == "reconciliation:result"
+        ]
+        assert len(result_calls) == 1
+
+    @pytest.mark.asyncio
+    async def test_post_fill_disabled_when_service_disabled(self, service, config, mock_redis):
+        """on_fill does nothing when service is disabled."""
+        from datetime import datetime
+
+        from src.strategies.signals import OrderFill
+
+        config.enabled = False
+
+        fill = OrderFill(
+            "FILL-001", "ORD-001", "AAPL", "buy", 100, Decimal("150.00"), datetime.utcnow()
+        )
+        await service.on_fill(fill)
+        await asyncio.sleep(0.1)
+
+        assert mock_redis.publish.call_count == 0
