@@ -180,7 +180,7 @@ class ReconciliationService:
         self._periodic_task = asyncio.create_task(self._periodic_loop())
 
     async def stop(self) -> None:
-        """Stop periodic loop."""
+        """Stop periodic loop and cancel pending fill reconciliation."""
         self._running = False
         if self._periodic_task:
             self._periodic_task.cancel()
@@ -189,6 +189,13 @@ class ReconciliationService:
             except asyncio.CancelledError:
                 pass
             self._periodic_task = None
+        if self._pending_fill_task and not self._pending_fill_task.done():
+            self._pending_fill_task.cancel()
+            try:
+                await self._pending_fill_task
+            except asyncio.CancelledError:
+                pass
+            self._pending_fill_task = None
 
     async def _periodic_loop(self) -> None:
         """Run reconciliation at configured interval."""

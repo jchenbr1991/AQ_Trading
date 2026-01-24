@@ -328,3 +328,27 @@ class TestPostFillReconciliation:
         await asyncio.sleep(0.1)
 
         assert mock_redis.publish.call_count == 0
+
+    @pytest.mark.asyncio
+    async def test_stop_cancels_pending_fill_reconciliation(self, service, mock_redis, config):
+        """stop() cancels pending fill reconciliation."""
+        from datetime import datetime
+
+        from src.strategies.signals import OrderFill
+
+        config.post_fill_delay_seconds = 1.0  # Long delay
+
+        fill = OrderFill(
+            "FILL-001", "ORD-001", "AAPL", "buy", 100, Decimal("150.00"), datetime.utcnow()
+        )
+
+        await service.on_fill(fill)
+        await asyncio.sleep(0.05)  # Let task start
+        await service.stop()  # Should cancel pending fill task
+        await asyncio.sleep(1.1)  # Wait past debounce
+
+        # Should have no reconciliation (was canceled)
+        result_calls = [
+            c for c in mock_redis.publish.call_args_list if c[0][0] == "reconciliation:result"
+        ]
+        assert len(result_calls) == 0
