@@ -1,8 +1,9 @@
 """Comparison logic for reconciliation."""
 
 from datetime import datetime
+from decimal import Decimal
 
-from src.broker.query import BrokerPosition
+from src.broker.query import BrokerAccount, BrokerPosition
 from src.models.position import Position
 from src.reconciliation.models import (
     DEFAULT_SEVERITY_MAP,
@@ -85,6 +86,49 @@ class Comparator:
                         symbol=symbol,
                         local_value=local_pos.avg_cost,
                         broker_value=broker_pos.avg_cost,
+                        timestamp=now,
+                        account_id=self._config.account_id,
+                    )
+                )
+
+        return discrepancies
+
+    def compare_account(
+        self,
+        local_cash: Decimal,
+        local_equity: Decimal,
+        broker: BrokerAccount,
+    ) -> list[Discrepancy]:
+        """Compare local account values against broker account."""
+        discrepancies: list[Discrepancy] = []
+        now = datetime.utcnow()
+
+        # Check cash with absolute tolerance
+        cash_diff = abs(local_cash - broker.cash)
+        if cash_diff > self._config.cash_tolerance:
+            discrepancies.append(
+                Discrepancy(
+                    type=DiscrepancyType.CASH_MISMATCH,
+                    severity=DEFAULT_SEVERITY_MAP[DiscrepancyType.CASH_MISMATCH],
+                    symbol=None,
+                    local_value=local_cash,
+                    broker_value=broker.cash,
+                    timestamp=now,
+                    account_id=self._config.account_id,
+                )
+            )
+
+        # Check equity with percentage tolerance
+        if local_equity != Decimal("0"):
+            equity_diff_pct = abs(local_equity - broker.total_equity) / local_equity * 100
+            if equity_diff_pct > self._config.equity_tolerance_pct:
+                discrepancies.append(
+                    Discrepancy(
+                        type=DiscrepancyType.EQUITY_MISMATCH,
+                        severity=DEFAULT_SEVERITY_MAP[DiscrepancyType.EQUITY_MISMATCH],
+                        symbol=None,
+                        local_value=local_equity,
+                        broker_value=broker.total_equity,
                         timestamp=now,
                         account_id=self._config.account_id,
                     )

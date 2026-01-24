@@ -3,7 +3,7 @@
 from decimal import Decimal
 
 import pytest
-from src.broker.query import BrokerPosition
+from src.broker.query import BrokerAccount, BrokerPosition
 from src.models.position import AssetType, Position
 from src.reconciliation.comparator import Comparator
 from src.reconciliation.models import (
@@ -151,3 +151,85 @@ def _make_local_position(symbol: str, quantity: int, avg_cost: Decimal) -> Posit
     pos.asset_type = AssetType.STOCK
     pos.account_id = "ACC001"
     return pos
+
+
+class TestAccountComparison:
+    def test_cash_within_tolerance_ok(self, comparator):
+        """Cash difference within tolerance produces no discrepancy."""
+        local_cash = Decimal("10000.00")
+        broker = BrokerAccount(
+            account_id="ACC001",
+            cash=Decimal("10000.50"),  # $0.50 diff, within $1 tolerance
+            buying_power=Decimal("20000.00"),
+            total_equity=Decimal("50000.00"),
+            margin_used=Decimal("0.00"),
+        )
+        discrepancies = comparator.compare_account(local_cash, Decimal("50000.00"), broker)
+        cash_discrepancies = [d for d in discrepancies if d.type == DiscrepancyType.CASH_MISMATCH]
+        assert cash_discrepancies == []
+
+    def test_cash_outside_tolerance_flagged(self, comparator):
+        """Cash difference outside tolerance is flagged."""
+        local_cash = Decimal("10000.00")
+        broker = BrokerAccount(
+            account_id="ACC001",
+            cash=Decimal("10005.00"),  # $5 diff, outside $1 tolerance
+            buying_power=Decimal("20000.00"),
+            total_equity=Decimal("50000.00"),
+            margin_used=Decimal("0.00"),
+        )
+        discrepancies = comparator.compare_account(local_cash, Decimal("50000.00"), broker)
+        cash_discrepancies = [d for d in discrepancies if d.type == DiscrepancyType.CASH_MISMATCH]
+        assert len(cash_discrepancies) == 1
+        assert cash_discrepancies[0].severity == DiscrepancySeverity.WARNING
+
+    def test_equity_within_tolerance_ok(self, comparator):
+        """Equity difference within percentage tolerance produces no discrepancy."""
+        local_equity = Decimal("100000.00")
+        broker = BrokerAccount(
+            account_id="ACC001",
+            cash=Decimal("10000.00"),
+            buying_power=Decimal("20000.00"),
+            total_equity=Decimal("100050.00"),  # 0.05% diff, within 0.1%
+            margin_used=Decimal("0.00"),
+        )
+        discrepancies = comparator.compare_account(Decimal("10000.00"), local_equity, broker)
+        equity_discrepancies = [
+            d for d in discrepancies if d.type == DiscrepancyType.EQUITY_MISMATCH
+        ]
+        assert equity_discrepancies == []
+
+    def test_equity_outside_tolerance_flagged(self, comparator):
+        """Equity difference outside percentage tolerance is flagged."""
+        local_equity = Decimal("100000.00")
+        broker = BrokerAccount(
+            account_id="ACC001",
+            cash=Decimal("10000.00"),
+            buying_power=Decimal("20000.00"),
+            total_equity=Decimal("100500.00"),  # 0.5% diff, outside 0.1%
+            margin_used=Decimal("0.00"),
+        )
+        discrepancies = comparator.compare_account(Decimal("10000.00"), local_equity, broker)
+        equity_discrepancies = [
+            d for d in discrepancies if d.type == DiscrepancyType.EQUITY_MISMATCH
+        ]
+        assert len(equity_discrepancies) == 1
+        assert equity_discrepancies[0].severity == DiscrepancySeverity.WARNING
+
+    def test_custom_tolerance(self):
+        """Uses custom tolerances from config."""
+        config = ReconciliationConfig(
+            account_id="ACC001",
+            cash_tolerance=Decimal("10.00"),  # $10 tolerance
+            equity_tolerance_pct=Decimal("1.0"),  # 1% tolerance
+        )
+        comp = Comparator(config)
+        broker = BrokerAccount(
+            account_id="ACC001",
+            cash=Decimal("10005.00"),  # Within $10
+            buying_power=Decimal("20000.00"),
+            total_equity=Decimal("100500.00"),  # Within 1%
+            margin_used=Decimal("0.00"),
+        )
+        discrepancies = comp.compare_account(Decimal("10000.00"), Decimal("100000.00"), broker)
+        assert discrepancies == []
