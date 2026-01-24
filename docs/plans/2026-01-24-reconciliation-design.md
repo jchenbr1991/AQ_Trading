@@ -108,6 +108,28 @@ class DiscrepancyType(Enum):
     EQUITY_MISMATCH = "equity_mismatch"
 ```
 
+### DiscrepancySeverity
+
+```python
+class DiscrepancySeverity(Enum):
+    INFO = "info"          # Informational, no action needed
+    WARNING = "warning"    # Attention needed, not critical
+    CRITICAL = "critical"  # Immediate attention required
+```
+
+**Default severity mapping:**
+
+| DiscrepancyType | Default Severity | Rationale |
+|-----------------|------------------|-----------|
+| `COST_MISMATCH` | INFO | Usually rounding/timing differences |
+| `CASH_MISMATCH` | WARNING | Could be fees/dividends/interest |
+| `EQUITY_MISMATCH` | WARNING | May need investigation |
+| `QUANTITY_MISMATCH` | CRITICAL | Possible missed fill |
+| `MISSING_LOCAL` | CRITICAL | Broker has position we don't track |
+| `MISSING_BROKER` | CRITICAL | We think we have position that doesn't exist |
+
+Phase 1 logs severity but doesn't auto-act. Phase 2 can use CRITICAL to trigger kill switch.
+
 ### Discrepancy
 
 ```python
@@ -115,6 +137,7 @@ class DiscrepancyType(Enum):
 class Discrepancy:
     """A single discrepancy between local and broker state."""
     type: DiscrepancyType
+    severity: DiscrepancySeverity
     symbol: str | None          # None for account-level discrepancies
     local_value: Any
     broker_value: Any
@@ -142,13 +165,38 @@ class ReconciliationConfig:
 @dataclass
 class ReconciliationResult:
     """Result of a reconciliation run."""
+    run_id: UUID                      # Unique ID for correlation
     account_id: str
     timestamp: datetime
     is_clean: bool                    # No discrepancies found
     discrepancies: list[Discrepancy]
     positions_checked: int
     duration_ms: float
+    context: dict[str, Any]           # Trigger context (see below)
 ```
+
+**Context field** captures why this reconciliation was triggered:
+
+```python
+# Periodic trigger
+context = {"trigger": "periodic"}
+
+# Startup trigger
+context = {"trigger": "startup"}
+
+# On-demand trigger
+context = {"trigger": "on_demand", "requested_by": "api"}
+
+# Post-fill trigger
+context = {
+    "trigger": "post_fill",
+    "order_id": "ORD-123",
+    "fill_id": "FILL-456",
+    "symbol": "AAPL",
+}
+```
+
+This enables tracing discrepancies back to their root cause during incident investigation.
 
 ## Comparison Logic
 
@@ -241,8 +289,16 @@ class ReconciliationService:
 
     async def on_fill(self, fill: OrderFill) -> None:
         """
-        Called after a fill - triggers reconciliation.
+        Called after a fill - triggers reconciliation with fill context.
         Debounced to avoid excessive checks on rapid fills.
+
+        Automatically sets context:
+        {
+            "trigger": "post_fill",
+            "order_id": fill.order_id,
+            "fill_id": fill.fill_id,
+            "symbol": fill.symbol,
+        }
         """
 ```
 
@@ -263,12 +319,14 @@ async def _publish_result(self, result: ReconciliationResult) -> None:
     await self._redis.publish(
         "reconciliation:result",
         json.dumps({
+            "run_id": str(result.run_id),
             "account_id": result.account_id,
             "timestamp": result.timestamp.isoformat(),
             "is_clean": result.is_clean,
             "discrepancy_count": len(result.discrepancies),
             "positions_checked": result.positions_checked,
             "duration_ms": result.duration_ms,
+            "context": result.context,
         })
     )
 
@@ -277,7 +335,9 @@ async def _publish_result(self, result: ReconciliationResult) -> None:
         await self._redis.publish(
             "reconciliation:discrepancy",
             json.dumps({
+                "run_id": str(result.run_id),  # Correlate with result
                 "type": d.type.value,
+                "severity": d.severity.value,
                 "symbol": d.symbol,
                 "local_value": str(d.local_value),
                 "broker_value": str(d.broker_value),
