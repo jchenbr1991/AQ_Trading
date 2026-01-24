@@ -1,5 +1,6 @@
 """Tests for ReconciliationService."""
 
+import asyncio
 import json
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
@@ -176,3 +177,74 @@ class TestRedisPublishing:
         )
 
         assert result_payload["run_id"] == discrepancy_payload["run_id"]
+
+
+class TestPeriodicReconciliation:
+    @pytest.mark.asyncio
+    async def test_start_begins_periodic_loop(self, service, mock_redis, config):
+        """start() begins periodic reconciliation."""
+        config.interval_seconds = 0.1  # Fast for testing
+
+        await service.start()
+        await asyncio.sleep(0.25)  # Wait for at least 2 runs
+        await service.stop()
+
+        # Should have published at least 2 results (startup + periodic)
+        result_calls = [
+            c for c in mock_redis.publish.call_args_list if c[0][0] == "reconciliation:result"
+        ]
+        assert len(result_calls) >= 2
+
+    @pytest.mark.asyncio
+    async def test_stop_halts_periodic_loop(self, service, mock_redis, config):
+        """stop() halts the periodic loop."""
+        config.interval_seconds = 0.05
+
+        await service.start()
+        await asyncio.sleep(0.1)
+        await service.stop()
+
+        call_count = len(
+            [c for c in mock_redis.publish.call_args_list if c[0][0] == "reconciliation:result"]
+        )
+        await asyncio.sleep(0.15)  # Wait more
+
+        # No new calls after stop
+        new_call_count = len(
+            [c for c in mock_redis.publish.call_args_list if c[0][0] == "reconciliation:result"]
+        )
+        assert new_call_count == call_count
+
+    @pytest.mark.asyncio
+    async def test_startup_reconciliation(self, service, mock_redis):
+        """Reconciliation runs immediately on startup."""
+        await service.start()
+        await asyncio.sleep(0.01)  # Brief wait
+        await service.stop()
+
+        # Check first result has startup context
+        result_calls = [
+            c for c in mock_redis.publish.call_args_list if c[0][0] == "reconciliation:result"
+        ]
+        assert len(result_calls) >= 1
+
+        first_payload = json.loads(result_calls[0][0][1])
+        assert first_payload["context"]["trigger"] == "startup"
+
+    @pytest.mark.asyncio
+    async def test_periodic_context(self, service, mock_redis, config):
+        """Periodic runs have correct context."""
+        config.interval_seconds = 0.05
+
+        await service.start()
+        await asyncio.sleep(0.12)  # Wait for startup + 1 periodic
+        await service.stop()
+
+        result_calls = [
+            c for c in mock_redis.publish.call_args_list if c[0][0] == "reconciliation:result"
+        ]
+        # Find a periodic one (not startup)
+        periodic_calls = [
+            c for c in result_calls if json.loads(c[0][1])["context"]["trigger"] == "periodic"
+        ]
+        assert len(periodic_calls) >= 1

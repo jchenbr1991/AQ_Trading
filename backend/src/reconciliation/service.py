@@ -1,5 +1,6 @@
 """Reconciliation service for comparing local vs broker state."""
 
+import asyncio
 import json
 import logging
 import time
@@ -54,6 +55,8 @@ class ReconciliationService:
         self._redis = redis
         self._config = config
         self._comparator = Comparator(config)
+        self._running = False
+        self._periodic_task: asyncio.Task | None = None
 
     async def reconcile(self, context: dict[str, Any] | None = None) -> ReconciliationResult:
         """
@@ -159,3 +162,35 @@ class ReconciliationService:
                 )
         except Exception as e:
             logger.error(f"Failed to publish reconciliation result to Redis: {e}")
+
+    async def start(self) -> None:
+        """Start periodic reconciliation loop."""
+        if self._running:
+            return
+
+        self._running = True
+
+        # Run startup reconciliation immediately
+        await self.reconcile(context={"trigger": "startup"})
+
+        # Start periodic loop
+        self._periodic_task = asyncio.create_task(self._periodic_loop())
+
+    async def stop(self) -> None:
+        """Stop periodic loop."""
+        self._running = False
+        if self._periodic_task:
+            self._periodic_task.cancel()
+            try:
+                await self._periodic_task
+            except asyncio.CancelledError:
+                pass
+            self._periodic_task = None
+
+    async def _periodic_loop(self) -> None:
+        """Run reconciliation at configured interval."""
+        while self._running:
+            await asyncio.sleep(self._config.interval_seconds)
+            if not self._running:
+                break
+            await self.reconcile(context={"trigger": "periodic"})
