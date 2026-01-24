@@ -193,4 +193,7 @@ class ReconciliationService:
             await asyncio.sleep(self._config.interval_seconds)
             if not self._running:
                 break
-            await self.reconcile(context={"trigger": "periodic"})
+            try:
+                await self.reconcile(context={"trigger": "periodic"})
+            except Exception as e:
+                logger.exception("Periodic reconciliation failed, will retry next interval: %s", e)
