@@ -1,5 +1,6 @@
 """Reconciliation service for comparing local vs broker state."""
 
+import json
 import logging
 import time
 from datetime import datetime
@@ -112,4 +113,42 @@ class ReconciliationService:
                     f"symbol={d.symbol} local={d.local_value} broker={d.broker_value}"
                 )
 
+        await self._publish_result(result)
+
         return result
+
+    async def _publish_result(self, result: ReconciliationResult) -> None:
+        """Publish reconciliation result to Redis."""
+        await self._redis.publish(
+            "reconciliation:result",
+            json.dumps(
+                {
+                    "run_id": str(result.run_id),
+                    "account_id": result.account_id,
+                    "timestamp": result.timestamp.isoformat(),
+                    "is_clean": result.is_clean,
+                    "discrepancy_count": len(result.discrepancies),
+                    "positions_checked": result.positions_checked,
+                    "duration_ms": result.duration_ms,
+                    "context": result.context,
+                }
+            ),
+        )
+
+        # Publish each discrepancy separately for targeted alerting
+        for d in result.discrepancies:
+            await self._redis.publish(
+                "reconciliation:discrepancy",
+                json.dumps(
+                    {
+                        "run_id": str(result.run_id),  # Correlate with result
+                        "type": d.type.value,
+                        "severity": d.severity.value,
+                        "symbol": d.symbol,
+                        "local_value": str(d.local_value) if d.local_value is not None else None,
+                        "broker_value": str(d.broker_value) if d.broker_value is not None else None,
+                        "timestamp": d.timestamp.isoformat(),
+                        "account_id": d.account_id,
+                    }
+                ),
+            )
