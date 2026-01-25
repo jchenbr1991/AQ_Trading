@@ -261,3 +261,239 @@ class TestBacktestSchemas:
             result=None,
         )
         assert response.benchmark is None
+
+    def test_signal_trace_response_schema(self):
+        """SignalTraceResponse schema is valid with all fields."""
+        from src.api.backtest import (
+            BarSnapshotResponse,
+            PortfolioSnapshotResponse,
+            SignalTraceResponse,
+            StrategySnapshotResponse,
+        )
+
+        signal_bar = BarSnapshotResponse(
+            symbol="AAPL",
+            timestamp="2025-01-15T16:00:00+00:00",
+            open="150.00",
+            high="152.00",
+            low="149.00",
+            close="151.50",
+            volume=1000000,
+        )
+
+        fill_bar = BarSnapshotResponse(
+            symbol="AAPL",
+            timestamp="2025-01-16T16:00:00+00:00",
+            open="151.75",
+            high="153.00",
+            low="150.50",
+            close="152.00",
+            volume=1200000,
+        )
+
+        portfolio_state = PortfolioSnapshotResponse(
+            cash="100000.00",
+            position_qty=0,
+            position_avg_cost=None,
+            equity="100000.00",
+        )
+
+        strategy_snapshot = StrategySnapshotResponse(
+            strategy_class="src.strategies.examples.momentum.MomentumStrategy",
+            params={"lookback_period": 5, "threshold": 0.02},
+            state={"momentum": 0.015, "signal_count": 3},
+        )
+
+        trace = SignalTraceResponse(
+            trace_id="trace-123",
+            signal_timestamp="2025-01-15T16:00:00+00:00",
+            symbol="AAPL",
+            signal_direction="buy",
+            signal_quantity=100,
+            signal_reason="Momentum signal triggered",
+            signal_bar=signal_bar,
+            portfolio_state=portfolio_state,
+            strategy_snapshot=strategy_snapshot,
+            fill_bar=fill_bar,
+            fill_timestamp="2025-01-16T09:30:00+00:00",
+            fill_quantity=100,
+            fill_price="151.83",
+            expected_price="151.75",
+            expected_price_type="next_bar_open",
+            slippage="0.08",
+            slippage_bps="5.27",
+            commission="0.50",
+        )
+
+        # Verify all fields are set correctly
+        assert trace.trace_id == "trace-123"
+        assert trace.signal_timestamp == "2025-01-15T16:00:00+00:00"
+        assert trace.symbol == "AAPL"
+        assert trace.signal_direction == "buy"
+        assert trace.signal_quantity == 100
+        assert trace.signal_reason == "Momentum signal triggered"
+        assert trace.signal_bar.symbol == "AAPL"
+        assert trace.signal_bar.close == "151.50"
+        assert trace.portfolio_state.cash == "100000.00"
+        assert trace.portfolio_state.position_qty == 0
+        assert trace.strategy_snapshot is not None
+        assert (
+            trace.strategy_snapshot.strategy_class
+            == "src.strategies.examples.momentum.MomentumStrategy"
+        )
+        assert trace.strategy_snapshot.params["lookback_period"] == 5
+        assert trace.fill_bar is not None
+        assert trace.fill_bar.open == "151.75"
+        assert trace.fill_timestamp == "2025-01-16T09:30:00+00:00"
+        assert trace.fill_quantity == 100
+        assert trace.fill_price == "151.83"
+        assert trace.expected_price == "151.75"
+        assert trace.expected_price_type == "next_bar_open"
+        assert trace.slippage == "0.08"
+        assert trace.slippage_bps == "5.27"
+        assert trace.commission == "0.50"
+
+    def test_signal_trace_response_with_optional_none_values(self):
+        """SignalTraceResponse handles None optional fields correctly."""
+        from src.api.backtest import (
+            BarSnapshotResponse,
+            PortfolioSnapshotResponse,
+            SignalTraceResponse,
+        )
+
+        signal_bar = BarSnapshotResponse(
+            symbol="AAPL",
+            timestamp="2025-01-15T16:00:00+00:00",
+            open="150.00",
+            high="152.00",
+            low="149.00",
+            close="151.50",
+            volume=1000000,
+        )
+
+        portfolio_state = PortfolioSnapshotResponse(
+            cash="100000.00",
+            position_qty=0,
+            position_avg_cost=None,
+            equity="100000.00",
+        )
+
+        # Create trace with unfilled order (all fill fields None)
+        trace = SignalTraceResponse(
+            trace_id="trace-456",
+            signal_timestamp="2025-01-15T16:00:00+00:00",
+            symbol="AAPL",
+            signal_direction="buy",
+            signal_quantity=100,
+            signal_reason=None,
+            signal_bar=signal_bar,
+            portfolio_state=portfolio_state,
+            strategy_snapshot=None,
+            fill_bar=None,
+            fill_timestamp=None,
+            fill_quantity=None,
+            fill_price=None,
+            expected_price=None,
+            expected_price_type=None,
+            slippage=None,
+            slippage_bps=None,
+            commission=None,
+        )
+
+        assert trace.signal_reason is None
+        assert trace.strategy_snapshot is None
+        assert trace.fill_bar is None
+        assert trace.fill_timestamp is None
+        assert trace.fill_quantity is None
+        assert trace.fill_price is None
+        assert trace.expected_price is None
+        assert trace.expected_price_type is None
+        assert trace.slippage is None
+        assert trace.slippage_bps is None
+        assert trace.commission is None
+
+    def test_backtest_response_includes_traces(self):
+        """BacktestResponse includes traces field."""
+        from src.api.backtest import (
+            BacktestResponse,
+            BacktestResultSchema,
+            BarSnapshotResponse,
+            PortfolioSnapshotResponse,
+            SignalTraceResponse,
+        )
+
+        signal_bar = BarSnapshotResponse(
+            symbol="AAPL",
+            timestamp="2025-01-15T16:00:00+00:00",
+            open="150.00",
+            high="152.00",
+            low="149.00",
+            close="151.50",
+            volume=1000000,
+        )
+
+        portfolio_state = PortfolioSnapshotResponse(
+            cash="100000.00",
+            position_qty=0,
+            position_avg_cost=None,
+            equity="100000.00",
+        )
+
+        trace = SignalTraceResponse(
+            trace_id="trace-789",
+            signal_timestamp="2025-01-15T16:00:00+00:00",
+            symbol="AAPL",
+            signal_direction="buy",
+            signal_quantity=100,
+            signal_reason=None,
+            signal_bar=signal_bar,
+            portfolio_state=portfolio_state,
+            strategy_snapshot=None,
+            fill_bar=None,
+            fill_timestamp=None,
+            fill_quantity=None,
+            fill_price=None,
+            expected_price=None,
+            expected_price_type=None,
+            slippage=None,
+            slippage_bps=None,
+            commission=None,
+        )
+
+        result = BacktestResultSchema(
+            final_equity="100000",
+            final_cash="50000",
+            final_position_qty=100,
+            total_return="0.10",
+            annualized_return="0.12",
+            sharpe_ratio="1.5",
+            max_drawdown="0.05",
+            win_rate="0.6",
+            total_trades=10,
+            avg_trade_pnl="100",
+            warm_up_required_bars=5,
+            warm_up_bars_used=5,
+        )
+
+        response = BacktestResponse(
+            backtest_id="test-id",
+            status="completed",
+            result=result,
+            traces=[trace],
+        )
+
+        assert len(response.traces) == 1
+        assert response.traces[0].trace_id == "trace-789"
+        assert response.traces[0].symbol == "AAPL"
+
+    def test_backtest_response_traces_defaults_to_empty_list(self):
+        """BacktestResponse traces defaults to empty list."""
+        from src.api.backtest import BacktestResponse
+
+        response = BacktestResponse(
+            backtest_id="test-id",
+            status="completed",
+            result=None,
+        )
+
+        assert response.traces == []
