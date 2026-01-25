@@ -48,24 +48,35 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
-### Slice 2.2: Backtest Engine + Strategy Warm-up [CURRENT]
+### Slice 2.2: Backtest Engine + Strategy Warm-up [COMPLETED]
 
 **Goal:** Run strategies against historical data with warm-up for indicator initialization.
 
 | Task | Status | Description |
 |------|--------|-------------|
-| Strategy Warm-up | Pending | `warmup_bars` property, historical backfill |
-| SimulatedBroker | Pending | Order execution with slippage models |
-| BacktestEngine | Pending | Event-based replay loop |
-| BacktestResult Model | Pending | Performance metrics dataclass |
-| Backtest API | Pending | Trigger and retrieve results |
-| Frontend Backtest Page | Pending | Run backtests, view results |
+| Bar Model | Done | Frozen dataclass with timezone-aware timestamp |
+| Trade Model | Done | Trade tracking with slippage/commission breakdown |
+| BacktestConfig | Done | Configuration with fill/slippage/commission models |
+| BacktestResult | Done | Performance metrics, equity curve, warm-up tracking |
+| BacktestPortfolio | Done | Long-only, no-leverage position tracking |
+| SimulatedFillEngine | Done | Next-bar-open fill with fixed BPS slippage |
+| MetricsCalculator | Done | Sharpe, max drawdown, win rate with edge cases |
+| CSVBarLoader | Done | Protocol-based bar loading from CSV |
+| Strategy Warm-up | Done | `warmup_bars` property on BaseStrategy |
+| BacktestEngine | Done | Event loop with no-lookahead-bias guarantee |
+| Backtest API | Done | POST `/api/backtest` endpoint |
+| Frontend Types | Done | TypeScript types for backtest |
+| useBacktest Hook | Done | TanStack Query mutation hook |
+| BacktestForm | Done | Configuration form with validation |
+| BacktestResults | Done | Metrics display with equity chart (Recharts) |
+| BacktestPage | Done | `/backtest` route with form + results |
+| Backend Exports | Done | Clean module exports |
 
-**Plan:** Not yet created
+**Plan:** `docs/plans/2026-01-25-backtest-engine.md` | **PR:** #8
 
 ---
 
-### Slice 2.3: Benchmark Comparison
+### Slice 2.3: Benchmark Comparison [CURRENT]
 
 **Goal:** Compare strategy performance against SPY/HSI benchmarks.
 
