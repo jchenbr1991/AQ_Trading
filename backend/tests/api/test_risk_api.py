@@ -179,6 +179,96 @@ class TestEnableResume:
         assert data["state"] == "PAUSED"
 
 
+class TestKillSwitch:
+    """Tests for POST /api/risk/kill-switch endpoint."""
+
+    async def test_kill_switch_halts_trading(self, client):
+        """POST /api/risk/kill-switch halts trading immediately."""
+        response = await client.post("/api/risk/kill-switch")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["state"] == "HALTED"
+
+    async def test_kill_switch_returns_actions_executed(self, client):
+        """POST /api/risk/kill-switch returns actions_executed details."""
+        response = await client.post("/api/risk/kill-switch")
+
+        assert response.status_code == 200
+        data = response.json()
+        actions = data["actions_executed"]
+        assert actions["halted"] is True
+        assert actions["orders_cancelled"] == 0  # Phase 1: mocked
+        assert actions["positions_flattened"] == 0  # Phase 1: mocked
+        assert actions["flatten_orders"] == []  # Phase 1: mocked
+
+    async def test_kill_switch_returns_triggered_by(self, client):
+        """POST /api/risk/kill-switch returns triggered_by field."""
+        response = await client.post("/api/risk/kill-switch")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["triggered_by"] == "api"
+
+    async def test_kill_switch_returns_timestamp(self, client):
+        """POST /api/risk/kill-switch returns timezone-aware timestamp."""
+        response = await client.post("/api/risk/kill-switch")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "timestamp" in data
+        # Check it's a valid ISO timestamp with timezone info (ends with Z or +00:00)
+        timestamp = data["timestamp"]
+        assert "T" in timestamp
+        assert timestamp.endswith("Z") or "+" in timestamp or timestamp.endswith("+00:00")
+
+    async def test_kill_switch_returns_empty_errors(self, client):
+        """POST /api/risk/kill-switch returns empty errors list on success."""
+        response = await client.post("/api/risk/kill-switch")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["errors"] == []
+
+    async def test_kill_switch_updates_state_to_halted(self, client):
+        """POST /api/risk/kill-switch changes state to HALTED with can_resume=False."""
+        await client.post("/api/risk/kill-switch")
+
+        response = await client.get("/api/risk/state")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["state"] == "HALTED"
+        assert data["can_resume"] is False
+        assert data["changed_by"] == "api"
+        assert data["reason"] == "Kill switch activated"
+
+    async def test_kill_switch_from_paused_state(self, client):
+        """POST /api/risk/kill-switch works from PAUSED state."""
+        # Pause first
+        await client.post("/api/risk/pause")
+
+        response = await client.post("/api/risk/kill-switch")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["state"] == "HALTED"
+
+    async def test_kill_switch_from_halted_state(self, client):
+        """POST /api/risk/kill-switch works even if already HALTED."""
+        # Halt first
+        await client.post("/api/risk/halt", json={"reason": "Previous halt"})
+
+        response = await client.post("/api/risk/kill-switch")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["state"] == "HALTED"
+
+
 class TestStateIsolation:
     """Tests for state isolation between tests."""
 

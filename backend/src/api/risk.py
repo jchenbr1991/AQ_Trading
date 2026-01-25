@@ -1,7 +1,7 @@
 # backend/src/api/risk.py
 """Risk API endpoints for trading state management."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -61,6 +61,26 @@ class ActionResponse(BaseModel):
 
     success: bool
     state: str
+
+
+class KillSwitchActionsExecuted(BaseModel):
+    """Details of actions executed by kill switch."""
+
+    halted: bool
+    orders_cancelled: int
+    positions_flattened: int
+    flatten_orders: list[str]
+
+
+class KillSwitchResult(BaseModel):
+    """Response for kill-switch compound endpoint."""
+
+    success: bool
+    state: str
+    actions_executed: KillSwitchActionsExecuted
+    errors: list[str]
+    timestamp: datetime
+    triggered_by: str
 
 
 # Router
@@ -171,4 +191,44 @@ async def enable_resume() -> ActionResponse:
     return ActionResponse(
         success=True,
         state=manager.get_state().state.value,
+    )
+
+
+@router.post("/kill-switch", response_model=KillSwitchResult)
+async def kill_switch() -> KillSwitchResult:
+    """Emergency kill switch - compound action.
+
+    Performs the following actions:
+    1. HALTs trading (sets state to HALTED, can_resume=False)
+    2. Cancels all orders (TODO: wire to OrderManager - Phase 1: mocked)
+    3. Flattens all positions (TODO: wire to OrderManager - Phase 1: mocked)
+
+    Returns:
+        Kill switch result with actions executed and any errors
+    """
+    manager = get_state_manager()
+    errors: list[str] = []
+
+    # Step 1: HALT trading
+    manager.halt(changed_by="api", reason="Kill switch activated")
+
+    # Step 2: Cancel all orders (Phase 1: mocked - TODO: wire to OrderManager)
+    orders_cancelled = 0
+
+    # Step 3: Flatten all positions (Phase 1: mocked - TODO: wire to OrderManager)
+    positions_flattened = 0
+    flatten_orders: list[str] = []
+
+    return KillSwitchResult(
+        success=True,
+        state=manager.get_state().state.value,
+        actions_executed=KillSwitchActionsExecuted(
+            halted=True,
+            orders_cancelled=orders_cancelled,
+            positions_flattened=positions_flattened,
+            flatten_orders=flatten_orders,
+        ),
+        errors=errors,
+        timestamp=datetime.now(timezone.utc),
+        triggered_by="api",
     )
