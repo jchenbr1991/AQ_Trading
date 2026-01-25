@@ -1,5 +1,6 @@
 """Backtest engine for historical strategy testing."""
 
+from src.backtest.bar_loader import BarLoader, CSVBarLoader
 from src.backtest.fill_engine import SimulatedFillEngine
 from src.backtest.metrics import MetricsCalculator
 from src.backtest.models import BacktestConfig, BacktestResult, Bar, Trade
@@ -10,6 +11,8 @@ __all__ = [
     "BacktestPortfolio",
     "BacktestResult",
     "Bar",
+    "BarLoader",
+    "CSVBarLoader",
     "MetricsCalculator",
     "SimulatedFillEngine",
     "Trade",
