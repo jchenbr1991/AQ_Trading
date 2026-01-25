@@ -76,25 +76,31 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
-### Slice 2.3: Benchmark Comparison [CURRENT]
+### Slice 2.3: Benchmark Comparison [COMPLETED]
 
 **Goal:** Compare strategy performance against SPY/HSI benchmarks.
 
 | Task | Status | Description |
 |------|--------|-------------|
-| Benchmark Data | Pending | Fetch SPY/HSI historical data |
-| Alpha/Beta | Pending | Excess return, correlation |
-| Sharpe/Sortino | Pending | Risk-adjusted returns |
-| Information Ratio | Pending | Alpha / tracking error |
-| Up/Down Capture | Pending | Performance in market regimes |
-| Chart Overlay | Pending | Strategy vs benchmark curves |
-| Metrics Table | Pending | Side-by-side comparison |
+| Math Utilities | Done | calculate_returns, OLS regression, covariance |
+| BenchmarkComparison | Done | Frozen dataclass for all metrics |
+| BenchmarkBuilder | Done | buy_and_hold equity curve from bars |
+| BenchmarkMetrics | Done | OLS alpha/beta, IR, sortino, capture ratios |
+| BacktestConfig | Done | Optional benchmark_symbol field |
+| BacktestResult | Done | Nested benchmark comparison |
+| Engine Integration | Done | Load benchmark, compute metrics |
+| API Schema | Done | Request/response with benchmark |
+| Frontend Types | Done | TypeScript interfaces |
+| BacktestForm | Done | Benchmark symbol input (default SPY) |
+| BacktestResults | Done | Benchmark metrics display section |
+| EquityChart | Done | Benchmark overlay support |
+| Module Exports | Done | Clean exports |
 
-**Plan:** Not yet created
+**Plan:** `docs/plans/2026-01-25-benchmark-comparison.md` | **PR:** #11
 
 ---
 
-### Slice 2.4: Trace Viewer + Slippage Analysis
+### Slice 2.4: Trace Viewer + Slippage Analysis [CURRENT]
 
 **Goal:** Signal-to-fill audit trail with execution quality analysis.
 
