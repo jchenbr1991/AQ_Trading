@@ -22,7 +22,7 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
-## Phase 2: Enhanced Analytics & Testing [IN PROGRESS]
+## Phase 2: Enhanced Analytics & Testing [COMPLETED]
 
 **Development Approach:** Vertical slices - end-to-end features delivering working functionality incrementally.
 
@@ -121,22 +121,26 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
-### Slice 2.5: Retention Policies
+### Slice 2.5: Retention Policies [COMPLETED]
 
 **Goal:** Manage data lifecycle to prevent storage bloat.
 
 | Task | Status | Description |
 |------|--------|-------------|
-| Compression Policy | Pending | TimescaleDB compression for old data |
-| Tiered Retention | Pending | Permanent (fills), 7d (rejected), 24h (full snapshots) |
-| Archival Jobs | Pending | Scheduled full → summary compression |
-| Storage Monitoring | Pending | Alert on growth thresholds |
+| TimescaleDB Setup | Done | Extension + hypertable migration |
+| Data Migration Scripts | Done | Maintenance window SQL/Python scripts |
+| Validation Checklist | Done | Post-migration verification script |
+| Cleanup Migration | Done | Drop old table after validation |
+| StorageMonitor Service | Done | Table stats, compression info |
+| Storage API | Done | `/api/storage` endpoints |
+| Storage Dashboard | Done | Frontend `/storage` page |
+| Module Exports | Done | Clean exports |
 
-**Plan:** Not yet created
+**Plan:** `docs/plans/2026-01-25-retention-policies.md` | **PR:** #14
 
 ---
 
-**Phase 2 Exit Criteria:** Can backtest strategies with benchmark comparison, analyze trade execution quality, trust system health.
+**Phase 2 Exit Criteria Met:** Can backtest strategies with benchmark comparison, analyze trade execution quality, trust system health, monitor storage.
 
 ---
 
