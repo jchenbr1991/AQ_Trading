@@ -100,21 +100,24 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
-### Slice 2.4: Trace Viewer + Slippage Analysis [CURRENT]
+### Slice 2.4: Trace Viewer + Slippage Analysis [COMPLETED]
 
 **Goal:** Signal-to-fill audit trail with execution quality analysis.
 
 | Task | Status | Description |
 |------|--------|-------------|
-| SignalTrace Model | Pending | Full context capture at signal time |
-| ContextSnapshot | Pending | Market, indicators, portfolio state |
-| TraceRepository | Pending | Storage and query interface |
-| Slippage Calculation | Pending | Expected vs actual fill price |
-| Trace API | Pending | Query traces by order, strategy, time |
-| Trace Timeline UI | Pending | Visual signal → fill journey |
-| Slippage Dashboard | Pending | Execution quality metrics |
+| Trace Data Models | Done | BarSnapshot, PortfolioSnapshot, StrategySnapshot, SignalTrace |
+| TraceBuilder | Done | Factory for creating/completing traces |
+| BacktestResult.traces | Done | Traces field added to result |
+| Engine Integration | Done | Capture traces during backtest |
+| API Schemas | Done | Trace response schemas |
+| Frontend Types | Done | TypeScript interfaces |
+| TraceTable | Done | Display traces in table |
+| SlippageStats | Done | Aggregate slippage statistics |
+| BacktestResults Integration | Done | Trace display in results |
+| Module Exports | Done | Clean exports |
 
-**Plan:** Not yet created
+**Plan:** `docs/plans/2026-01-25-trace-viewer.md` | **PR:** #13
 
 ---
 

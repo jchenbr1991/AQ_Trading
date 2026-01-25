@@ -35,6 +35,9 @@ packages = ["src"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+markers = [
+    "timescaledb: marks tests as requiring TimescaleDB (deselect with '-m \"not timescaledb\"')",
+]
 
 [tool.ruff]
 target-version = "py311"
