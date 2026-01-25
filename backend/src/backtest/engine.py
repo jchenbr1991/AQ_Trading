@@ -12,6 +12,8 @@ from src.backtest.fill_engine import SimulatedFillEngine
 from src.backtest.metrics import MetricsCalculator
 from src.backtest.models import BacktestConfig, BacktestResult, Bar
 from src.backtest.portfolio import BacktestPortfolio
+from src.backtest.trace import SignalTrace
+from src.backtest.trace_builder import TraceBuilder
 from src.strategies.base import MarketData, Strategy
 from src.strategies.signals import Signal
 
@@ -88,6 +90,10 @@ class BacktestEngine:
         trades: list = []
         first_signal_bar: datetime | None = None
 
+        # Trace tracking for signal-to-fill audit trail
+        pending_traces: dict[datetime, SignalTrace] = {}  # keyed by signal_timestamp
+        completed_traces: list[SignalTrace] = []
+
         # Prepare bars to process: warmup bars (last N) + backtest bars
         bars_to_process = (
             warmup_bars[-warmup_required:] + backtest_bars if warmup_required > 0 else backtest_bars
@@ -101,6 +107,7 @@ class BacktestEngine:
 
             # Execute pending signal at this bar's open
             if pending_signal is not None and is_backtest_phase:
+                trade_executed = False
                 if pending_signal.action == "buy":
                     if portfolio.can_buy(
                         bar.open,
@@ -110,11 +117,27 @@ class BacktestEngine:
                         trade = fill_engine.execute(pending_signal, bar)
                         portfolio.apply_trade(trade)
                         trades.append(trade)
+                        trade_executed = True
                 elif pending_signal.action == "sell":
                     if portfolio.can_sell(pending_signal.quantity):
                         trade = fill_engine.execute(pending_signal, bar)
                         portfolio.apply_trade(trade)
                         trades.append(trade)
+                        trade_executed = True
+
+                # Complete pending trace if trade was executed
+                if trade_executed and pending_signal.timestamp in pending_traces:
+                    pending_trace = pending_traces[pending_signal.timestamp]
+                    completed_trace = TraceBuilder.complete(
+                        pending_trace=pending_trace,
+                        fill_bar=bar,
+                        fill_price=trade.fill_price,
+                        fill_quantity=trade.quantity,
+                        commission=trade.commission,
+                    )
+                    completed_traces.append(completed_trace)
+                    del pending_traces[pending_signal.timestamp]
+
                 pending_signal = None
 
             # Strategy processes bar
@@ -127,6 +150,22 @@ class BacktestEngine:
                 pending_signal = signals[0]
                 if first_signal_bar is None:
                     first_signal_bar = bar.timestamp
+
+                # Create pending trace for the signal
+                pending_trace = TraceBuilder.create_pending(
+                    signal_bar=bar,
+                    signal_direction=pending_signal.action,
+                    signal_quantity=pending_signal.quantity,
+                    signal_reason=pending_signal.reason if pending_signal.reason else None,
+                    cash=portfolio.cash,
+                    position_qty=portfolio.position_qty,
+                    position_avg_cost=portfolio.position_avg_cost
+                    if portfolio.position_qty > 0
+                    else None,
+                    equity=portfolio.equity(bar.close),
+                    strategy_snapshot=None,  # MVP: skip strategy snapshot
+                )
+                pending_traces[pending_signal.timestamp] = pending_trace
 
             # Record equity (backtest phase only)
             if is_backtest_phase:
@@ -179,6 +218,7 @@ class BacktestEngine:
             started_at=started_at,
             completed_at=completed_at,
             benchmark=benchmark,
+            traces=completed_traces,
         )
 
     def _create_strategy(self, config: BacktestConfig) -> Strategy:

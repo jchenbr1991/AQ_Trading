@@ -275,3 +275,142 @@ class TestBacktestEngine:
         result = await engine.run(config)
 
         assert result.benchmark is None
+
+    @pytest.mark.asyncio
+    async def test_engine_captures_traces(self, tmp_path) -> None:
+        """Engine captures signal traces during backtest."""
+        # Create CSV with bars that will trigger signals
+        csv_content = """timestamp,symbol,open,high,low,close,volume
+2024-01-01T21:00:00+00:00,AAPL,99.00,100.00,98.00,99.00,1000000
+2024-01-02T21:00:00+00:00,AAPL,100.00,102.00,99.00,100.00,1000000
+2024-01-03T21:00:00+00:00,AAPL,100.00,110.00,100.00,110.00,1000000
+2024-01-04T21:00:00+00:00,AAPL,110.00,115.00,108.00,112.00,1000000
+2024-01-05T21:00:00+00:00,AAPL,112.00,120.00,110.00,118.00,1000000
+"""
+        csv_file = tmp_path / "bars.csv"
+        csv_file.write_text(csv_content)
+
+        config = BacktestConfig(
+            strategy_class="src.strategies.examples.momentum.MomentumStrategy",
+            strategy_params={
+                "name": "momentum",
+                "symbols": ["AAPL"],
+                "lookback_period": 1,
+                "threshold": 0.5,
+                "position_size": 10,
+            },
+            symbol="AAPL",
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 6),
+            initial_capital=Decimal("10000"),
+        )
+
+        loader = CSVBarLoader(csv_file)
+        engine = BacktestEngine(loader)
+        result = await engine.run(config)
+
+        # Should have traces list in result
+        assert hasattr(result, "traces")
+
+        # If there are trades, there should be corresponding traces
+        if result.total_trades > 0:
+            assert len(result.traces) > 0
+            trace = result.traces[0]
+            # Verify trace structure
+            assert trace.trace_id is not None
+            assert trace.signal_bar is not None
+            assert trace.portfolio_state is not None
+            assert trace.signal_direction in ("buy", "sell")
+            assert trace.signal_quantity > 0
+
+    @pytest.mark.asyncio
+    async def test_engine_trace_has_slippage(self, tmp_path) -> None:
+        """Traces include slippage calculation."""
+        # Create CSV with bars that will trigger signals - strong momentum to ensure buy
+        csv_content = """timestamp,symbol,open,high,low,close,volume
+2024-01-01T21:00:00+00:00,AAPL,90.00,95.00,88.00,90.00,1000000
+2024-01-02T21:00:00+00:00,AAPL,100.00,105.00,99.00,100.00,1000000
+2024-01-03T21:00:00+00:00,AAPL,100.00,115.00,100.00,112.00,1000000
+2024-01-04T21:00:00+00:00,AAPL,113.00,120.00,112.00,118.00,1000000
+2024-01-05T21:00:00+00:00,AAPL,120.00,125.00,119.00,124.00,1000000
+"""
+        csv_file = tmp_path / "bars.csv"
+        csv_file.write_text(csv_content)
+
+        config = BacktestConfig(
+            strategy_class="src.strategies.examples.momentum.MomentumStrategy",
+            strategy_params={
+                "name": "momentum",
+                "symbols": ["AAPL"],
+                "lookback_period": 1,
+                "threshold": 0.5,
+                "position_size": 10,
+            },
+            symbol="AAPL",
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 6),
+            initial_capital=Decimal("10000"),
+            slippage_bps=10,  # 0.10% slippage for testing
+        )
+
+        loader = CSVBarLoader(csv_file)
+        engine = BacktestEngine(loader)
+        result = await engine.run(config)
+
+        # Verify traces have slippage information
+        if result.total_trades > 0 and len(result.traces) > 0:
+            trace = result.traces[0]
+            # Fill data should be populated
+            assert trace.fill_bar is not None
+            assert trace.fill_timestamp is not None
+            assert trace.fill_quantity is not None
+            assert trace.fill_price is not None
+            # Slippage analysis should be populated
+            assert trace.expected_price is not None
+            assert trace.expected_price_type == "next_bar_open"
+            assert trace.slippage is not None
+            assert trace.slippage_bps is not None
+            assert trace.commission is not None
+
+    @pytest.mark.asyncio
+    async def test_engine_trace_matches_trade(self, tmp_path) -> None:
+        """Each completed trace matches a corresponding trade."""
+        # Create CSV with bars that will trigger signals
+        csv_content = """timestamp,symbol,open,high,low,close,volume
+2024-01-01T21:00:00+00:00,AAPL,90.00,95.00,88.00,90.00,1000000
+2024-01-02T21:00:00+00:00,AAPL,100.00,105.00,99.00,100.00,1000000
+2024-01-03T21:00:00+00:00,AAPL,100.00,115.00,100.00,112.00,1000000
+2024-01-04T21:00:00+00:00,AAPL,113.00,120.00,112.00,118.00,1000000
+2024-01-05T21:00:00+00:00,AAPL,120.00,125.00,119.00,124.00,1000000
+"""
+        csv_file = tmp_path / "bars.csv"
+        csv_file.write_text(csv_content)
+
+        config = BacktestConfig(
+            strategy_class="src.strategies.examples.momentum.MomentumStrategy",
+            strategy_params={
+                "name": "momentum",
+                "symbols": ["AAPL"],
+                "lookback_period": 1,
+                "threshold": 0.5,
+                "position_size": 10,
+            },
+            symbol="AAPL",
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 6),
+            initial_capital=Decimal("10000"),
+        )
+
+        loader = CSVBarLoader(csv_file)
+        engine = BacktestEngine(loader)
+        result = await engine.run(config)
+
+        # Number of completed traces should match number of trades
+        assert len(result.traces) == len(result.trades)
+
+        # Each trace's fill data should match corresponding trade
+        for trace, trade in zip(result.traces, result.trades, strict=False):
+            assert trace.fill_price == trade.fill_price
+            assert trace.fill_quantity == trade.quantity
+            assert trace.commission == trade.commission
+            assert trace.signal_direction == trade.side

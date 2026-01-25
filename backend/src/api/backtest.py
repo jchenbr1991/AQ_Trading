@@ -5,6 +5,7 @@ import uuid
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -26,6 +27,58 @@ class BacktestRequest(BaseModel):
     slippage_bps: int = 5
     commission_per_share: Decimal = Decimal("0.005")
     benchmark_symbol: str | None = None
+
+
+class BarSnapshotResponse(BaseModel):
+    """Schema for bar snapshot data."""
+
+    symbol: str
+    timestamp: str  # ISO format
+    open: str
+    high: str
+    low: str
+    close: str
+    volume: int
+
+
+class PortfolioSnapshotResponse(BaseModel):
+    """Schema for portfolio snapshot data."""
+
+    cash: str
+    position_qty: int
+    position_avg_cost: str | None
+    equity: str
+
+
+class StrategySnapshotResponse(BaseModel):
+    """Schema for strategy snapshot data."""
+
+    strategy_class: str
+    params: dict[str, Any]
+    state: dict[str, Any]
+
+
+class SignalTraceResponse(BaseModel):
+    """Schema for signal trace data."""
+
+    trace_id: str
+    signal_timestamp: str
+    symbol: str
+    signal_direction: str
+    signal_quantity: int
+    signal_reason: str | None
+    signal_bar: BarSnapshotResponse
+    portfolio_state: PortfolioSnapshotResponse
+    strategy_snapshot: StrategySnapshotResponse | None
+    fill_bar: BarSnapshotResponse | None
+    fill_timestamp: str | None
+    fill_quantity: int | None
+    fill_price: str | None
+    expected_price: str | None
+    expected_price_type: str | None
+    slippage: str | None
+    slippage_bps: str | None
+    commission: str | None
 
 
 class BenchmarkComparisonResponse(BaseModel):
@@ -66,6 +119,7 @@ class BacktestResponse(BaseModel):
     status: str  # "completed" or "failed"
     result: BacktestResultSchema | None = None
     benchmark: BenchmarkComparisonResponse | None = None
+    traces: list[SignalTraceResponse] = []
     error: str | None = None
 
 
@@ -73,6 +127,66 @@ def get_bar_loader():
     """Get bar loader. Override in tests."""
     csv_path = Path(__file__).parent.parent.parent / "data" / "bars.csv"
     return CSVBarLoader(csv_path)
+
+
+def _convert_bar_snapshot(bar) -> BarSnapshotResponse:
+    """Convert BarSnapshot to BarSnapshotResponse."""
+    return BarSnapshotResponse(
+        symbol=bar.symbol,
+        timestamp=bar.timestamp.isoformat(),
+        open=str(bar.open),
+        high=str(bar.high),
+        low=str(bar.low),
+        close=str(bar.close),
+        volume=bar.volume,
+    )
+
+
+def _convert_portfolio_snapshot(portfolio) -> PortfolioSnapshotResponse:
+    """Convert PortfolioSnapshot to PortfolioSnapshotResponse."""
+    return PortfolioSnapshotResponse(
+        cash=str(portfolio.cash),
+        position_qty=portfolio.position_qty,
+        position_avg_cost=str(portfolio.position_avg_cost)
+        if portfolio.position_avg_cost is not None
+        else None,
+        equity=str(portfolio.equity),
+    )
+
+
+def _convert_strategy_snapshot(strategy) -> StrategySnapshotResponse:
+    """Convert StrategySnapshot to StrategySnapshotResponse."""
+    return StrategySnapshotResponse(
+        strategy_class=strategy.strategy_class,
+        params=dict(strategy.params),
+        state=dict(strategy.state),
+    )
+
+
+def _convert_trace(trace) -> SignalTraceResponse:
+    """Convert SignalTrace to SignalTraceResponse."""
+    return SignalTraceResponse(
+        trace_id=trace.trace_id,
+        signal_timestamp=trace.signal_timestamp.isoformat(),
+        symbol=trace.symbol,
+        signal_direction=trace.signal_direction,
+        signal_quantity=trace.signal_quantity,
+        signal_reason=trace.signal_reason,
+        signal_bar=_convert_bar_snapshot(trace.signal_bar),
+        portfolio_state=_convert_portfolio_snapshot(trace.portfolio_state),
+        strategy_snapshot=_convert_strategy_snapshot(trace.strategy_snapshot)
+        if trace.strategy_snapshot
+        else None,
+        fill_bar=_convert_bar_snapshot(trace.fill_bar) if trace.fill_bar else None,
+        fill_timestamp=trace.fill_timestamp.isoformat() if trace.fill_timestamp else None,
+        fill_quantity=trace.fill_quantity,
+        fill_price=str(trace.fill_price) if trace.fill_price is not None else None,
+        expected_price=str(trace.expected_price) if trace.expected_price is not None else None,
+        expected_price_type=trace.expected_price_type,
+        slippage=str(trace.slippage) if trace.slippage is not None else None,
+        slippage_bps=str(trace.slippage_bps) if trace.slippage_bps is not None else None,
+        commission=str(trace.commission) if trace.commission is not None else None,
+    )
 
 
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
@@ -124,6 +238,9 @@ async def run_backtest(request: BacktestRequest) -> BacktestResponse:
                 down_capture=str(result.benchmark.down_capture),
             )
 
+        # Convert traces to response format
+        traces_response = [_convert_trace(trace) for trace in result.traces]
+
         return BacktestResponse(
             backtest_id=backtest_id,
             status="completed",
@@ -142,6 +259,7 @@ async def run_backtest(request: BacktestRequest) -> BacktestResponse:
                 warm_up_bars_used=result.warm_up_bars_used,
             ),
             benchmark=benchmark_response,
+            traces=traces_response,
             error=None,
         )
     except ValueError as e:

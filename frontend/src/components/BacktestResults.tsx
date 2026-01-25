@@ -1,6 +1,8 @@
 // frontend/src/components/BacktestResults.tsx
 import type { BacktestResult, EquityCurvePoint } from '../types';
 import { EquityChart } from './EquityChart';
+import { TraceTable } from './TraceTable';
+import { SlippageStats } from './SlippageStats';
 
 interface BacktestResultsProps {
   result: BacktestResult;
@@ -129,6 +131,15 @@ export function BacktestResults({ result, equityCurve = [] }: BacktestResultsPro
 
       {/* Equity Chart */}
       {equityCurve.length > 0 && <EquityChart data={equityCurve} />}
+
+      {/* Execution Quality */}
+      <SlippageStats traces={result.traces} />
+
+      {/* Trade Details */}
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="text-lg font-medium text-gray-900 mb-4">Trade Details</h3>
+        <TraceTable traces={result.traces} />
+      </div>
     </div>
   );
 }

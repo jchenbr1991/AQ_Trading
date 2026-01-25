@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from src.backtest.benchmark import BenchmarkComparison
+    from src.backtest.trace import SignalTrace
 
 
 @dataclass(frozen=True)
@@ -146,6 +147,8 @@ class BacktestResult:
         started_at: When the backtest computation started.
         completed_at: When the backtest computation completed.
         benchmark: Optional BenchmarkComparison when benchmark comparison was computed.
+        traces: List of SignalTrace objects capturing the audit trail from signal
+            generation to order fill, including slippage analysis.
     """
 
     config: BacktestConfig
@@ -167,3 +170,4 @@ class BacktestResult:
     started_at: datetime
     completed_at: datetime
     benchmark: BenchmarkComparison | None = None
+    traces: list[SignalTrace] = field(default_factory=list)
