@@ -2,6 +2,7 @@ import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
+from src.api.reconciliation import reset_alerts
 from src.api.risk import reset_state_manager
 from src.db.database import Base, get_session
 from src.main import app
@@ -30,6 +31,8 @@ async def client(db_session):
     """HTTP client with test database"""
     # Reset state manager for test isolation
     reset_state_manager()
+    # Reset reconciliation alerts for test isolation
+    reset_alerts()
 
     async def override_get_session():
         yield db_session
