@@ -1,77 +1,37 @@
-import { Header } from './components/Header';
-import { AccountSummary } from './components/AccountSummary';
-import { PositionsTable } from './components/PositionsTable';
-import { AlertsPanel } from './components/AlertsPanel';
-import { ErrorBanner } from './components/ErrorBanner';
-import { useAccount } from './hooks/useAccount';
-import { usePositions } from './hooks/usePositions';
-import { useTradingState } from './hooks/useTradingState';
-import { useAlerts } from './hooks/useAlerts';
-import { useFreshness } from './hooks/useFreshness';
-import { closePosition } from './api/orders';
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { DashboardPage } from './pages/DashboardPage';
+import { HealthPage } from './pages/HealthPage';
 
-const ACCOUNT_ID = 'ACC001'; // TODO: Make configurable
+function Navigation() {
+  return (
+    <nav className="bg-gray-800">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="flex items-center justify-between h-12">
+          <div className="flex items-center space-x-4">
+            <Link to="/" className="text-white font-medium hover:text-gray-300">
+              Dashboard
+            </Link>
+            <Link to="/health" className="text-gray-300 hover:text-white">
+              Health
+            </Link>
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+}
 
 function App() {
-  const account = useAccount(ACCOUNT_ID);
-  const positions = usePositions(ACCOUNT_ID);
-  const tradingState = useTradingState();
-  const alerts = useAlerts();
-
-  const positionsFreshness = useFreshness(
-    positions.dataUpdatedAt,
-    positions.isError,
-    positions.failureCount ?? 0
-  );
-
-  const handleKillSwitch = async () => {
-    await tradingState.triggerKillSwitch();
-  };
-
-  const handleClosePosition = async (symbol: string) => {
-    await closePosition({
-      symbol,
-      quantity: 'all',
-      order_type: 'market',
-      time_in_force: 'IOC',
-    });
-    // Refresh positions after close
-    positions.refetch();
-  };
-
   return (
-    <div className="min-h-screen bg-gray-100">
-      <Header
-        tradingState={tradingState.data?.state ?? 'RUNNING'}
-        onKillSwitch={handleKillSwitch}
-      />
-
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        <ErrorBanner
-          failureCount={positions.failureCount ?? 0}
-          lastSuccessful={positions.dataUpdatedAt ? new Date(positions.dataUpdatedAt).toISOString() : undefined}
-          onRetry={() => positions.refetch()}
-        />
-
-        <AccountSummary
-          account={account.data}
-          isLoading={account.isLoading}
-        />
-
-        <PositionsTable
-          positions={positions.data}
-          isLoading={positions.isLoading}
-          tradingState={tradingState.data?.state ?? 'RUNNING'}
-          freshness={positionsFreshness}
-          onClosePosition={handleClosePosition}
-        />
-
-        <AlertsPanel
-          alerts={alerts.data}
-          isLoading={alerts.isLoading}
-        />
-      </main>
-    </div>
+    <BrowserRouter>
+      <div className="min-h-screen bg-gray-100">
+        <Navigation />
+        <Routes>
+          <Route path="/" element={<DashboardPage />} />
+          <Route path="/health" element={<HealthPage />} />
+        </Routes>
+      </div>
+    </BrowserRouter>
   );
 }
 
