@@ -2,7 +2,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BacktestResults } from './BacktestResults';
-import type { BacktestResult, EquityCurvePoint } from '../types';
+import type { BacktestResult, EquityCurvePoint, SignalTrace } from '../types';
 
 // Mock recharts to avoid rendering issues in tests
 vi.mock('recharts', () => ({
@@ -15,6 +15,44 @@ vi.mock('recharts', () => ({
   Legend: () => null,
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
+
+// Helper to create a minimal valid trace
+function createTrace(overrides: Partial<SignalTrace> = {}): SignalTrace {
+  return {
+    trace_id: 'trace-1',
+    signal_timestamp: '2024-01-15T10:30:00Z',
+    symbol: 'AAPL',
+    signal_direction: 'buy',
+    signal_quantity: 100,
+    signal_reason: null,
+    signal_bar: {
+      symbol: 'AAPL',
+      timestamp: '2024-01-15T10:30:00Z',
+      open: '150.00',
+      high: '151.00',
+      low: '149.00',
+      close: '150.50',
+      volume: 1000000,
+    },
+    portfolio_state: {
+      cash: '100000.00',
+      position_qty: 0,
+      position_avg_cost: null,
+      equity: '100000.00',
+    },
+    strategy_snapshot: null,
+    fill_bar: null,
+    fill_timestamp: null,
+    fill_quantity: null,
+    fill_price: null,
+    expected_price: null,
+    expected_price_type: null,
+    slippage: null,
+    slippage_bps: null,
+    commission: null,
+    ...overrides,
+  };
+}
 
 describe('BacktestResults', () => {
   const mockResult: BacktestResult = {
@@ -135,5 +173,61 @@ describe('BacktestResults', () => {
 
     expect(screen.queryByText(/vs SPY/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Alpha (Ann.)')).not.toBeInTheDocument();
+  });
+
+  it('displays slippage stats with traces', () => {
+    const resultWithTraces: BacktestResult = {
+      ...mockResult,
+      traces: [
+        createTrace({
+          trace_id: 'trace-1',
+          fill_price: '150.25',
+          fill_quantity: 100,
+          slippage: '0.25',
+          slippage_bps: '17',
+        }),
+      ],
+    };
+
+    render(<BacktestResults result={resultWithTraces} />);
+
+    expect(screen.getByText('Execution Quality')).toBeInTheDocument();
+    expect(screen.getByText('Total Slippage')).toBeInTheDocument();
+    expect(screen.getByText('Avg Slippage (bps)')).toBeInTheDocument();
+  });
+
+  it('displays trace table with traces', () => {
+    const resultWithTraces: BacktestResult = {
+      ...mockResult,
+      traces: [
+        createTrace({
+          trace_id: 'trace-1',
+          symbol: 'AAPL',
+          signal_direction: 'buy',
+          signal_quantity: 100,
+          expected_price: '150.00',
+          fill_price: '150.25',
+          slippage_bps: '17',
+        }),
+      ],
+    };
+
+    render(<BacktestResults result={resultWithTraces} />);
+
+    expect(screen.getByText('Trade Details')).toBeInTheDocument();
+    expect(screen.getByText('AAPL')).toBeInTheDocument();
+    expect(screen.getByText('BUY')).toBeInTheDocument();
+    expect(screen.getByText('$150.00')).toBeInTheDocument();
+    expect(screen.getByText('$150.25')).toBeInTheDocument();
+  });
+
+  it('hides slippage stats when no traces', () => {
+    render(<BacktestResults result={mockResult} />);
+
+    // SlippageStats returns null when no traces
+    expect(screen.queryByText('Execution Quality')).not.toBeInTheDocument();
+    // TraceTable still shows but with empty state message
+    expect(screen.getByText('Trade Details')).toBeInTheDocument();
+    expect(screen.getByText('No trades executed')).toBeInTheDocument();
   });
 });
