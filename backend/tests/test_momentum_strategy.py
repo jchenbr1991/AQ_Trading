@@ -1,12 +1,12 @@
 # backend/tests/test_momentum_strategy.py
-import pytest
-from decimal import Decimal
 from datetime import datetime
+from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 
-from src.strategies.examples.momentum import MomentumStrategy
+import pytest
 from src.strategies.base import MarketData
 from src.strategies.context import StrategyContext
+from src.strategies.examples.momentum import MomentumStrategy
 
 
 def make_data(symbol: str, price: float) -> MarketData:
@@ -41,9 +41,7 @@ class TestMomentumStrategy:
         """No signals until lookback period is filled."""
         # First 4 data points (need 5 for lookback)
         for price in [100, 101, 102, 103]:
-            signals = await strategy.on_market_data(
-                make_data("AAPL", price), mock_context
-            )
+            signals = await strategy.on_market_data(make_data("AAPL", price), mock_context)
             assert signals == []
 
     async def test_buy_signal_on_momentum_up(self, strategy, mock_context):
@@ -104,3 +102,24 @@ class TestMomentumStrategy:
         signals = await strategy.on_market_data(make_data("AAPL", 110), mock_context)
 
         assert signals == []
+
+
+class TestWarmupBars:
+    """Tests for the warmup_bars property."""
+
+    def test_warmup_bars_equals_lookback_period(self):
+        """MomentumStrategy with lookback=25 has warmup_bars=25."""
+        strategy = MomentumStrategy(
+            name="test_momentum",
+            symbols=["AAPL"],
+            lookback_period=25,
+        )
+        assert strategy.warmup_bars == 25
+
+    def test_default_warmup_bars(self):
+        """MomentumStrategy with default lookback=20 has warmup_bars=20."""
+        strategy = MomentumStrategy(
+            name="test_momentum",
+            symbols=["AAPL"],
+        )
+        assert strategy.warmup_bars == 20
