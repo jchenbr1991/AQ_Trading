@@ -187,6 +187,29 @@ class TestBacktestConfig:
         assert config.commission_model == "per_share"
         assert config.commission_per_share == Decimal("0.01")
 
+    def test_backtest_config_benchmark_symbol_optional(self) -> None:
+        """BacktestConfig has optional benchmark_symbol field."""
+        config = BacktestConfig(
+            strategy_class="test.Strategy",
+            strategy_params={},
+            symbol="AAPL",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+            initial_capital=Decimal("100000"),
+        )
+        assert config.benchmark_symbol is None
+
+        config_with_benchmark = BacktestConfig(
+            strategy_class="test.Strategy",
+            strategy_params={},
+            symbol="AAPL",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+            initial_capital=Decimal("100000"),
+            benchmark_symbol="SPY",
+        )
+        assert config_with_benchmark.benchmark_symbol == "SPY"
+
 
 class TestBacktestResult:
     """Tests for BacktestResult dataclass."""

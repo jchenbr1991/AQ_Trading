@@ -100,6 +100,7 @@ class BacktestConfig:
         slippage_bps: Slippage in basis points (5 = 0.05%).
         commission_model: How commission is calculated. Currently only "per_share".
         commission_per_share: Commission charged per share traded.
+        benchmark_symbol: Optional benchmark symbol for comparison (e.g., "SPY").
     """
 
     strategy_class: str
@@ -113,6 +114,7 @@ class BacktestConfig:
     slippage_bps: int = 5
     commission_model: Literal["per_share"] = "per_share"
     commission_per_share: Decimal = field(default_factory=lambda: Decimal("0.005"))
+    benchmark_symbol: str | None = None
 
 
 @dataclass
