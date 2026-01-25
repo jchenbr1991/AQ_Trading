@@ -16,6 +16,7 @@ export function BacktestForm({ onSubmit, isLoading }: BacktestFormProps) {
   const [threshold, setThreshold] = useState('2.0');
   const [positionSize, setPositionSize] = useState('100');
   const [slippageBps, setSlippageBps] = useState('5');
+  const [benchmarkSymbol, setBenchmarkSymbol] = useState('SPY');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,6 +33,7 @@ export function BacktestForm({ onSubmit, isLoading }: BacktestFormProps) {
       end_date: endDate,
       initial_capital: initialCapital,
       slippage_bps: parseInt(slippageBps, 10),
+      benchmark_symbol: benchmarkSymbol || undefined,
     };
 
     onSubmit(request);
@@ -165,6 +167,21 @@ export function BacktestForm({ onSubmit, isLoading }: BacktestFormProps) {
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             min="0"
             required
+          />
+        </div>
+
+        {/* Benchmark Symbol */}
+        <div>
+          <label htmlFor="benchmark-symbol" className="block text-sm font-medium text-gray-700">
+            Benchmark Symbol
+          </label>
+          <input
+            type="text"
+            id="benchmark-symbol"
+            value={benchmarkSymbol}
+            onChange={(e) => setBenchmarkSymbol(e.target.value.toUpperCase())}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            placeholder="SPY"
           />
         </div>
       </div>

@@ -13,7 +13,7 @@ describe('BacktestForm', () => {
   it('renders all form fields', () => {
     render(<BacktestForm onSubmit={mockOnSubmit} isLoading={false} />);
 
-    expect(screen.getByLabelText(/symbol/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^symbol$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/initial capital/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/start date/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/end date/i)).toBeInTheDocument();
@@ -21,6 +21,7 @@ describe('BacktestForm', () => {
     expect(screen.getByLabelText(/threshold/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/position size/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/slippage/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/benchmark symbol/i)).toBeInTheDocument();
   });
 
   it('renders submit button', () => {
@@ -40,7 +41,7 @@ describe('BacktestForm', () => {
     render(<BacktestForm onSubmit={mockOnSubmit} isLoading={false} />);
 
     // Fill in the form with custom values
-    fireEvent.change(screen.getByLabelText(/symbol/i), { target: { value: 'MSFT' } });
+    fireEvent.change(screen.getByLabelText(/^symbol$/i), { target: { value: 'MSFT' } });
     fireEvent.change(screen.getByLabelText(/initial capital/i), { target: { value: '50000' } });
     fireEvent.change(screen.getByLabelText(/start date/i), { target: { value: '2024-06-01' } });
     fireEvent.change(screen.getByLabelText(/end date/i), { target: { value: '2024-12-01' } });
@@ -64,13 +65,14 @@ describe('BacktestForm', () => {
       end_date: '2024-12-01',
       initial_capital: '50000',
       slippage_bps: 10,
+      benchmark_symbol: 'SPY',
     });
   });
 
   it('converts symbol to uppercase', () => {
     render(<BacktestForm onSubmit={mockOnSubmit} isLoading={false} />);
 
-    const symbolInput = screen.getByLabelText(/symbol/i);
+    const symbolInput = screen.getByLabelText(/^symbol$/i);
     fireEvent.change(symbolInput, { target: { value: 'goog' } });
 
     expect(symbolInput).toHaveValue('GOOG');
@@ -79,11 +81,44 @@ describe('BacktestForm', () => {
   it('has default values pre-filled', () => {
     render(<BacktestForm onSubmit={mockOnSubmit} isLoading={false} />);
 
-    expect(screen.getByLabelText(/symbol/i)).toHaveValue('AAPL');
+    expect(screen.getByLabelText(/^symbol$/i)).toHaveValue('AAPL');
     expect(screen.getByLabelText(/initial capital/i)).toHaveValue(100000);
     expect(screen.getByLabelText(/lookback period/i)).toHaveValue(20);
     expect(screen.getByLabelText(/threshold/i)).toHaveValue(2);
     expect(screen.getByLabelText(/position size/i)).toHaveValue(100);
     expect(screen.getByLabelText(/slippage/i)).toHaveValue(5);
+  });
+
+  it('renders benchmark symbol field', () => {
+    render(<BacktestForm onSubmit={mockOnSubmit} isLoading={false} />);
+    expect(screen.getByLabelText(/benchmark symbol/i)).toBeInTheDocument();
+  });
+
+  it('has default benchmark symbol of SPY', () => {
+    render(<BacktestForm onSubmit={mockOnSubmit} isLoading={false} />);
+    expect(screen.getByLabelText(/benchmark symbol/i)).toHaveValue('SPY');
+  });
+
+  it('converts benchmark symbol to uppercase', () => {
+    render(<BacktestForm onSubmit={mockOnSubmit} isLoading={false} />);
+    const input = screen.getByLabelText(/benchmark symbol/i);
+    fireEvent.change(input, { target: { value: 'qqq' } });
+    expect(input).toHaveValue('QQQ');
+  });
+
+  it('includes benchmark_symbol in form submission', () => {
+    render(<BacktestForm onSubmit={mockOnSubmit} isLoading={false} />);
+
+    // Change benchmark symbol
+    fireEvent.change(screen.getByLabelText(/benchmark symbol/i), { target: { value: 'QQQ' } });
+
+    // Submit form
+    fireEvent.click(screen.getByRole('button', { name: /run backtest/i }));
+
+    expect(mockOnSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        benchmark_symbol: 'QQQ',
+      })
+    );
   });
 });
