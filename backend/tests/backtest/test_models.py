@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-from src.backtest.models import Bar
+from src.backtest.models import Bar, Trade
 
 
 class TestBar:
@@ -68,3 +68,65 @@ class TestBar:
 
         # Timestamp must be timezone-aware
         assert bar.timestamp.tzinfo is not None
+
+
+class TestTrade:
+    """Tests for Trade dataclass."""
+
+    def test_create_buy_trade(self) -> None:
+        """Create buy trade, verify fill_price = gross + slippage."""
+        signal_time = datetime(2024, 1, 15, 16, 0, 0, tzinfo=timezone.utc)
+        fill_time = datetime(2024, 1, 16, 9, 30, 0, tzinfo=timezone.utc)
+
+        trade = Trade(
+            trade_id="550e8400-e29b-41d4-a716-446655440000",
+            timestamp=fill_time,
+            symbol="AAPL",
+            side="buy",
+            quantity=100,
+            gross_price=Decimal("185.50"),
+            slippage=Decimal("0.05"),
+            commission=Decimal("1.00"),
+            signal_bar_timestamp=signal_time,
+        )
+
+        assert trade.trade_id == "550e8400-e29b-41d4-a716-446655440000"
+        assert trade.timestamp == fill_time
+        assert trade.symbol == "AAPL"
+        assert trade.side == "buy"
+        assert trade.quantity == 100
+        assert trade.gross_price == Decimal("185.50")
+        assert trade.slippage == Decimal("0.05")
+        # For buy trades: fill_price = gross_price + slippage
+        assert trade.fill_price == Decimal("185.55")
+        assert trade.commission == Decimal("1.00")
+        assert trade.signal_bar_timestamp == signal_time
+
+    def test_create_sell_trade(self) -> None:
+        """Create sell trade, verify fill_price = gross - slippage."""
+        signal_time = datetime(2024, 1, 15, 16, 0, 0, tzinfo=timezone.utc)
+        fill_time = datetime(2024, 1, 16, 9, 30, 0, tzinfo=timezone.utc)
+
+        trade = Trade(
+            trade_id="550e8400-e29b-41d4-a716-446655440001",
+            timestamp=fill_time,
+            symbol="MSFT",
+            side="sell",
+            quantity=50,
+            gross_price=Decimal("400.00"),
+            slippage=Decimal("0.10"),
+            commission=Decimal("0.50"),
+            signal_bar_timestamp=signal_time,
+        )
+
+        assert trade.trade_id == "550e8400-e29b-41d4-a716-446655440001"
+        assert trade.timestamp == fill_time
+        assert trade.symbol == "MSFT"
+        assert trade.side == "sell"
+        assert trade.quantity == 50
+        assert trade.gross_price == Decimal("400.00")
+        assert trade.slippage == Decimal("0.10")
+        # For sell trades: fill_price = gross_price - slippage
+        assert trade.fill_price == Decimal("399.90")
+        assert trade.commission == Decimal("0.50")
+        assert trade.signal_bar_timestamp == signal_time
