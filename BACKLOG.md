@@ -1,191 +1,180 @@
 # BACKLOG.md
 
-Implementation backlog for AQ Trading. Check items as completed.
+Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
-## Phase 1: Minimum Viable Trading System
+## Phase 1: Minimum Viable Trading System [COMPLETED]
 
-### Infrastructure Setup
-- [ ] Initialize Python backend (`backend/pyproject.toml`, FastAPI app)
-- [ ] Initialize TypeScript frontend (`frontend/package.json`, Vite + React)
-- [ ] Docker Compose for Postgres, Redis, FutuOpenD
-- [ ] Alembic migration setup
-- [ ] Environment config (`config/default.yaml`, `.env.example`)
+| Component | Status | PR | Notes |
+|-----------|--------|-----|-------|
+| Infrastructure Setup | Done | - | FastAPI, React, configs |
+| Portfolio Manager | Done | #1 | Position tracking, account sync |
+| Strategy Engine | Done | #2 | Base strategy, context, signals |
+| Risk Manager | Done | #3 | Position/portfolio limits, loss limits |
+| Order Manager | Done | #4 | Order lifecycle, broker integration |
+| Market Data Service | Done | #4 | Quote subscription, caching |
+| Reconciliation Service | Done | #4 | Broker sync, discrepancy detection |
+| Paper Trading | Done | #4 | PaperBroker with simulated execution |
+| Basic Dashboard | Done | #5 | Positions, P&L, kill switch, alerts |
 
-### Portfolio Manager (`core/portfolio.py`)
-- [ ] Account model and sync with Futu
-- [ ] Position model with strategy tagging
-- [ ] Transaction ledger
-- [ ] `sync_with_broker()` implementation
-- [ ] `record_fill()` implementation
-- [ ] `get_positions(strategy_id)` filtering
-
-### Strategy Engine (`strategies/`)
-- [ ] Strategy ABC (`base.py`)
-- [ ] StrategyContext with read-only portfolio view (`context.py`)
-- [ ] Signal dataclass (`signals.py`)
-- [ ] Strategy registry and discovery (`registry.py`)
-- [ ] One example strategy (`examples/momentum.py`)
-
-### Risk Manager (`core/risk_manager.py`)
-- [ ] Position limits check
-- [ ] Portfolio limits check
-- [ ] Daily loss limit check
-- [ ] Kill switch mechanism
-- [ ] Risk config loading from YAML
-
-### Order Manager (`core/order_manager.py`)
-- [ ] Order model and lifecycle states
-- [ ] Signal → Order conversion
-- [ ] Futu API submission (`broker/futu/trading.py`)
-- [ ] Order tracking and fill handling
-- [ ] Portfolio update on fill
-- [ ] Strategy callback on fill
-
-### Market Data (`core/market_data.py`)
-- [ ] Futu quote subscription (`broker/futu/quotes.py`)
-- [ ] Redis caching for live quotes
-- [ ] Quote distribution to strategies
-
-### Reconciliation (`core/reconciliation.py`)
-- [ ] Periodic broker position fetch
-- [ ] Local vs broker comparison
-- [ ] Discrepancy detection and alerting
-
-### Paper Trading (`broker/paper.py`)
-- [ ] Paper broker with simulated execution
-- [ ] Uses real quotes, virtual portfolio
-- [ ] Trading mode toggle (live/paper)
-
-### Basic Dashboard
-- [ ] Frontend scaffold (React + Tailwind)
-- [ ] REST API routes (`api/routes/portfolio.py`, `orders.py`, `strategies.py`)
-- [ ] WebSocket server (`api/websocket.py`)
-- [ ] Positions table view
-- [ ] P&L display
-- [ ] Strategy pause/resume controls
-- [ ] Kill switch button
-
-### DevOps
-- [ ] `Makefile` with start/stop/status targets
-- [ ] `scripts/start_dev.sh`
-- [ ] Health check endpoint (`/health`)
+**Exit Criteria Met:** Can run a simple strategy in paper mode, track positions, and manually intervene via dashboard.
 
 ---
 
-## Phase 2: Enhanced Analytics & Testing
+## Phase 2: Enhanced Analytics & Testing [IN PROGRESS]
 
-### Backtesting Engine (`backtest/`)
-- [ ] BacktestEngine with event loop (`engine.py`)
-- [ ] SimulatedBroker with slippage models (`simulated_broker.py`)
-- [ ] BacktestResult with performance metrics (`results.py`)
-- [ ] Benchmark comparison (alpha, beta, Sharpe vs SPY)
-- [ ] Equity curve and drawdown series
+**Development Approach:** Vertical slices - end-to-end features delivering working functionality incrementally.
 
-### Strategy Warm-up
-- [ ] `warmup_bars` property on Strategy ABC
-- [ ] Historical data backfill on strategy start
-- [ ] `is_warmup` flag to suppress signals during init
+### Slice 2.1: Health Monitoring [COMPLETED]
 
-### Trace System (`core/tracing.py`)
-- [ ] TraceContext with trace_id propagation
-- [ ] SignalTrace dataclass with full context
-- [ ] ContextSnapshot capture at signal time
-- [ ] Trace repository (`db/repositories/trace_repo.py`)
-- [ ] API endpoint for trace retrieval (`api/routes/traces.py`)
+**Goal:** Track component health (Redis, PostgreSQL, MarketData) and display on dashboard.
 
-### Health Monitoring (`core/health_monitor.py`)
-- [ ] Heartbeat checks for Futu, Redis, Postgres
-- [ ] Component health status aggregation
-- [ ] Alert on health degradation
-- [ ] Dashboard health page
+| Task | Status | Description |
+|------|--------|-------------|
+| Health Models | Done | ComponentStatus, HealthStatus, SystemHealth |
+| Health Checkers | Done | Redis, MarketData health checkers |
+| HealthMonitor Service | Done | Aggregate concurrent health checks |
+| Health API Endpoints | Done | `/api/health/detailed`, `/api/health/component/{name}` |
+| Frontend Health Types | Done | TypeScript types |
+| useHealth Hook | Done | TanStack Query hook with 10s refetch |
+| HealthStatusBadge | Done | Color-coded status indicator |
+| ComponentHealthCard | Done | Individual component display |
+| HealthPage | Done | `/health` route with navigation |
+| Backend Initialization | Done | Wire checkers on startup |
+| Integration Tests | Done | E2E health tests |
 
-### Retention Policies (`db/retention.py`)
-- [ ] TimescaleDB compression policy setup
-- [ ] Tiered retention (permanent for fills, 7d for rejected)
-- [ ] Snapshot compression job (full → summary)
-
-### Dashboard Enhancements
-- [ ] Backtest runner page
-- [ ] Backtest results visualization (equity curve chart)
-- [ ] Trace viewer component
-- [ ] Slippage analysis display
-- [ ] Health status page
-
-### Type Generation
-- [ ] OpenAPI schema export (`scripts/generate_openapi.py`)
-- [ ] Frontend type generation with Orval (`frontend/scripts/generate-types.sh`)
+**Plan:** `docs/plans/2026-01-25-health-monitoring.md` | **PR:** #6
 
 ---
 
-## Phase 3: Advanced Features
+### Slice 2.2: Backtest Engine + Strategy Warm-up [CURRENT]
 
-### Options Lifecycle (`core/expiration_manager.py`)
-- [ ] Contract expiration tracking
-- [ ] Expiration warning alerts
-- [ ] Assignment/exercise handling
-- [ ] Strategy `on_expiration_warning()` callback
+**Goal:** Run strategies against historical data with warm-up for indicator initialization.
 
-### Futures Roll-over
-- [ ] Next contract identification
-- [ ] Roll-over strategies (spread vs close/open)
-- [ ] Automatic roll execution
+| Task | Status | Description |
+|------|--------|-------------|
+| Strategy Warm-up | Pending | `warmup_bars` property, historical backfill |
+| SimulatedBroker | Pending | Order execution with slippage models |
+| BacktestEngine | Pending | Event-based replay loop |
+| BacktestResult Model | Pending | Performance metrics dataclass |
+| Backtest API | Pending | Trigger and retrieve results |
+| Frontend Backtest Page | Pending | Run backtests, view results |
 
-### Greeks Monitoring
-- [ ] Portfolio delta/theta/vega calculation
-- [ ] Greeks limits in Risk Manager
-- [ ] Dashboard Greeks display
-
-### CLI Agent System (`agents/`)
-- [ ] AgentDispatcher implementation (`dispatcher.py`)
-- [ ] Permission model (`permissions.py`)
-- [ ] Agent prompts (`prompts/researcher.md`, etc.)
-- [ ] Agent scheduling (background loops)
-- [ ] Redis integration for agent outputs
-
-### Risk Controller Agent
-- [ ] Risk bias calculation task
-- [ ] VIX + macro calendar analysis
-- [ ] `global_risk_bias` Redis updates
-- [ ] Risk Manager reads agent bias
-
-### Researcher Agent
-- [ ] Parameter optimization task
-- [ ] Walk-forward validation enforcement
-- [ ] Stability testing
-- [ ] Candidate file generation
-- [ ] Overfitting prevention validation
-
-### Analyst Agent
-- [ ] Sentiment scoring from news
-- [ ] Event tagging (FOMC, NFP, etc.)
-- [ ] Redis factor updates (`sentiment:*`)
-
-### Ops Agent
-- [ ] Intelligent reconciliation analysis
-- [ ] Auto-restart on failures
-- [ ] Markdown report generation
-
-### Graceful Degradation
-- [ ] Degradation policy config (`config/degradation.yaml`)
-- [ ] Automatic mode switching on failures
-- [ ] "Reduce-only" mode implementation
+**Plan:** Not yet created
 
 ---
 
-## Ongoing / Maintenance
+### Slice 2.3: Benchmark Comparison
 
-- [ ] Additional example strategies
-- [ ] Performance optimization
-- [ ] Documentation improvements
-- [ ] Test coverage expansion
-- [ ] Security audit
+**Goal:** Compare strategy performance against SPY/HSI benchmarks.
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Benchmark Data | Pending | Fetch SPY/HSI historical data |
+| Alpha/Beta | Pending | Excess return, correlation |
+| Sharpe/Sortino | Pending | Risk-adjusted returns |
+| Information Ratio | Pending | Alpha / tracking error |
+| Up/Down Capture | Pending | Performance in market regimes |
+| Chart Overlay | Pending | Strategy vs benchmark curves |
+| Metrics Table | Pending | Side-by-side comparison |
+
+**Plan:** Not yet created
+
+---
+
+### Slice 2.4: Trace Viewer + Slippage Analysis
+
+**Goal:** Signal-to-fill audit trail with execution quality analysis.
+
+| Task | Status | Description |
+|------|--------|-------------|
+| SignalTrace Model | Pending | Full context capture at signal time |
+| ContextSnapshot | Pending | Market, indicators, portfolio state |
+| TraceRepository | Pending | Storage and query interface |
+| Slippage Calculation | Pending | Expected vs actual fill price |
+| Trace API | Pending | Query traces by order, strategy, time |
+| Trace Timeline UI | Pending | Visual signal → fill journey |
+| Slippage Dashboard | Pending | Execution quality metrics |
+
+**Plan:** Not yet created
+
+---
+
+### Slice 2.5: Retention Policies
+
+**Goal:** Manage data lifecycle to prevent storage bloat.
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Compression Policy | Pending | TimescaleDB compression for old data |
+| Tiered Retention | Pending | Permanent (fills), 7d (rejected), 24h (full snapshots) |
+| Archival Jobs | Pending | Scheduled full → summary compression |
+| Storage Monitoring | Pending | Alert on growth thresholds |
+
+**Plan:** Not yet created
+
+---
+
+**Phase 2 Exit Criteria:** Can backtest strategies with benchmark comparison, analyze trade execution quality, trust system health.
+
+---
+
+## Phase 3: Advanced Features [NOT STARTED]
+
+### Options & Futures Lifecycle
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Expiration Tracking | Pending | Days to expiry monitoring |
+| Expiration Alerts | Pending | Warning before expiration |
+| Assignment Handling | Pending | ITM option exercise |
+| Futures Roll-over | Pending | Automatic contract rolling |
+| Greeks Monitoring | Pending | Portfolio delta/theta/vega |
+
+---
+
+### CLI Agent System
+
+| Task | Status | Description |
+|------|--------|-------------|
+| AgentDispatcher | Pending | Subprocess agent invocation |
+| Permission Model | Pending | Read/write/execute boundaries |
+| Risk Controller Agent | Pending | Dynamic risk bias |
+| Researcher Agent | Pending | Parameter optimization |
+| Analyst Agent | Pending | Sentiment scoring |
+| Ops Agent | Pending | Intelligent reconciliation |
+
+---
+
+### Production Hardening
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Graceful Degradation | Pending | Auto failover policies |
+| Enhanced Alerts | Pending | Multi-channel notifications |
+| Audit Logging | Pending | Compliance trail |
+
+---
+
+**Phase 3 Exit Criteria:** Can trade options/futures with lifecycle management, leverage agents for optimization without manual intervention.
+
+---
+
+## Legend
+
+| Status | Meaning |
+|--------|---------|
+| Pending | Not started |
+| In Progress | Currently being worked on |
+| Done | Completed and merged |
+| Blocked | Waiting on dependency |
 
 ---
 
 ## Notes
 
-- Complete Phase N before starting Phase N+1
-- Mark items with `[x]` when done
-- Add sub-items as needed during implementation
+- **Vertical slices:** Each slice delivers end-to-end working functionality
+- **TDD:** All code written test-first
+- **Complete Phase N before starting Phase N+1**
+- **Mark items as done when code is merged**
