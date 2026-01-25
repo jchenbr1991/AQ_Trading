@@ -178,3 +178,26 @@ export interface EquityCurvePoint {
   timestamp: string;
   equity: number;
 }
+
+// Storage monitoring types
+export interface TableStats {
+  table_name: string;
+  row_count: number;
+  size_bytes: number;
+  size_pretty: string;
+  is_hypertable: boolean;
+}
+
+export interface CompressionStats {
+  total_chunks: number;
+  compressed_chunks: number;
+  compression_ratio: number | null;
+}
+
+export interface StorageStats {
+  database_size_bytes: number;
+  database_size_pretty: string;
+  timestamp: string;
+  tables: TableStats[];
+  compression: Record<string, CompressionStats>;
+}
