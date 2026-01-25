@@ -31,6 +31,7 @@ describe('BacktestResults', () => {
     warm_up_required_bars: 20,
     warm_up_bars_used: 20,
     benchmark: null,
+    traces: [],
   };
 
   it('renders total return prominently', () => {

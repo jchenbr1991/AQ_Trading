@@ -80,6 +80,51 @@ export interface SystemHealth {
   checked_at: string;
 }
 
+// Trace types for signal analysis
+export interface BarSnapshot {
+  symbol: string;
+  timestamp: string;
+  open: string;
+  high: string;
+  low: string;
+  close: string;
+  volume: number;
+}
+
+export interface PortfolioSnapshot {
+  cash: string;
+  position_qty: number;
+  position_avg_cost: string | null;
+  equity: string;
+}
+
+export interface StrategySnapshot {
+  strategy_class: string;
+  params: Record<string, unknown>;
+  state: Record<string, unknown>;
+}
+
+export interface SignalTrace {
+  trace_id: string;
+  signal_timestamp: string;
+  symbol: string;
+  signal_direction: string;
+  signal_quantity: number;
+  signal_reason: string | null;
+  signal_bar: BarSnapshot;
+  portfolio_state: PortfolioSnapshot;
+  strategy_snapshot: StrategySnapshot | null;
+  fill_bar: BarSnapshot | null;
+  fill_timestamp: string | null;
+  fill_quantity: number | null;
+  fill_price: string | null;
+  expected_price: string | null;
+  expected_price_type: string | null;
+  slippage: string | null;
+  slippage_bps: string | null;
+  commission: string | null;
+}
+
 // Backtest types
 export interface BacktestRequest {
   strategy_class: string;
@@ -119,6 +164,7 @@ export interface BacktestResult {
   warm_up_required_bars: number;
   warm_up_bars_used: number;
   benchmark: BenchmarkComparison | null;
+  traces: SignalTrace[];
 }
 
 export interface BacktestResponse {
