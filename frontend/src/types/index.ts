@@ -79,3 +79,42 @@ export interface SystemHealth {
   components: ComponentHealth[];
   checked_at: string;
 }
+
+// Backtest types
+export interface BacktestRequest {
+  strategy_class: string;
+  strategy_params: Record<string, unknown>;
+  symbol: string;
+  start_date: string;
+  end_date: string;
+  initial_capital: string;
+  slippage_bps?: number;
+  commission_per_share?: string;
+}
+
+export interface BacktestResult {
+  final_equity: string;
+  final_cash: string;
+  final_position_qty: number;
+  total_return: string;
+  annualized_return: string;
+  sharpe_ratio: string;
+  max_drawdown: string;
+  win_rate: string;
+  total_trades: number;
+  avg_trade_pnl: string;
+  warm_up_required_bars: number;
+  warm_up_bars_used: number;
+}
+
+export interface BacktestResponse {
+  backtest_id: string;
+  status: 'completed' | 'failed';
+  result: BacktestResult | null;
+  error: string | null;
+}
+
+export interface EquityCurvePoint {
+  timestamp: string;
+  equity: number;
+}
