@@ -6,15 +6,18 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import type { EquityCurvePoint } from '../types';
 
 interface EquityChartProps {
   data: EquityCurvePoint[];
+  benchmarkData?: EquityCurvePoint[];
+  benchmarkSymbol?: string;
 }
 
-export function EquityChart({ data }: EquityChartProps) {
+export function EquityChart({ data, benchmarkData, benchmarkSymbol }: EquityChartProps) {
   if (data.length === 0) {
     return (
       <div className="bg-gray-50 rounded-lg p-8 text-center text-gray-500">
@@ -37,12 +40,22 @@ export function EquityChart({ data }: EquityChartProps) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  // Combine strategy and benchmark data by timestamp
+  const chartData = data.map((point) => {
+    const benchmarkPoint = benchmarkData?.find((b) => b.timestamp === point.timestamp);
+    return {
+      timestamp: point.timestamp,
+      equity: point.equity,
+      benchmark: benchmarkPoint ? benchmarkPoint.equity : null,
+    };
+  });
+
   return (
     <div className="bg-white rounded-lg shadow p-4">
       <h3 className="text-lg font-medium text-gray-900 mb-4">Equity Curve</h3>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+          <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis
               dataKey="timestamp"
@@ -57,10 +70,22 @@ export function EquityChart({ data }: EquityChartProps) {
               width={80}
             />
             <Tooltip
-              formatter={(value) => [formatCurrency(value as number), 'Equity']}
+              formatter={(value: number, name: string) => [
+                formatCurrency(value),
+                name === 'benchmark' ? benchmarkSymbol || 'Benchmark' : 'Strategy',
+              ]}
               labelFormatter={(label) => new Date(String(label)).toLocaleDateString()}
               contentStyle={{ fontSize: 12 }}
             />
+            {benchmarkData && benchmarkData.length > 0 && (
+              <Legend
+                verticalAlign="top"
+                height={36}
+                formatter={(value: string) =>
+                  value === 'benchmark' ? benchmarkSymbol || 'Benchmark' : 'Strategy'
+                }
+              />
+            )}
             <Line
               type="monotone"
               dataKey="equity"
@@ -68,7 +93,20 @@ export function EquityChart({ data }: EquityChartProps) {
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 4 }}
+              name="equity"
             />
+            {benchmarkData && benchmarkData.length > 0 && (
+              <Line
+                type="monotone"
+                dataKey="benchmark"
+                stroke="#9ca3af"
+                strokeDasharray="5 5"
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4 }}
+                name="benchmark"
+              />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>

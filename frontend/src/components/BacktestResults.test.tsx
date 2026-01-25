@@ -12,6 +12,7 @@ vi.mock('recharts', () => ({
   YAxis: () => null,
   CartesianGrid: () => null,
   Tooltip: () => null,
+  Legend: () => null,
   ResponsiveContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
@@ -29,6 +30,7 @@ describe('BacktestResults', () => {
     avg_trade_pnl: '250.00',
     warm_up_required_bars: 20,
     warm_up_bars_used: 20,
+    benchmark: null,
   };
 
   it('renders total return prominently', () => {
@@ -101,5 +103,36 @@ describe('BacktestResults', () => {
     render(<BacktestResults result={mockResult} equityCurve={[]} />);
 
     expect(screen.queryByText('Equity Curve')).not.toBeInTheDocument();
+  });
+
+  it('displays benchmark comparison when available', () => {
+    const resultWithBenchmark: BacktestResult = {
+      ...mockResult,
+      benchmark: {
+        benchmark_symbol: 'SPY',
+        benchmark_total_return: '0.10',
+        alpha: '0.05',
+        beta: '0.8',
+        tracking_error: '0.02',
+        information_ratio: '2.5',
+        sortino_ratio: '1.8',
+        up_capture: '1.1',
+        down_capture: '0.9',
+      },
+    };
+
+    render(<BacktestResults result={resultWithBenchmark} />);
+
+    expect(screen.getByText('vs SPY')).toBeInTheDocument();
+    expect(screen.getByText('Alpha (Ann.)')).toBeInTheDocument();
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+    expect(screen.getByText('0.80')).toBeInTheDocument(); // beta formatted
+  });
+
+  it('does not display benchmark section when benchmark is null', () => {
+    render(<BacktestResults result={mockResult} />);
+
+    expect(screen.queryByText(/vs SPY/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Alpha (Ann.)')).not.toBeInTheDocument();
   });
 });

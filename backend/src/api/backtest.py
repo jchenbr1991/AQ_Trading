@@ -25,6 +25,21 @@ class BacktestRequest(BaseModel):
     initial_capital: Decimal = Decimal("100000")
     slippage_bps: int = 5
     commission_per_share: Decimal = Decimal("0.005")
+    benchmark_symbol: str | None = None
+
+
+class BenchmarkComparisonResponse(BaseModel):
+    """Schema for benchmark comparison metrics."""
+
+    benchmark_symbol: str
+    benchmark_total_return: str  # Decimal as string
+    alpha: str
+    beta: str
+    tracking_error: str
+    information_ratio: str
+    sortino_ratio: str
+    up_capture: str
+    down_capture: str
 
 
 class BacktestResultSchema(BaseModel):
@@ -50,6 +65,7 @@ class BacktestResponse(BaseModel):
     backtest_id: str
     status: str  # "completed" or "failed"
     result: BacktestResultSchema | None = None
+    benchmark: BenchmarkComparisonResponse | None = None
     error: str | None = None
 
 
@@ -87,10 +103,26 @@ async def run_backtest(request: BacktestRequest) -> BacktestResponse:
             initial_capital=request.initial_capital,
             slippage_bps=request.slippage_bps,
             commission_per_share=request.commission_per_share,
+            benchmark_symbol=request.benchmark_symbol,
         )
 
         engine = BacktestEngine(bar_loader=get_bar_loader())
         result = await engine.run(config)
+
+        # Convert benchmark comparison if present
+        benchmark_response = None
+        if result.benchmark:
+            benchmark_response = BenchmarkComparisonResponse(
+                benchmark_symbol=result.benchmark.benchmark_symbol,
+                benchmark_total_return=str(result.benchmark.benchmark_total_return),
+                alpha=str(result.benchmark.alpha),
+                beta=str(result.benchmark.beta),
+                tracking_error=str(result.benchmark.tracking_error),
+                information_ratio=str(result.benchmark.information_ratio),
+                sortino_ratio=str(result.benchmark.sortino_ratio),
+                up_capture=str(result.benchmark.up_capture),
+                down_capture=str(result.benchmark.down_capture),
+            )
 
         return BacktestResponse(
             backtest_id=backtest_id,
@@ -109,6 +141,7 @@ async def run_backtest(request: BacktestRequest) -> BacktestResponse:
                 warm_up_required_bars=result.warm_up_required_bars,
                 warm_up_bars_used=result.warm_up_bars_used,
             ),
+            benchmark=benchmark_response,
             error=None,
         )
     except ValueError as e:

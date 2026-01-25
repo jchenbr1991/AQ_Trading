@@ -1,9 +1,14 @@
 """Backtest data models."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from src.backtest.benchmark import BenchmarkComparison
 
 
 @dataclass(frozen=True)
@@ -100,6 +105,7 @@ class BacktestConfig:
         slippage_bps: Slippage in basis points (5 = 0.05%).
         commission_model: How commission is calculated. Currently only "per_share".
         commission_per_share: Commission charged per share traded.
+        benchmark_symbol: Optional benchmark symbol for comparison (e.g., "SPY").
     """
 
     strategy_class: str
@@ -113,6 +119,7 @@ class BacktestConfig:
     slippage_bps: int = 5
     commission_model: Literal["per_share"] = "per_share"
     commission_per_share: Decimal = field(default_factory=lambda: Decimal("0.005"))
+    benchmark_symbol: str | None = None
 
 
 @dataclass
@@ -138,6 +145,7 @@ class BacktestResult:
         first_signal_bar: Timestamp of bar that generated first signal, if any.
         started_at: When the backtest computation started.
         completed_at: When the backtest computation completed.
+        benchmark: Optional BenchmarkComparison when benchmark comparison was computed.
     """
 
     config: BacktestConfig
@@ -158,3 +166,4 @@ class BacktestResult:
     first_signal_bar: datetime | None
     started_at: datetime
     completed_at: datetime
+    benchmark: BenchmarkComparison | None = None

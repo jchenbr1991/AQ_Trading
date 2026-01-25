@@ -187,6 +187,29 @@ class TestBacktestConfig:
         assert config.commission_model == "per_share"
         assert config.commission_per_share == Decimal("0.01")
 
+    def test_backtest_config_benchmark_symbol_optional(self) -> None:
+        """BacktestConfig has optional benchmark_symbol field."""
+        config = BacktestConfig(
+            strategy_class="test.Strategy",
+            strategy_params={},
+            symbol="AAPL",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+            initial_capital=Decimal("100000"),
+        )
+        assert config.benchmark_symbol is None
+
+        config_with_benchmark = BacktestConfig(
+            strategy_class="test.Strategy",
+            strategy_params={},
+            symbol="AAPL",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+            initial_capital=Decimal("100000"),
+            benchmark_symbol="SPY",
+        )
+        assert config_with_benchmark.benchmark_symbol == "SPY"
+
 
 class TestBacktestResult:
     """Tests for BacktestResult dataclass."""
@@ -265,3 +288,77 @@ class TestBacktestResult:
         assert result.first_signal_bar == first_signal
         assert result.started_at == started_at
         assert result.completed_at == completed_at
+
+    def test_backtest_result_benchmark_field(self) -> None:
+        """BacktestResult has optional benchmark field."""
+        from src.backtest.benchmark import BenchmarkComparison
+
+        # Create a minimal BacktestResult
+        config = BacktestConfig(
+            strategy_class="test.Strategy",
+            strategy_params={},
+            symbol="AAPL",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+            initial_capital=Decimal("100000"),
+        )
+        now = datetime.now(timezone.utc)
+
+        # Without benchmark
+        result = BacktestResult(
+            config=config,
+            equity_curve=[],
+            trades=[],
+            final_equity=Decimal("100000"),
+            final_cash=Decimal("100000"),
+            final_position_qty=0,
+            total_return=Decimal("0"),
+            annualized_return=Decimal("0"),
+            sharpe_ratio=Decimal("0"),
+            max_drawdown=Decimal("0"),
+            win_rate=Decimal("0"),
+            total_trades=0,
+            avg_trade_pnl=Decimal("0"),
+            warm_up_required_bars=0,
+            warm_up_bars_used=0,
+            first_signal_bar=None,
+            started_at=now,
+            completed_at=now,
+        )
+        assert result.benchmark is None
+
+        # With benchmark
+        comparison = BenchmarkComparison(
+            benchmark_symbol="SPY",
+            benchmark_total_return=Decimal("0.10"),
+            alpha=Decimal("0.05"),
+            beta=Decimal("0.8"),
+            tracking_error=Decimal("0.02"),
+            information_ratio=Decimal("2.5"),
+            sortino_ratio=Decimal("1.8"),
+            up_capture=Decimal("1.1"),
+            down_capture=Decimal("0.9"),
+        )
+        result_with_benchmark = BacktestResult(
+            config=config,
+            equity_curve=[],
+            trades=[],
+            final_equity=Decimal("100000"),
+            final_cash=Decimal("100000"),
+            final_position_qty=0,
+            total_return=Decimal("0"),
+            annualized_return=Decimal("0"),
+            sharpe_ratio=Decimal("0"),
+            max_drawdown=Decimal("0"),
+            win_rate=Decimal("0"),
+            total_trades=0,
+            avg_trade_pnl=Decimal("0"),
+            warm_up_required_bars=0,
+            warm_up_bars_used=0,
+            first_signal_bar=None,
+            started_at=now,
+            completed_at=now,
+            benchmark=comparison,
+        )
+        assert result_with_benchmark.benchmark == comparison
+        assert result_with_benchmark.benchmark.benchmark_symbol == "SPY"

@@ -60,7 +60,7 @@ describe('BacktestPage', () => {
 
     render(<BacktestPage />, { wrapper: createWrapper() });
 
-    expect(screen.getByLabelText(/symbol/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^symbol$/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /run backtest/i })).toBeInTheDocument();
   });
 

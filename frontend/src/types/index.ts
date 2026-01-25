@@ -90,6 +90,19 @@ export interface BacktestRequest {
   initial_capital: string;
   slippage_bps?: number;
   commission_per_share?: string;
+  benchmark_symbol?: string;
+}
+
+export interface BenchmarkComparison {
+  benchmark_symbol: string;
+  benchmark_total_return: string;
+  alpha: string;
+  beta: string;
+  tracking_error: string;
+  information_ratio: string;
+  sortino_ratio: string;
+  up_capture: string;
+  down_capture: string;
 }
 
 export interface BacktestResult {
@@ -105,6 +118,7 @@ export interface BacktestResult {
   avg_trade_pnl: string;
   warm_up_required_bars: number;
   warm_up_bars_used: number;
+  benchmark: BenchmarkComparison | null;
 }
 
 export interface BacktestResponse {

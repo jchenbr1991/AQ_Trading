@@ -6,6 +6,8 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from src.backtest.bar_loader import BarLoader
+from src.backtest.benchmark import BenchmarkBuilder
+from src.backtest.benchmark_metrics import BenchmarkMetrics
 from src.backtest.fill_engine import SimulatedFillEngine
 from src.backtest.metrics import MetricsCalculator
 from src.backtest.models import BacktestConfig, BacktestResult, Bar
@@ -140,7 +142,23 @@ class BacktestEngine:
             initial_capital=config.initial_capital,
         )
 
-        # 7. Build and return result
+        # 7. Compute benchmark comparison if benchmark_symbol provided
+        benchmark = None
+        if config.benchmark_symbol:
+            benchmark_bars = await self._bar_loader.load(
+                config.benchmark_symbol,
+                config.start_date,
+                config.end_date,
+            )
+            if benchmark_bars:
+                benchmark_curve = BenchmarkBuilder.buy_and_hold(
+                    benchmark_bars, config.initial_capital
+                )
+                benchmark = BenchmarkMetrics.compute(
+                    equity_curve, benchmark_curve, config.benchmark_symbol
+                )
+
+        # 8. Build and return result
         return BacktestResult(
             config=config,
             equity_curve=equity_curve,
@@ -160,6 +178,7 @@ class BacktestEngine:
             first_signal_bar=first_signal_bar,
             started_at=started_at,
             completed_at=completed_at,
+            benchmark=benchmark,
         )
 
     def _create_strategy(self, config: BacktestConfig) -> Strategy:
