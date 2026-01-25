@@ -56,6 +56,7 @@ ignore = [
     "E501",   # line too long (handled by formatter)
     "S101",   # assert used (ok in tests)
     "B008",   # function call in default argument (FastAPI Depends)
+    "UP017",  # datetime.UTC requires Python 3.11+; keep timezone.utc for 3.10 compatibility
 ]
 
 [tool.ruff.lint.per-file-ignores]
