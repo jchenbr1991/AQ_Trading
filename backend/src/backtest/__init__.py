@@ -15,6 +15,14 @@ from src.backtest.math_utils import (
 from src.backtest.metrics import MetricsCalculator
 from src.backtest.models import BacktestConfig, BacktestResult, Bar, Trade
 from src.backtest.portfolio import BacktestPortfolio
+from src.backtest.trace import (
+    BarSnapshot,
+    JsonScalar,
+    PortfolioSnapshot,
+    SignalTrace,
+    StrategySnapshot,
+)
+from src.backtest.trace_builder import TraceBuilder
 
 __all__ = [
     "BacktestConfig",
@@ -35,4 +43,10 @@ __all__ = [
     "decimal_mean",
     "decimal_ols",
     "decimal_variance",
+    "BarSnapshot",
+    "PortfolioSnapshot",
+    "StrategySnapshot",
+    "SignalTrace",
+    "JsonScalar",
+    "TraceBuilder",
 ]
