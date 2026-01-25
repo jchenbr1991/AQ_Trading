@@ -63,3 +63,19 @@ export interface ReconciliationAlert {
 }
 
 export type FreshnessState = 'live' | 'stale' | 'error';
+
+export type HealthStatusValue = 'healthy' | 'degraded' | 'down' | 'unknown';
+
+export interface ComponentHealth {
+  component: string;
+  status: HealthStatusValue;
+  latency_ms: number | null;
+  last_check: string;
+  message: string | null;
+}
+
+export interface SystemHealth {
+  overall_status: HealthStatusValue;
+  components: ComponentHealth[];
+  checked_at: string;
+}
