@@ -8,6 +8,9 @@ from src.health.checkers import (
 from src.health.models import ComponentStatus, HealthStatus, SystemHealth
 from src.health.monitor import HealthMonitor
 
+# Note: init_health_monitor is intentionally not exported here to avoid
+# circular imports. Import directly from src.health.setup when needed.
+
 __all__ = [
     "ComponentStatus",
     "HealthChecker",
