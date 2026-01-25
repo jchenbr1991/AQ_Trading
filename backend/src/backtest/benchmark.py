@@ -1,7 +1,10 @@
 """Benchmark comparison metrics for backtest analysis."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
+
+from src.backtest.models import Bar
 
 
 @dataclass(frozen=True)
@@ -32,3 +35,31 @@ class BenchmarkComparison:
     sortino_ratio: Decimal
     up_capture: Decimal
     down_capture: Decimal
+
+
+class BenchmarkBuilder:
+    """Builder for constructing benchmark equity curves."""
+
+    @staticmethod
+    def buy_and_hold(
+        bars: list[Bar],
+        initial_capital: Decimal,
+    ) -> list[tuple[datetime, Decimal]]:
+        """Convert price bars to equity curve (buy & hold strategy).
+
+        Normalizes benchmark prices to start at initial_capital.
+        Uses bar.close for valuation (EOD, same as strategy equity).
+
+        Args:
+            bars: List of Bar objects representing price data.
+            initial_capital: Starting capital for normalization.
+
+        Returns:
+            List of (timestamp, equity) tuples sorted ascending.
+            Returns empty list if bars is empty.
+        """
+        if not bars:
+            return []
+
+        first_close = bars[0].close
+        return [(bar.timestamp, (bar.close / first_close) * initial_capital) for bar in bars]
