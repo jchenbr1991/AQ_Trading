@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { DashboardPage } from './pages/DashboardPage';
 import { HealthPage } from './pages/HealthPage';
+import { BacktestPage } from './pages/BacktestPage';
 
 function Navigation() {
   return (
@@ -13,6 +14,9 @@ function Navigation() {
             </Link>
             <Link to="/health" className="text-gray-300 hover:text-white">
               Health
+            </Link>
+            <Link to="/backtest" className="text-gray-300 hover:text-white">
+              Backtest
             </Link>
           </div>
         </div>
@@ -29,6 +33,7 @@ function App() {
         <Routes>
           <Route path="/" element={<DashboardPage />} />
           <Route path="/health" element={<HealthPage />} />
+          <Route path="/backtest" element={<BacktestPage />} />
         </Routes>
       </div>
     </BrowserRouter>

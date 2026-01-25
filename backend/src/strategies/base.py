@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal, TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from src.strategies.context import StrategyContext
@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 @dataclass
 class MarketData:
     """Real-time market data for a symbol."""
+
     symbol: str
     price: Decimal
     bid: Decimal
@@ -24,6 +25,7 @@ class MarketData:
 @dataclass
 class OrderFill:
     """Notification of an executed order."""
+
     order_id: str
     strategy_id: str
     symbol: str
@@ -42,6 +44,7 @@ class Strategy(ABC):
     They do not execute orders directly - Risk Manager validates
     and Order Manager executes.
     """
+
     name: str
     symbols: list[str]
 
@@ -61,7 +64,7 @@ class Strategy(ABC):
         """
         pass
 
-    async def on_fill(self, fill: "OrderFill") -> None:
+    async def on_fill(self, fill: "OrderFill") -> None:  # noqa: B027
         """
         Called when an order fills.
 
@@ -69,7 +72,7 @@ class Strategy(ABC):
         """
         pass
 
-    async def on_start(self) -> None:
+    async def on_start(self) -> None:  # noqa: B027
         """
         Called when strategy starts.
 
@@ -77,10 +80,22 @@ class Strategy(ABC):
         """
         pass
 
-    async def on_stop(self) -> None:
+    async def on_stop(self) -> None:  # noqa: B027
         """
         Called when strategy stops.
 
         Override for cleanup logic. Default does nothing.
         """
         pass
+
+    @property
+    def warmup_bars(self) -> int:
+        """Number of historical bars needed before generating valid signals.
+
+        Override this in subclasses based on indicator requirements.
+        Example: A 20-period moving average needs warmup_bars = 20.
+
+        Returns:
+            Number of bars. Default is 0 (no warm-up needed).
+        """
+        return 0

@@ -3,7 +3,7 @@ import logging
 from collections import defaultdict
 from decimal import Decimal
 
-from src.strategies.base import Strategy, MarketData, OrderFill
+from src.strategies.base import MarketData, OrderFill, Strategy
 from src.strategies.context import StrategyContext
 from src.strategies.signals import Signal
 
@@ -35,9 +35,7 @@ class MomentumStrategy(Strategy):
         self.position_size = position_size
         self._price_history: dict[str, list[Decimal]] = defaultdict(list)
 
-    async def on_market_data(
-        self, data: MarketData, context: StrategyContext
-    ) -> list[Signal]:
+    async def on_market_data(self, data: MarketData, context: StrategyContext) -> list[Signal]:
         signals = []
 
         # Update price history
@@ -60,29 +58,32 @@ class MomentumStrategy(Strategy):
 
         if not has_position and momentum > self.threshold:
             # No position, momentum up -> buy
-            signals.append(Signal(
-                strategy_id=self.name,
-                symbol=data.symbol,
-                action="buy",
-                quantity=self.position_size,
-                reason=f"Momentum {momentum:.2%} > {self.threshold:.2%}",
-            ))
+            signals.append(
+                Signal(
+                    strategy_id=self.name,
+                    symbol=data.symbol,
+                    action="buy",
+                    quantity=self.position_size,
+                    reason=f"Momentum {momentum:.2%} > {self.threshold:.2%}",
+                )
+            )
         elif has_position and momentum < -self.threshold:
             # Have position, momentum down -> sell
-            signals.append(Signal(
-                strategy_id=self.name,
-                symbol=data.symbol,
-                action="sell",
-                quantity=position.quantity,
-                reason=f"Momentum {momentum:.2%} < -{self.threshold:.2%}",
-            ))
+            signals.append(
+                Signal(
+                    strategy_id=self.name,
+                    symbol=data.symbol,
+                    action="sell",
+                    quantity=position.quantity,
+                    reason=f"Momentum {momentum:.2%} < -{self.threshold:.2%}",
+                )
+            )
 
         return signals
 
     async def on_fill(self, fill: OrderFill) -> None:
         logger.info(
-            f"[{self.name}] Fill: {fill.action} {fill.quantity} "
-            f"{fill.symbol} @ {fill.price}"
+            f"[{self.name}] Fill: {fill.action} {fill.quantity} " f"{fill.symbol} @ {fill.price}"
         )
 
     async def on_start(self) -> None:
@@ -91,3 +92,8 @@ class MomentumStrategy(Strategy):
 
     async def on_stop(self) -> None:
         logger.info(f"[{self.name}] Stopping")
+
+    @property
+    def warmup_bars(self) -> int:
+        """Momentum needs lookback_period bars to calculate."""
+        return self.lookback_period
