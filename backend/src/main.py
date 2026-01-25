@@ -10,6 +10,7 @@ from src.api.portfolio import router as portfolio_mock_router
 from src.api.reconciliation import router as reconciliation_router
 from src.api.risk import router as risk_router
 from src.api.routes import portfolio_router
+from src.api.storage import router as storage_router
 from src.health.setup import init_health_monitor
 
 
@@ -32,6 +33,7 @@ app.include_router(reconciliation_router)
 app.include_router(orders_router)
 app.include_router(health_router)
 app.include_router(backtest_router)
+app.include_router(storage_router)
 
 
 @app.get("/health")
