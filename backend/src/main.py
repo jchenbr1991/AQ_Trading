@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from src.api.alerts import router as alerts_router
 from src.api.backtest import router as backtest_router
 from src.api.health import router as health_router
 from src.api.orders import router as orders_router
@@ -34,6 +35,7 @@ app.include_router(orders_router)
 app.include_router(health_router)
 app.include_router(backtest_router)
 app.include_router(storage_router)
+app.include_router(alerts_router)
 
 
 @app.get("/health")
