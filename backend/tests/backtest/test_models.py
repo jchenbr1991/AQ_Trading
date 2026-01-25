@@ -362,3 +362,122 @@ class TestBacktestResult:
         )
         assert result_with_benchmark.benchmark == comparison
         assert result_with_benchmark.benchmark.benchmark_symbol == "SPY"
+
+    def test_backtest_result_traces_field(self) -> None:
+        """BacktestResult has traces field with default empty list."""
+        from src.backtest.trace import (
+            BarSnapshot,
+            PortfolioSnapshot,
+            SignalTrace,
+            StrategySnapshot,
+        )
+
+        # Create a minimal BacktestResult without traces
+        config = BacktestConfig(
+            strategy_class="test.Strategy",
+            strategy_params={},
+            symbol="AAPL",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+            initial_capital=Decimal("100000"),
+        )
+        now = datetime.now(timezone.utc)
+
+        result = BacktestResult(
+            config=config,
+            equity_curve=[],
+            trades=[],
+            final_equity=Decimal("100000"),
+            final_cash=Decimal("100000"),
+            final_position_qty=0,
+            total_return=Decimal("0"),
+            annualized_return=Decimal("0"),
+            sharpe_ratio=Decimal("0"),
+            max_drawdown=Decimal("0"),
+            win_rate=Decimal("0"),
+            total_trades=0,
+            avg_trade_pnl=Decimal("0"),
+            warm_up_required_bars=0,
+            warm_up_bars_used=0,
+            first_signal_bar=None,
+            started_at=now,
+            completed_at=now,
+        )
+        # Default should be empty list
+        assert result.traces == []
+
+        # Can also create with traces
+        signal_bar = BarSnapshot(
+            symbol="AAPL",
+            timestamp=datetime(2024, 1, 15, 16, 0, 0, tzinfo=timezone.utc),
+            open=Decimal("185.00"),
+            high=Decimal("187.00"),
+            low=Decimal("184.00"),
+            close=Decimal("186.00"),
+            volume=50_000_000,
+        )
+        fill_bar = BarSnapshot(
+            symbol="AAPL",
+            timestamp=datetime(2024, 1, 16, 16, 0, 0, tzinfo=timezone.utc),
+            open=Decimal("186.50"),
+            high=Decimal("188.00"),
+            low=Decimal("185.50"),
+            close=Decimal("187.00"),
+            volume=45_000_000,
+        )
+        portfolio_state = PortfolioSnapshot(
+            cash=Decimal("100000"),
+            position_qty=0,
+            position_avg_cost=None,
+            equity=Decimal("100000"),
+        )
+        strategy_snapshot = StrategySnapshot(
+            strategy_class="test.Strategy",
+            params={"param1": 10},
+            state={"indicator": 0.5},
+        )
+        trace = SignalTrace(
+            trace_id="trace-001",
+            signal_timestamp=datetime(2024, 1, 15, 16, 0, 0, tzinfo=timezone.utc),
+            symbol="AAPL",
+            signal_direction="buy",
+            signal_quantity=100,
+            signal_reason="Test signal",
+            signal_bar=signal_bar,
+            portfolio_state=portfolio_state,
+            strategy_snapshot=strategy_snapshot,
+            fill_bar=fill_bar,
+            fill_timestamp=datetime(2024, 1, 16, 9, 30, 0, tzinfo=timezone.utc),
+            fill_quantity=100,
+            fill_price=Decimal("186.55"),
+            expected_price=Decimal("186.50"),
+            expected_price_type="next_bar_open",
+            slippage=Decimal("0.05"),
+            slippage_bps=Decimal("2.68"),
+            commission=Decimal("0.50"),
+        )
+
+        result_with_traces = BacktestResult(
+            config=config,
+            equity_curve=[],
+            trades=[],
+            final_equity=Decimal("100000"),
+            final_cash=Decimal("100000"),
+            final_position_qty=0,
+            total_return=Decimal("0"),
+            annualized_return=Decimal("0"),
+            sharpe_ratio=Decimal("0"),
+            max_drawdown=Decimal("0"),
+            win_rate=Decimal("0"),
+            total_trades=0,
+            avg_trade_pnl=Decimal("0"),
+            warm_up_required_bars=0,
+            warm_up_bars_used=0,
+            first_signal_bar=None,
+            started_at=now,
+            completed_at=now,
+            traces=[trace],
+        )
+        assert len(result_with_traces.traces) == 1
+        assert result_with_traces.traces[0] == trace
+        assert result_with_traces.traces[0].trace_id == "trace-001"
