@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { DashboardPage } from './pages/DashboardPage';
 import { HealthPage } from './pages/HealthPage';
 import { BacktestPage } from './pages/BacktestPage';
+import { StoragePage } from './pages/StoragePage';
 
 function Navigation() {
   return (
@@ -17,6 +18,9 @@ function Navigation() {
             </Link>
             <Link to="/backtest" className="text-gray-300 hover:text-white">
               Backtest
+            </Link>
+            <Link to="/storage" className="text-gray-300 hover:text-white">
+              Storage
             </Link>
           </div>
         </div>
@@ -34,6 +38,7 @@ function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/health" element={<HealthPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
+          <Route path="/storage" element={<StoragePage />} />
         </Routes>
       </div>
     </BrowserRouter>
