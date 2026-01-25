@@ -1,9 +1,14 @@
 """Backtest data models."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from src.backtest.benchmark import BenchmarkComparison
 
 
 @dataclass(frozen=True)
@@ -140,6 +145,7 @@ class BacktestResult:
         first_signal_bar: Timestamp of bar that generated first signal, if any.
         started_at: When the backtest computation started.
         completed_at: When the backtest computation completed.
+        benchmark: Optional BenchmarkComparison when benchmark comparison was computed.
     """
 
     config: BacktestConfig
@@ -160,3 +166,4 @@ class BacktestResult:
     first_signal_bar: datetime | None
     started_at: datetime
     completed_at: datetime
+    benchmark: BenchmarkComparison | None = None
