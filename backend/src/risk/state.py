@@ -5,7 +5,7 @@ between RUNNING, PAUSED, and HALTED states.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 
@@ -17,7 +17,7 @@ class StateValue(str, Enum):
     HALTED = "HALTED"
 
 
-@dataclass
+@dataclass(frozen=True)
 class TradingState:
     """Represents the current trading state.
 
@@ -56,7 +56,7 @@ class TradingStateManager:
         """Initialize manager in RUNNING state."""
         self._state = TradingState(
             state=StateValue.RUNNING,
-            since=datetime.now(),
+            since=datetime.now(tz=timezone.utc),
             changed_by="system",
             reason=None,
             can_resume=True,
@@ -82,7 +82,7 @@ class TradingStateManager:
         """
         self._state = TradingState(
             state=StateValue.HALTED,
-            since=datetime.now(),
+            since=datetime.now(tz=timezone.utc),
             changed_by=changed_by,
             reason=reason,
             can_resume=False,
@@ -100,7 +100,7 @@ class TradingStateManager:
         """
         self._state = TradingState(
             state=StateValue.PAUSED,
-            since=datetime.now(),
+            since=datetime.now(tz=timezone.utc),
             changed_by=changed_by,
             reason=reason,
             can_resume=True,
@@ -141,7 +141,7 @@ class TradingStateManager:
 
         self._state = TradingState(
             state=StateValue.RUNNING,
-            since=datetime.now(),
+            since=datetime.now(tz=timezone.utc),
             changed_by=changed_by,
             reason=None,
             can_resume=True,

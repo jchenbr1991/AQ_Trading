@@ -1,6 +1,6 @@
 """Tests for TradingStateManager with state machine semantics."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.risk.state import StateValue, TradingState, TradingStateManager
 
@@ -81,9 +81,9 @@ class TestTradingStateManagerInitialState:
 
     def test_initial_state_has_since_timestamp(self):
         """Initial state has a since timestamp."""
-        before = datetime.now()
+        before = datetime.now(tz=timezone.utc)
         manager = TradingStateManager()
-        after = datetime.now()
+        after = datetime.now(tz=timezone.utc)
         state = manager.get_state()
 
         assert before <= state.since <= after
