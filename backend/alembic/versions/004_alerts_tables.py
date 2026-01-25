@@ -41,6 +41,10 @@ def upgrade() -> None:
             "octet_length(details::text) <= 8192",
             name="ck_alerts_details_size",
         ),
+        sa.CheckConstraint(
+            "suppressed_count >= 0",
+            name="ck_alerts_suppressed_count_non_negative",
+        ),
     )
 
     # Create indexes for alerts table
