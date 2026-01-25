@@ -1,6 +1,7 @@
 # backend/src/main.py
 from fastapi import FastAPI
 
+from src.api.orders import router as orders_router
 from src.api.portfolio import router as portfolio_mock_router
 from src.api.reconciliation import router as reconciliation_router
 from src.api.risk import router as risk_router
@@ -13,6 +14,7 @@ app.include_router(portfolio_router, prefix="/api")
 app.include_router(portfolio_mock_router)  # Phase 1 mock data endpoints
 app.include_router(risk_router)
 app.include_router(reconciliation_router)
+app.include_router(orders_router)
 
 
 @app.get("/health")
