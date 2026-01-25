@@ -21,7 +21,7 @@ export function BacktestForm({ onSubmit, isLoading }: BacktestFormProps) {
     e.preventDefault();
 
     const request: BacktestRequest = {
-      strategy_class: 'MeanReversionStrategy',
+      strategy_class: 'src.strategies.examples.momentum.MomentumStrategy',
       strategy_params: {
         lookback_period: parseInt(lookbackPeriod, 10),
         threshold: parseFloat(threshold),

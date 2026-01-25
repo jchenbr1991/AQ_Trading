@@ -53,7 +53,7 @@ describe('BacktestForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /run backtest/i }));
 
     expect(mockOnSubmit).toHaveBeenCalledWith({
-      strategy_class: 'MeanReversionStrategy',
+      strategy_class: 'src.strategies.examples.momentum.MomentumStrategy',
       strategy_params: {
         lookback_period: 30,
         threshold: 1.5,
