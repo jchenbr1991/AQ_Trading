@@ -201,3 +201,77 @@ class TestBacktestEngine:
                 f"Trade at {trade.timestamp} should be after signal at "
                 f"{trade.signal_bar_timestamp} (no lookahead bias)"
             )
+
+    @pytest.mark.asyncio
+    async def test_engine_with_benchmark(self, tmp_path) -> None:
+        """Engine computes benchmark comparison when benchmark_symbol provided."""
+        # Include warmup bar on 2024-01-01 and backtest bars from 2024-01-02
+        csv_content = """timestamp,symbol,open,high,low,close,volume
+2024-01-01T21:00:00+00:00,AAPL,99.00,100.00,98.00,99.00,1000000
+2024-01-02T21:00:00+00:00,AAPL,100.00,102.00,99.00,100.00,1000000
+2024-01-03T21:00:00+00:00,AAPL,100.00,110.00,100.00,110.00,1000000
+2024-01-04T21:00:00+00:00,AAPL,110.00,120.00,110.00,121.00,1000000
+2024-01-01T21:00:00+00:00,SPY,390.00,395.00,388.00,390.00,5000000
+2024-01-02T21:00:00+00:00,SPY,400.00,405.00,398.00,400.00,5000000
+2024-01-03T21:00:00+00:00,SPY,400.00,410.00,400.00,420.00,5000000
+2024-01-04T21:00:00+00:00,SPY,420.00,430.00,420.00,440.00,5000000
+"""
+        csv_file = tmp_path / "bars.csv"
+        csv_file.write_text(csv_content)
+
+        config = BacktestConfig(
+            strategy_class="src.strategies.examples.momentum.MomentumStrategy",
+            strategy_params={
+                "name": "momentum",
+                "symbols": ["AAPL"],
+                "lookback_period": 1,
+                "threshold": 0.5,
+                "position_size": 10,
+            },
+            symbol="AAPL",
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 5),
+            initial_capital=Decimal("10000"),
+            benchmark_symbol="SPY",
+        )
+
+        loader = CSVBarLoader(csv_file)
+        engine = BacktestEngine(loader)
+        result = await engine.run(config)
+
+        assert result.benchmark is not None
+        assert result.benchmark.benchmark_symbol == "SPY"
+        assert result.benchmark.beta is not None
+
+    @pytest.mark.asyncio
+    async def test_engine_without_benchmark(self, tmp_path) -> None:
+        """Engine returns benchmark=None when no benchmark_symbol."""
+        # Include warmup bar on 2024-01-01 and backtest bars from 2024-01-02
+        csv_content = """timestamp,symbol,open,high,low,close,volume
+2024-01-01T21:00:00+00:00,AAPL,99.00,100.00,98.00,99.00,1000000
+2024-01-02T21:00:00+00:00,AAPL,100.00,102.00,99.00,100.00,1000000
+2024-01-03T21:00:00+00:00,AAPL,100.00,110.00,100.00,110.00,1000000
+"""
+        csv_file = tmp_path / "bars.csv"
+        csv_file.write_text(csv_content)
+
+        config = BacktestConfig(
+            strategy_class="src.strategies.examples.momentum.MomentumStrategy",
+            strategy_params={
+                "name": "momentum",
+                "symbols": ["AAPL"],
+                "lookback_period": 1,
+                "threshold": 0.5,
+                "position_size": 10,
+            },
+            symbol="AAPL",
+            start_date=date(2024, 1, 2),
+            end_date=date(2024, 1, 5),
+            initial_capital=Decimal("10000"),
+        )
+
+        loader = CSVBarLoader(csv_file)
+        engine = BacktestEngine(loader)
+        result = await engine.run(config)
+
+        assert result.benchmark is None
