@@ -1,17 +1,24 @@
 """Tests for alert models."""
 
+import json
 from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
 from src.alerts.models import (
+    MAX_DETAILS_BYTES,
+    MAX_KEYS,
+    MAX_STRING_VALUE_LENGTH,
     RECOVERY_TYPES,
     AlertEvent,
     AlertType,
     EntityRef,
     JsonScalar,
     Severity,
+    sanitize_details,
+    to_json_safe,
 )
 
 
@@ -235,3 +242,243 @@ class TestAlertEvent:
             details={},
         )
         assert isinstance(event.alert_id, UUID)
+
+
+class TestConstants:
+    """Tests for serialization constants."""
+
+    def test_max_details_bytes(self):
+        assert MAX_DETAILS_BYTES == 8192
+
+    def test_max_string_value_length(self):
+        assert MAX_STRING_VALUE_LENGTH == 512
+
+    def test_max_keys(self):
+        assert MAX_KEYS == 20
+
+
+class TestToJsonSafe:
+    """Tests for to_json_safe function."""
+
+    def test_string_passthrough(self):
+        """Strings should pass through unchanged."""
+        assert to_json_safe("hello") == "hello"
+        assert to_json_safe("") == ""
+
+    def test_int_passthrough(self):
+        """Integers should pass through unchanged."""
+        assert to_json_safe(42) == 42
+        assert to_json_safe(0) == 0
+        assert to_json_safe(-100) == -100
+
+    def test_float_passthrough(self):
+        """Floats should pass through unchanged."""
+        assert to_json_safe(3.14) == 3.14
+        assert to_json_safe(0.0) == 0.0
+        assert to_json_safe(-2.5) == -2.5
+
+    def test_bool_passthrough(self):
+        """Booleans should pass through unchanged."""
+        assert to_json_safe(True) is True
+        assert to_json_safe(False) is False
+
+    def test_none_passthrough(self):
+        """None should pass through unchanged."""
+        assert to_json_safe(None) is None
+
+    def test_decimal_to_string(self):
+        """Decimal should be converted to string."""
+        result = to_json_safe(Decimal("123.45"))
+        assert result == "123.45"
+        assert isinstance(result, str)
+
+    def test_decimal_preserves_precision(self):
+        """Decimal conversion should preserve precision."""
+        assert to_json_safe(Decimal("0.00001")) == "0.00001"
+        assert to_json_safe(Decimal("1000000.99")) == "1000000.99"
+
+    def test_datetime_to_iso8601(self):
+        """Datetime should be converted to ISO 8601 string."""
+        dt = datetime(2026, 1, 25, 12, 0, 0, tzinfo=timezone.utc)
+        result = to_json_safe(dt)
+        assert result == "2026-01-25T12:00:00+00:00"
+        assert isinstance(result, str)
+
+    def test_datetime_with_microseconds(self):
+        """Datetime with microseconds should preserve them."""
+        dt = datetime(2026, 1, 25, 12, 30, 45, 123456, tzinfo=timezone.utc)
+        result = to_json_safe(dt)
+        assert "2026-01-25T12:30:45.123456" in result
+
+    def test_uuid_to_string(self):
+        """UUID should be converted to string."""
+        test_uuid = UUID("12345678-1234-5678-1234-567812345678")
+        result = to_json_safe(test_uuid)
+        assert result == "12345678-1234-5678-1234-567812345678"
+        assert isinstance(result, str)
+
+    def test_exception_to_string(self):
+        """Exception should be converted to 'TypeName: message' format."""
+        exc = ValueError("test error")
+        result = to_json_safe(exc)
+        assert result == "ValueError: test error"
+        assert isinstance(result, str)
+
+    def test_exception_with_empty_message(self):
+        """Exception with empty message should still format correctly."""
+        exc = ValueError()
+        result = to_json_safe(exc)
+        assert result == "ValueError: "
+
+    def test_custom_exception(self):
+        """Custom exceptions should use their class name."""
+
+        class CustomError(Exception):
+            pass
+
+        exc = CustomError("custom message")
+        result = to_json_safe(exc)
+        assert result == "CustomError: custom message"
+
+    def test_unknown_type_uses_str(self):
+        """Unknown types should be converted using str()."""
+
+        class CustomObject:
+            def __str__(self):
+                return "custom_repr"
+
+        result = to_json_safe(CustomObject())
+        assert result == "custom_repr"
+        assert isinstance(result, str)
+
+    def test_list_uses_str(self):
+        """Lists should be converted to string representation."""
+        result = to_json_safe([1, 2, 3])
+        assert result == "[1, 2, 3]"
+
+    def test_dict_uses_str(self):
+        """Dicts should be converted to string representation."""
+        result = to_json_safe({"a": 1})
+        assert isinstance(result, str)
+
+
+class TestSanitizeDetails:
+    """Tests for sanitize_details function."""
+
+    def test_small_dict_passthrough(self):
+        """Small dict with valid values should pass through with conversion."""
+        details = {
+            "string": "hello",
+            "int": 42,
+            "float": 3.14,
+            "bool": True,
+            "none": None,
+        }
+        result = sanitize_details(details)
+        assert result == {
+            "string": "hello",
+            "int": 42,
+            "float": 3.14,
+            "bool": True,
+            "none": None,
+        }
+
+    def test_converts_decimal(self):
+        """Decimal values should be converted to strings."""
+        details = {"price": Decimal("123.45")}
+        result = sanitize_details(details)
+        assert result == {"price": "123.45"}
+
+    def test_converts_datetime(self):
+        """Datetime values should be converted to ISO strings."""
+        dt = datetime(2026, 1, 25, 12, 0, 0, tzinfo=timezone.utc)
+        details = {"timestamp": dt}
+        result = sanitize_details(details)
+        assert result == {"timestamp": "2026-01-25T12:00:00+00:00"}
+
+    def test_converts_uuid(self):
+        """UUID values should be converted to strings."""
+        test_uuid = UUID("12345678-1234-5678-1234-567812345678")
+        details = {"id": test_uuid}
+        result = sanitize_details(details)
+        assert result == {"id": "12345678-1234-5678-1234-567812345678"}
+
+    def test_converts_exception(self):
+        """Exception values should be converted to strings."""
+        details = {"error": ValueError("test error")}
+        result = sanitize_details(details)
+        assert result == {"error": "ValueError: test error"}
+
+    def test_truncates_large_dict_by_keys(self):
+        """Dict with many keys should be truncated to MAX_KEYS when exceeding size."""
+        # Create a dict with 100 keys and longer values to exceed 8192 bytes
+        details = {f"key_{i:04d}": f"value_{i}" * 20 for i in range(100)}
+        result = sanitize_details(details)
+
+        # Should have MAX_KEYS + 1 (for _truncated)
+        assert len(result) == MAX_KEYS + 1
+        assert result["_truncated"] is True
+
+    def test_truncates_long_string_values(self):
+        """Long string values should be truncated."""
+        # Create a dict with very long string values that exceeds size
+        long_value = "x" * 2000
+        details = {f"key_{i}": long_value for i in range(10)}
+        result = sanitize_details(details)
+
+        # Values should be truncated
+        for key, value in result.items():
+            if key.startswith("key_") and isinstance(value, str):
+                assert len(value) <= MAX_STRING_VALUE_LENGTH + len("...[truncated]")
+                if len(long_value) > MAX_STRING_VALUE_LENGTH:
+                    assert value.endswith("...[truncated]")
+
+    def test_string_truncation_format(self):
+        """Truncated strings should end with ...[truncated]."""
+        # Create content that exceeds max size but won't trigger fallback
+        # After key truncation, string truncation should kick in
+        long_value = "a" * 1000
+        details = {f"key_{i}": long_value for i in range(5)}
+        # Use a max_size that's small enough to trigger string truncation
+        # but large enough to not hit the final fallback
+        result = sanitize_details(details, max_size=4000)
+
+        # Check at least some values were truncated
+        truncated_values = [
+            v for v in result.values() if isinstance(v, str) and v.endswith("...[truncated]")
+        ]
+        assert len(truncated_values) > 0
+
+    def test_fallback_for_extremely_large(self):
+        """Extremely large dicts should return fallback error dict."""
+        # Create something that's still too large after all truncation
+        # This is a bit contrived but tests the fallback
+        huge_details = {f"key_{i:05d}": "x" * 1000 for i in range(1000)}
+        result = sanitize_details(huge_details, max_size=100)
+
+        assert result == {"_truncated": True, "_error": "details too large"}
+
+    def test_result_is_json_serializable(self):
+        """Result should always be JSON serializable."""
+        details = {
+            "decimal": Decimal("123.45"),
+            "datetime": datetime.now(tz=timezone.utc),
+            "uuid": uuid4(),
+            "error": ValueError("test"),
+            "nested": {"a": 1},  # Will be stringified
+        }
+        result = sanitize_details(details)
+        # Should not raise
+        json.dumps(result)
+
+    def test_empty_dict(self):
+        """Empty dict should return empty dict."""
+        result = sanitize_details({})
+        assert result == {}
+
+    def test_custom_max_size(self):
+        """Custom max_size should be respected."""
+        details = {"key": "value" * 100}
+        result = sanitize_details(details, max_size=50)
+        # Should trigger truncation due to small max_size
+        assert "_truncated" in result or len(json.dumps(result).encode()) <= 50

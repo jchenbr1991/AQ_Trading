@@ -5,15 +5,27 @@ This module defines the core data structures for the alert system:
 - Severity: Alert severity levels (SEV1=Critical, SEV2=Warning, SEV3=Info)
 - EntityRef: Reference to trading entities (account, symbol, strategy, run)
 - AlertEvent: Immutable event representing an alert occurrence
+
+JSON serialization utilities:
+- to_json_safe: Convert any value to a JSON-serializable scalar
+- sanitize_details: Sanitize and size-limit a details dictionary
 """
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum
+from typing import Any
 from uuid import UUID
 
 # Type alias for JSON-serializable scalar values
 JsonScalar = str | int | float | bool | None
+
+# Serialization constants
+MAX_DETAILS_BYTES = 8192
+MAX_STRING_VALUE_LENGTH = 512
+MAX_KEYS = 20
 
 
 class AlertType(str, Enum):
@@ -112,3 +124,106 @@ class AlertEvent:
     entity_ref: EntityRef | None
     summary: str
     details: dict[str, JsonScalar] = field(default_factory=dict)
+
+
+def to_json_safe(obj: Any) -> JsonScalar:
+    """Convert any value to a JSON-serializable scalar.
+
+    Conversion rules:
+    - Primitives (str, int, float, bool, None) pass through unchanged
+    - Decimal -> str (preserves precision)
+    - datetime -> ISO 8601 string
+    - UUID -> str
+    - Exception -> "TypeName: message"
+    - Anything else -> str(obj)
+
+    Args:
+        obj: Any Python object to convert
+
+    Returns:
+        A JSON-serializable scalar value (str, int, float, bool, or None)
+    """
+    # Primitives pass through unchanged
+    if obj is None or isinstance(obj, str | int | float | bool):
+        return obj
+
+    # Decimal -> str
+    if isinstance(obj, Decimal):
+        return str(obj)
+
+    # datetime -> ISO 8601
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+
+    # UUID -> str
+    if isinstance(obj, UUID):
+        return str(obj)
+
+    # Exception -> "TypeName: message"
+    if isinstance(obj, Exception):
+        return f"{type(obj).__name__}: {obj}"
+
+    # Fallback: str(obj)
+    return str(obj)
+
+
+def _check_size(obj: dict[str, Any]) -> int:
+    """Return the JSON-encoded size of a dictionary in bytes.
+
+    Args:
+        obj: Dictionary to measure
+
+    Returns:
+        Size in bytes when JSON encoded
+    """
+    return len(json.dumps(obj).encode("utf-8"))
+
+
+def sanitize_details(
+    details: dict[str, Any], max_size: int = MAX_DETAILS_BYTES
+) -> dict[str, JsonScalar]:
+    """Sanitize and size-limit a details dictionary.
+
+    Converts all values using to_json_safe and enforces size limits:
+    1. If JSON size > max_size: truncate to MAX_KEYS keys and add "_truncated": True
+    2. If still too large: truncate each string value to MAX_STRING_VALUE_LENGTH chars
+    3. Final fallback: return {"_truncated": True, "_error": "details too large"}
+
+    Args:
+        details: Dictionary with arbitrary values
+        max_size: Maximum allowed size in bytes (default: MAX_DETAILS_BYTES)
+
+    Returns:
+        Sanitized dictionary with JSON-serializable scalar values
+    """
+    if not details:
+        return {}
+
+    # Step 1: Convert all values using to_json_safe
+    result: dict[str, JsonScalar] = {k: to_json_safe(v) for k, v in details.items()}
+
+    # Check if within size limit
+    if _check_size(result) <= max_size:
+        return result
+
+    # Step 2: Truncate to first MAX_KEYS keys
+    keys = list(result.keys())[:MAX_KEYS]
+    result = {k: result[k] for k in keys}
+    result["_truncated"] = True
+
+    # Check if within size limit
+    if _check_size(result) <= max_size:
+        return result
+
+    # Step 3: Truncate long string values
+    for key in list(result.keys()):
+        value = result[key]
+        if isinstance(value, str) and len(value) > MAX_STRING_VALUE_LENGTH:
+            result[key] = value[:MAX_STRING_VALUE_LENGTH] + "...[truncated]"
+
+    # Check if within size limit
+    if _check_size(result) <= max_size:
+        return result
+
+    # Final fallback: return error dict
+    return {"_truncated": True, "_error": "details too large"}
