@@ -29,6 +29,7 @@ describe('BacktestResults', () => {
     avg_trade_pnl: '250.00',
     warm_up_required_bars: 20,
     warm_up_bars_used: 20,
+    benchmark: null,
   };
 
   it('renders total return prominently', () => {
