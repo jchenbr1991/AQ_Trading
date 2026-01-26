@@ -4,6 +4,14 @@ This module provides the core infrastructure for graceful degradation,
 including system modes, events, the event bus, and the trading gate.
 """
 
+from src.degradation.breakers import (
+    BreakerState,
+    BrokerBreaker,
+    CircuitBreaker,
+    DBBreaker,
+    MarketDataBreaker,
+    RiskBreaker,
+)
 from src.degradation.config import (
     DegradationConfig,
     get_config,
@@ -72,4 +80,11 @@ __all__ = [
     # State service
     "DECISION_MATRIX",
     "SystemStateService",
+    # Circuit breakers
+    "BreakerState",
+    "CircuitBreaker",
+    "BrokerBreaker",
+    "MarketDataBreaker",
+    "RiskBreaker",
+    "DBBreaker",
 ]
