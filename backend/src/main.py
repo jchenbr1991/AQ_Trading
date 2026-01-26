@@ -20,8 +20,10 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events."""
     # Startup
     init_health_monitor()
+    # Note: AlertService is initialized per-request or with background session
+    # Use get_alert_service() from src.alerts.setup after initialization
     yield
-    # Shutdown (nothing to clean up currently)
+    # Shutdown
 
 
 app = FastAPI(title="AQ Trading", version="0.1.0", lifespan=lifespan)
