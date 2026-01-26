@@ -243,3 +243,88 @@ export interface StorageStats {
   tables: TableStats[];
   compression: Record<string, CompressionStats>;
 }
+
+// Audit types
+export type AuditEventType =
+  | 'order_placed'
+  | 'order_acknowledged'
+  | 'order_filled'
+  | 'order_cancelled'
+  | 'order_rejected'
+  | 'config_created'
+  | 'config_updated'
+  | 'config_deleted'
+  | 'alert_emitted'
+  | 'alert_acknowledged'
+  | 'alert_resolved'
+  | 'system_started'
+  | 'system_stopped'
+  | 'health_changed'
+  | 'auth_login'
+  | 'auth_logout'
+  | 'auth_failed'
+  | 'permission_changed';
+
+export type ActorType = 'user' | 'system' | 'api' | 'scheduler';
+
+export type AuditSeverity = 'info' | 'warning' | 'critical';
+
+export type ResourceType =
+  | 'order'
+  | 'position'
+  | 'config'
+  | 'alert'
+  | 'strategy'
+  | 'account'
+  | 'permission'
+  | 'session';
+
+export type EventSource = 'web' | 'api' | 'worker' | 'scheduler' | 'system' | 'cli';
+
+export type ValueMode = 'diff' | 'snapshot' | 'reference';
+
+export interface AuditLog {
+  event_id: string;
+  sequence_id: number;
+  timestamp: string;
+  event_type: AuditEventType;
+  severity: AuditSeverity;
+  actor_id: string;
+  actor_type: ActorType;
+  resource_type: ResourceType;
+  resource_id: string;
+  request_id: string;
+  source: EventSource;
+  environment: string;
+  service: string;
+  version: string;
+  correlation_id: string | null;
+  value_mode: ValueMode;
+  old_value: Record<string, unknown> | null;
+  new_value: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  checksum: string;
+  prev_checksum: string | null;
+  chain_key: string;
+}
+
+export interface AuditLogListResponse {
+  logs: AuditLog[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface AuditStats {
+  total: number;
+  by_event_type: Record<string, number>;
+  by_actor: Record<string, number>;
+  by_resource_type: Record<string, number>;
+}
+
+export interface ChainIntegrity {
+  chain_key: string;
+  is_valid: boolean;
+  errors: string[];
+  events_verified: number;
+}
