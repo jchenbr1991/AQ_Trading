@@ -179,6 +179,48 @@ export interface EquityCurvePoint {
   equity: number;
 }
 
+// Alert types
+export type AlertSeverity = 1 | 2 | 3;
+
+export interface Alert {
+  id: string;
+  type: string;
+  severity: AlertSeverity;
+  summary: string;
+  fingerprint: string;
+  suppressed_count: number;
+  event_timestamp: string;
+  created_at: string;
+  entity_account_id: string | null;
+  entity_symbol: string | null;
+}
+
+export interface AlertListResponse {
+  alerts: Alert[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface AlertDelivery {
+  id: string;
+  channel: string;
+  destination_key: string;
+  attempt_number: number;
+  status: 'pending' | 'sent' | 'failed';
+  response_code: number | null;
+  error_message: string | null;
+  created_at: string;
+  sent_at: string | null;
+}
+
+export interface AlertStats {
+  total_24h: number;
+  by_severity: Record<string, number>;
+  by_type: Record<string, number>;
+  delivery_success_rate: number;
+}
+
 // Storage monitoring types
 export interface TableStats {
   table_name: string;
