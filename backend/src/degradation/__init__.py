@@ -1,13 +1,17 @@
 """Graceful degradation module for AQ Trading.
 
 This module provides the core infrastructure for graceful degradation,
-including system modes, events, and the trading gate.
+including system modes, events, the event bus, and the trading gate.
 """
 
 from src.degradation.config import (
     DegradationConfig,
     get_config,
     set_config,
+)
+from src.degradation.event_bus import (
+    EventBus,
+    EventHandler,
 )
 from src.degradation.models import (
     MODE_PRIORITY,
@@ -46,6 +50,10 @@ __all__ = [
     "ModeTransition",
     "ComponentStatus",
     "DegradationConfig",
+    # Classes
+    "EventBus",
+    # Protocols
+    "EventHandler",
     # Factory functions
     "create_event",
     # Config functions
