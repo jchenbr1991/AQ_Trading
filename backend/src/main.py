@@ -23,6 +23,9 @@ async def lifespan(app: FastAPI):
     init_health_monitor()
     # Note: AlertService is initialized per-request or with background session
     # Use get_alert_service() from src.alerts.setup after initialization
+    # Note: AuditService is initialized per-request via dependency injection
+    # Use init_audit_service() from src.audit.setup with a database session
+    # Then use get_audit_service() anywhere in the app to access the instance
     yield
     # Shutdown
 
