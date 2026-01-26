@@ -52,7 +52,7 @@ export function SystemPage() {
                 run_id: 'current',
                 current_stage: status.stage,
                 stages_completed: [],
-                started_at: status.since,
+                started_at: new Date().toISOString(),
                 is_complete: false,
               }}
             />
@@ -64,12 +64,17 @@ export function SystemPage() {
           <div className="bg-white rounded-lg shadow p-4">
             <h2 className="text-lg font-medium text-gray-900 mb-4">Trading Permissions</h2>
             <div className="space-y-2">
-              {Object.entries(permissions.permissions).map(([action, allowed]) => (
+              {Object.entries(permissions.permissions).map(([action, permission]) => (
                 <div key={action} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
                   <span className="text-sm text-gray-700 capitalize">{action.replace(/_/g, ' ')}</span>
-                  <span className={`text-sm font-medium ${allowed ? 'text-green-600' : 'text-red-600'}`}>
-                    {allowed ? 'Allowed' : 'Denied'}
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    {permission.warning && (
+                      <span className="text-xs text-yellow-600">{permission.warning}</span>
+                    )}
+                    <span className={`text-sm font-medium ${permission.allowed ? 'text-green-600' : 'text-red-600'}`}>
+                      {permission.allowed ? 'Allowed' : 'Denied'}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

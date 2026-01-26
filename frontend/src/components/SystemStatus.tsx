@@ -17,10 +17,6 @@ const modeConfig: Record<SystemModeValue, { label: string; bg: string; animate: 
 export function SystemStatus({ status }: SystemStatusProps) {
   const config = modeConfig[status.mode];
 
-  const formatTime = (isoString: string) => {
-    return new Date(isoString).toLocaleTimeString();
-  };
-
   return (
     <div className="bg-white rounded-lg shadow p-4">
       <div className="flex items-center justify-between mb-2">
@@ -40,16 +36,8 @@ export function SystemStatus({ status }: SystemStatusProps) {
         )}
 
         {status.is_override && (
-          <p className="text-orange-600">
-            Override active
-            {status.override_operator && ` by ${status.override_operator}`}
-            {status.override_expires_at && ` (expires ${formatTime(status.override_expires_at)})`}
-          </p>
+          <p className="text-orange-600">Override active</p>
         )}
-
-        {status.reason && <p>Reason: {status.reason}</p>}
-
-        <p className="text-gray-400">Since: {formatTime(status.since)}</p>
       </div>
     </div>
   );

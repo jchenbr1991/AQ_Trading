@@ -340,23 +340,21 @@ export type ComponentSourceValue = 'broker' | 'market_data' | 'database' | 'risk
 
 export interface SystemStatus {
   mode: SystemModeValue;
-  level: SystemLevelValue;
   stage: RecoveryStageValue | null;
   is_override: boolean;
-  override_expires_at: string | null;
-  override_operator: string | null;
-  since: string;
-  reason: string | null;
+}
+
+export interface PermissionInfo {
+  allowed: boolean;
+  restricted: boolean;
+  warning: string | null;
+  local_only: boolean;
 }
 
 export interface TradingPermissions {
   mode: SystemModeValue;
-  permissions: {
-    can_open_position: boolean;
-    can_close_position: boolean;
-    can_modify_order: boolean;
-    can_cancel_order: boolean;
-  };
+  stage: RecoveryStageValue | null;
+  permissions: Record<string, PermissionInfo>;
 }
 
 export interface ForceOverrideRequest {
@@ -368,9 +366,9 @@ export interface ForceOverrideRequest {
 
 export interface ForceOverrideResponse {
   success: boolean;
-  previous_mode: SystemModeValue;
-  new_mode: SystemModeValue;
-  expires_at: string;
+  mode: SystemModeValue;
+  ttl_seconds: number;
+  operator_id: string;
 }
 
 export interface ComponentBreaker {
