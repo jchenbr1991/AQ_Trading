@@ -30,6 +30,10 @@ from src.degradation.models import (
     SystemMode,
     create_event,
 )
+from src.degradation.trading_gate import (
+    PermissionResult,
+    TradingGate,
+)
 
 __all__ = [
     # Enums
@@ -52,6 +56,8 @@ __all__ = [
     "DegradationConfig",
     # Classes
     "EventBus",
+    "TradingGate",
+    "PermissionResult",
     # Protocols
     "EventHandler",
     # Factory functions
