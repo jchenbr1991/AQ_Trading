@@ -4,6 +4,7 @@ import { HealthPage } from './pages/HealthPage';
 import { BacktestPage } from './pages/BacktestPage';
 import { StoragePage } from './pages/StoragePage';
 import { AlertsPage } from './pages/AlertsPage';
+import { AuditPage } from './pages/AuditPage';
 
 function Navigation() {
   return (
@@ -26,6 +27,9 @@ function Navigation() {
             <Link to="/alerts" className="text-gray-300 hover:text-white">
               Alerts
             </Link>
+            <Link to="/audit" className="text-gray-300 hover:text-white">
+              Audit
+            </Link>
           </div>
         </div>
       </div>
@@ -44,6 +48,7 @@ function App() {
           <Route path="/backtest" element={<BacktestPage />} />
           <Route path="/storage" element={<StoragePage />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/audit" element={<AuditPage />} />
         </Routes>
       </div>
     </BrowserRouter>
