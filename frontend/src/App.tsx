@@ -5,6 +5,7 @@ import { BacktestPage } from './pages/BacktestPage';
 import { StoragePage } from './pages/StoragePage';
 import { AlertsPage } from './pages/AlertsPage';
 import { AuditPage } from './pages/AuditPage';
+import { SystemPage } from './pages/SystemPage';
 
 function Navigation() {
   return (
@@ -30,6 +31,9 @@ function Navigation() {
             <Link to="/audit" className="text-gray-300 hover:text-white">
               Audit
             </Link>
+            <Link to="/system" className="text-gray-300 hover:text-white">
+              System
+            </Link>
           </div>
         </div>
       </div>
@@ -49,6 +53,7 @@ function App() {
           <Route path="/storage" element={<StoragePage />} />
           <Route path="/alerts" element={<AlertsPage />} />
           <Route path="/audit" element={<AuditPage />} />
+          <Route path="/system" element={<SystemPage />} />
         </Routes>
       </div>
     </BrowserRouter>
