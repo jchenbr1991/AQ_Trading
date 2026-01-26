@@ -38,6 +38,10 @@ from src.degradation.models import (
     SystemMode,
     create_event,
 )
+from src.degradation.recovery import (
+    STAGE_ORDER,
+    RecoveryOrchestrator,
+)
 from src.degradation.state_service import (
     DECISION_MATRIX,
     SystemStateService,
@@ -87,4 +91,7 @@ __all__ = [
     "MarketDataBreaker",
     "RiskBreaker",
     "DBBreaker",
+    # Recovery orchestrator
+    "RecoveryOrchestrator",
+    "STAGE_ORDER",
 ]
