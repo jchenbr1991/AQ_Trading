@@ -328,3 +328,61 @@ export interface ChainIntegrity {
   errors: string[];
   events_verified: number;
 }
+
+// Degradation types
+export type SystemModeValue = 'normal' | 'degraded' | 'safe_mode' | 'safe_mode_disconnected' | 'halt' | 'recovering';
+
+export type SystemLevelValue = 'healthy' | 'unstable' | 'tripped';
+
+export type RecoveryStageValue = 'connect_broker' | 'catchup_marketdata' | 'verify_risk' | 'ready';
+
+export type ComponentSourceValue = 'broker' | 'market_data' | 'database' | 'risk' | 'strategy' | 'system';
+
+export interface SystemStatus {
+  mode: SystemModeValue;
+  stage: RecoveryStageValue | null;
+  is_override: boolean;
+}
+
+export interface PermissionInfo {
+  allowed: boolean;
+  restricted: boolean;
+  warning: string | null;
+  local_only: boolean;
+}
+
+export interface TradingPermissions {
+  mode: SystemModeValue;
+  stage: RecoveryStageValue | null;
+  permissions: Record<string, PermissionInfo>;
+}
+
+export interface ForceOverrideRequest {
+  mode: SystemModeValue;
+  ttl_seconds: number;
+  operator_id: string;
+  reason: string;
+}
+
+export interface ForceOverrideResponse {
+  success: boolean;
+  mode: SystemModeValue;
+  ttl_seconds: number;
+  operator_id: string;
+}
+
+export interface ComponentBreaker {
+  source: ComponentSourceValue;
+  level: SystemLevelValue;
+  failure_count: number;
+  last_failure: string | null;
+  recovery_at: string | null;
+}
+
+export interface RecoveryStatus {
+  run_id: string;
+  current_stage: RecoveryStageValue;
+  stages_completed: RecoveryStageValue[];
+  started_at: string;
+  is_complete: boolean;
+}
