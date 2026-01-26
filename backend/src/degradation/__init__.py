@@ -12,6 +12,10 @@ from src.degradation.breakers import (
     MarketDataBreaker,
     RiskBreaker,
 )
+from src.degradation.cache import (
+    CachedData,
+    DataCache,
+)
 from src.degradation.config import (
     DegradationConfig,
     get_config,
@@ -101,4 +105,7 @@ __all__ = [
     # DB Buffer
     "BufferEntry",
     "DBBuffer",
+    # Cache with staleness
+    "CachedData",
+    "DataCache",
 ]
