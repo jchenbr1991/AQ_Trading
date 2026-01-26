@@ -17,6 +17,10 @@ from src.degradation.config import (
     get_config,
     set_config,
 )
+from src.degradation.db_buffer import (
+    BufferEntry,
+    DBBuffer,
+)
 from src.degradation.event_bus import (
     EventBus,
     EventHandler,
@@ -94,4 +98,7 @@ __all__ = [
     # Recovery orchestrator
     "RecoveryOrchestrator",
     "STAGE_ORDER",
+    # DB Buffer
+    "BufferEntry",
+    "DBBuffer",
 ]
