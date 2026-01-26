@@ -46,6 +46,13 @@ from src.degradation.models import (
     SystemMode,
     create_event,
 )
+from src.degradation.probes import (
+    BrokerProbe,
+    ComponentProbe,
+    HealthSignal,
+    MarketDataProbe,
+    RiskProbe,
+)
 from src.degradation.recovery import (
     STAGE_ORDER,
     RecoveryOrchestrator,
@@ -108,4 +115,10 @@ __all__ = [
     # Cache with staleness
     "CachedData",
     "DataCache",
+    # Component probes
+    "HealthSignal",
+    "ComponentProbe",
+    "BrokerProbe",
+    "MarketDataProbe",
+    "RiskProbe",
 ]
