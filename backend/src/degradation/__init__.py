@@ -4,6 +4,11 @@ This module provides the core infrastructure for graceful degradation,
 including system modes, events, and the trading gate.
 """
 
+from src.degradation.config import (
+    DegradationConfig,
+    get_config,
+    set_config,
+)
 from src.degradation.models import (
     MODE_PRIORITY,
     MUST_DELIVER_EVENTS,
@@ -40,6 +45,10 @@ __all__ = [
     "SystemEvent",
     "ModeTransition",
     "ComponentStatus",
+    "DegradationConfig",
     # Factory functions
     "create_event",
+    # Config functions
+    "get_config",
+    "set_config",
 ]
