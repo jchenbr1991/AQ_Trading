@@ -30,6 +30,10 @@ from src.degradation.models import (
     SystemMode,
     create_event,
 )
+from src.degradation.state_service import (
+    DECISION_MATRIX,
+    SystemStateService,
+)
 from src.degradation.trading_gate import (
     PermissionResult,
     TradingGate,
@@ -65,4 +69,7 @@ __all__ = [
     # Config functions
     "get_config",
     "set_config",
+    # State service
+    "DECISION_MATRIX",
+    "SystemStateService",
 ]
