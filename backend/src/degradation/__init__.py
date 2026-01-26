@@ -57,6 +57,14 @@ from src.degradation.recovery import (
     STAGE_ORDER,
     RecoveryOrchestrator,
 )
+from src.degradation.setup import (
+    DegradationServices,
+    get_event_bus,
+    get_system_state,
+    get_trading_gate,
+    init_degradation,
+    shutdown_degradation,
+)
 from src.degradation.state_service import (
     DECISION_MATRIX,
     SystemStateService,
@@ -121,4 +129,11 @@ __all__ = [
     "BrokerProbe",
     "MarketDataProbe",
     "RiskProbe",
+    # Setup functions
+    "DegradationServices",
+    "init_degradation",
+    "shutdown_degradation",
+    "get_system_state",
+    "get_trading_gate",
+    "get_event_bus",
 ]
