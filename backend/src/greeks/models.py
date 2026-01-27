@@ -9,9 +9,16 @@ Enums:
     - GreeksModel: Calculation model used (FUTU, BS, BJERKSUND)
     - GreeksLevel: Alert levels (NORMAL, WARN, CRIT, HARD)
     - ThresholdDirection: How to evaluate against threshold (ABS, MAX, MIN)
+
+Dataclasses:
+    - PositionGreeks: Single position's Greeks values in normalized dollar terms
 """
 
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from decimal import Decimal
 from enum import Enum
+from typing import Literal
 
 
 class GreeksDataSource(str, Enum):
@@ -149,3 +156,119 @@ class ThresholdDirection(str, Enum):
     ABS = "abs"
     MAX = "max"
     MIN = "min"
+
+
+@dataclass
+class PositionGreeks:
+    """Single position's Greeks values in normalized dollar terms.
+
+    This dataclass represents a single option position's Greeks, all normalized
+    to dollar terms for aggregation and threshold monitoring.
+
+    Numeric Type Convention:
+        - Internal storage: Decimal for precision in financial calculations
+        - API responses: Convert to float for JSON serialization
+
+    Sign Convention for dollar_delta:
+        - Positive: Long delta exposure (profit when underlying rises)
+        - Negative: Short delta exposure (profit when underlying falls)
+        - For calls: long position = positive delta, short = negative
+        - For puts: long position = negative delta, short = positive
+
+    Dollar Greeks Formulas (all in USD):
+        - dollar_delta: delta × quantity × multiplier × underlying_price
+          Units: $ / $1 underlying move
+          Example: dollar_delta=5000 means +$5000 PnL per $1 underlying rise
+
+        - gamma_dollar: gamma × quantity × multiplier × underlying_price
+          Units: $ / ($1 underlying move)²
+          Used for: Threshold monitoring (compare against limits)
+
+        - gamma_pnl_1pct: 0.5 × gamma × quantity × multiplier × (0.01 × underlying_price)²
+          Units: $ PnL for 1% underlying move
+          Used for: Scenario analysis, risk reporting
+          WARNING: gamma_pnl_1pct ≈ gamma_dollar × 0.00005 × underlying_price
+                   For $100 stock: gamma_pnl_1pct ≈ gamma_dollar / 200
+                   This is ~5000x smaller than gamma_dollar for typical stocks!
+
+        - vega_per_1pct: vega × quantity × multiplier × 0.01
+          Units: $ / 1% IV change
+          Example: vega_per_1pct=200 means +$200 PnL per 1% IV increase
+
+        - theta_per_day: theta × quantity × multiplier
+          Units: $ / trading day
+          Example: theta_per_day=-50 means -$50 PnL per trading day
+
+    Attributes:
+        position_id: Unique identifier for the position
+        symbol: Option symbol (e.g., "AAPL240119C00150000")
+        underlying_symbol: Underlying stock symbol (e.g., "AAPL")
+        quantity: Position quantity (positive=long, negative=short)
+        multiplier: Contract multiplier (US options: 100)
+        underlying_price: Current underlying spot price
+        option_type: "call" or "put"
+        strike: Option strike price
+        expiry: Expiration date as ISO string (e.g., "2024-01-19")
+        dollar_delta: Dollar delta exposure
+        gamma_dollar: Dollar gamma for threshold monitoring
+        gamma_pnl_1pct: Dollar PnL for 1% underlying move (scenario analysis)
+        vega_per_1pct: Dollar vega per 1% IV change
+        theta_per_day: Dollar theta per trading day
+        source: Where the Greeks came from (FUTU, MODEL, CACHED)
+        model: Calculation model used (None if source=FUTU)
+        cached_from_source: Original source if source=CACHED
+        cached_from_model: Original model if source=CACHED
+        valid: Whether Greeks values are valid (no NaN, no stale data)
+        quality_warnings: List of data quality warnings
+        staleness_seconds: How stale the data is in seconds
+        as_of_ts: Timestamp when Greeks were calculated/fetched
+        strategy_id: Optional strategy this position belongs to
+    """
+
+    # Position identification
+    position_id: int
+    symbol: str
+    underlying_symbol: str
+    quantity: int
+    multiplier: int
+
+    # Underlying data
+    underlying_price: Decimal
+
+    # Option characteristics
+    option_type: Literal["call", "put"]
+    strike: Decimal
+    expiry: str
+
+    # Dollar Greeks
+    dollar_delta: Decimal
+    gamma_dollar: Decimal
+    gamma_pnl_1pct: Decimal
+    vega_per_1pct: Decimal
+    theta_per_day: Decimal
+
+    # Data source tracking
+    source: GreeksDataSource
+    model: GreeksModel | None
+
+    # Cache tracking (when source=CACHED)
+    cached_from_source: GreeksDataSource | None = None
+    cached_from_model: GreeksModel | None = None
+
+    # Data quality
+    valid: bool = True
+    quality_warnings: list[str] = field(default_factory=list)
+    staleness_seconds: int = 0
+    as_of_ts: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    # Strategy assignment
+    strategy_id: str | None = None
+
+    @property
+    def notional(self) -> Decimal:
+        """Compute notional value of the position.
+
+        Returns:
+            abs(quantity) × underlying_price × multiplier
+        """
+        return abs(self.quantity) * self.underlying_price * self.multiplier
