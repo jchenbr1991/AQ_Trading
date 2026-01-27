@@ -73,7 +73,9 @@ async def options_db_session():
                 expiry TEXT,
                 put_call TEXT,
                 opened_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                active_close_request_id TEXT,
+                closed_at TEXT
             )
         """)
         )
@@ -90,6 +92,43 @@ async def options_db_session():
                 margin_used REAL DEFAULT 0,
                 total_equity REAL DEFAULT 0,
                 synced_at TEXT
+            )
+        """)
+        )
+
+        # Create close_requests table (V2 close position implementation)
+        await conn.execute(
+            text("""
+            CREATE TABLE close_requests (
+                id TEXT PRIMARY KEY,
+                position_id INTEGER NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                asset_type TEXT NOT NULL,
+                target_qty INTEGER NOT NULL,
+                filled_qty INTEGER DEFAULT 0,
+                retry_count INTEGER DEFAULT 0,
+                max_retries INTEGER DEFAULT 3,
+                created_at TEXT NOT NULL,
+                submitted_at TEXT,
+                completed_at TEXT
+            )
+        """)
+        )
+
+        # Create outbox_events table (V2 close position implementation)
+        await conn.execute(
+            text("""
+            CREATE TABLE outbox_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                created_at TEXT NOT NULL,
+                processed_at TEXT,
+                retry_count INTEGER DEFAULT 0
             )
         """)
         )
@@ -397,41 +436,41 @@ async def insert_test_position(
 
 
 class TestClosePosition:
-    """Tests for POST /api/options/{position_id}/close endpoint."""
+    """Tests for POST /api/options/{position_id}/close endpoint (V2 implementation).
+
+    Note: The V2 implementation uses CloseRequest + OutboxEvent pattern instead of
+    the old IdempotencyService. More comprehensive tests are in test_close_position.py.
+    """
 
     @pytest.mark.asyncio
     async def test_close_position_requires_idempotency_key(self, options_client):
-        """Should return 422 when Idempotency-Key header is missing."""
+        """Should return 400 when Idempotency-Key header is missing."""
         response = await options_client.post(
             "/api/options/123/close",
             json={"reason": "test"},
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 400
+        assert "idempotency" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_close_position_not_found(self, options_client):
         """Should return 404 when position doesn't exist."""
-        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
 
-        with patch("src.api.options.IdempotencyService") as MockIdempotency:
-            mock_service = AsyncMock()
-            mock_service.get_cached_response.return_value = (False, None)
-            MockIdempotency.return_value = mock_service
-
-            response = await options_client.post(
-                "/api/options/99999/close",
-                json={"reason": "test close"},
-                headers={"Idempotency-Key": "test-key-notfound"},
-            )
+        response = await options_client.post(
+            "/api/options/99999/close",
+            json={"reason": "test close"},
+            headers={"Idempotency-Key": str(uuid4())},
+        )
 
         assert response.status_code == 404
-        assert "not found" in response.json()["detail"]
+        assert "not found" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_close_position_success(self, options_client, options_db_session):
-        """Should return close order response for existing position."""
-        from unittest.mock import AsyncMock, patch
+        """Should return close request response for existing position."""
+        from uuid import uuid4
 
         # Create a test position
         position_id = await insert_test_position(
@@ -440,29 +479,28 @@ class TestClosePosition:
             quantity=10,
         )
 
-        with patch("src.api.options.IdempotencyService") as MockIdempotency:
-            mock_service = AsyncMock()
-            mock_service.get_cached_response.return_value = (False, None)
-            mock_service.store_key.return_value = None
-            MockIdempotency.return_value = mock_service
+        # Note: V2 implementation requires close_requests and outbox_events tables
+        # This test will fail if those tables don't exist in the options_db_session fixture.
+        # For full close position tests, see test_close_position.py
+        response = await options_client.post(
+            f"/api/options/{position_id}/close",
+            json={"reason": "expiring_soon"},
+            headers={"Idempotency-Key": str(uuid4())},
+        )
 
-            response = await options_client.post(
-                f"/api/options/{position_id}/close",
-                json={"reason": "expiring_soon"},
-                headers={"Idempotency-Key": "test-key-123"},
-            )
-
-        assert response.status_code == 200
+        # V2 returns 201 for new close requests
+        assert response.status_code == 201
         data = response.json()
-        assert data["success"] is True
-        assert data["order_id"].startswith(f"close-{position_id}-")
-        assert "AAPL" in data["message"]
-        assert "qty: 10" in data["message"]
+        assert data["close_request_id"] is not None
+        assert data["position_id"] == position_id
+        assert data["position_status"] == "closing"
+        assert data["close_request_status"] == "pending"
+        assert data["target_qty"] == 10
 
     @pytest.mark.asyncio
     async def test_close_position_zero_quantity(self, options_client, options_db_session):
         """Should return 400 when position has zero quantity."""
-        from unittest.mock import AsyncMock, patch
+        from uuid import uuid4
 
         # Create a position with zero quantity
         position_id = await insert_test_position(
@@ -471,42 +509,42 @@ class TestClosePosition:
             quantity=0,
         )
 
-        with patch("src.api.options.IdempotencyService") as MockIdempotency:
-            mock_service = AsyncMock()
-            mock_service.get_cached_response.return_value = (False, None)
-            MockIdempotency.return_value = mock_service
-
-            response = await options_client.post(
-                f"/api/options/{position_id}/close",
-                json={"reason": "test"},
-                headers={"Idempotency-Key": "test-key-zero"},
-            )
+        response = await options_client.post(
+            f"/api/options/{position_id}/close",
+            json={"reason": "test"},
+            headers={"Idempotency-Key": str(uuid4())},
+        )
 
         assert response.status_code == 400
-        assert "zero quantity" in response.json()["detail"]
+        assert "zero quantity" in response.json()["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_close_position_idempotent(self, options_client, options_db_session):
-        """Should return cached response for duplicate requests."""
-        from unittest.mock import AsyncMock, patch
+        """Should return same close_request_id for duplicate requests with same key."""
+        from uuid import uuid4
 
-        cached_response = {
-            "success": True,
-            "order_id": "close-1-cached",
-            "message": "Close order created for AAPL (qty: 10)",
-        }
+        # Create a test position
+        position_id = await insert_test_position(
+            options_db_session,
+            symbol="GOOG",
+            quantity=5,
+        )
 
-        with patch("src.api.options.IdempotencyService") as MockIdempotency:
-            mock_service = AsyncMock()
-            mock_service.get_cached_response.return_value = (True, cached_response)
-            MockIdempotency.return_value = mock_service
+        key = str(uuid4())
 
-            response = await options_client.post(
-                "/api/options/1/close",
-                json={"reason": "test"},
-                headers={"Idempotency-Key": "already-used-key"},
-            )
+        response1 = await options_client.post(
+            f"/api/options/{position_id}/close",
+            json={"reason": "test"},
+            headers={"Idempotency-Key": key},
+        )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["order_id"] == "close-1-cached"
+        response2 = await options_client.post(
+            f"/api/options/{position_id}/close",
+            json={"reason": "test"},
+            headers={"Idempotency-Key": key},
+        )
+
+        # V2 returns 201 for first request, 200 for idempotent replay
+        assert response1.status_code == 201
+        assert response2.status_code == 200
+        assert response1.json()["close_request_id"] == response2.json()["close_request_id"]
