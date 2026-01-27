@@ -41,9 +41,7 @@ def upgrade() -> None:
     # Add reconciler retry tracking
     op.add_column(
         "orders",
-        sa.Column(
-            "reconcile_not_found_count", sa.Integer, nullable=False, server_default="0"
-        ),
+        sa.Column("reconcile_not_found_count", sa.Integer, nullable=False, server_default="0"),
     )
 
     # Index for close_request queries
