@@ -11,22 +11,22 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import text
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.database import get_session
-from src.db.repositories.portfolio_repo import PortfolioRepository
-from src.options.idempotency import IdempotencyService
+from src.models.close_request import CloseRequest, CloseRequestStatus
+from src.models.outbox import OutboxEvent, OutboxEventStatus
+from src.models.position import Position, PositionStatus
 from src.options.models import (
     AcknowledgeAlertResponse,
     AlertSummary,
-    ClosePositionRequest,
-    ClosePositionResponse,
     ExpiringAlertRow,
     ExpiringAlertsResponse,
     ManualCheckResponse,
 )
+from src.schemas.close_position import ClosePositionRequestV2, ClosePositionResponseV2
 
 logger = logging.getLogger(__name__)
 
@@ -202,81 +202,179 @@ async def get_expiring_alerts(
     )
 
 
-@router.post("/{position_id}/close", response_model=ClosePositionResponse)
+@router.post("/{position_id}/close", status_code=201, response_model=ClosePositionResponseV2)
 async def close_position(
     position_id: int,
-    request: ClosePositionRequest,
-    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    response: Response,
+    request: ClosePositionRequestV2 = ClosePositionRequestV2(),
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
     db: AsyncSession = Depends(get_session),
-) -> ClosePositionResponse:
-    """Close an option position (idempotent).
+) -> ClosePositionResponseV2:
+    """Close an option position (Phase 1 - idempotent).
 
-    Creates a sell order for the position. Uses idempotency key to prevent
-    duplicate orders from repeated requests.
+    Creates a CloseRequest and OutboxEvent atomically. The outbox worker
+    will process the event and submit the actual close order.
 
     Args:
         position_id: ID of the position to close
+        response: FastAPI response object for setting status code
         request: Close request with optional reason
         idempotency_key: Idempotency key header for deduplication
         db: Database session
 
     Returns:
-        Close response with order ID
+        ClosePositionResponseV2 with close request details
 
     Raises:
+        400: Missing idempotency key or position has zero quantity
         404: Position not found
-        409: Position already has pending close order
+        409: Position already closing with different idempotency key
     """
-    idempotency = IdempotencyService(db)
+    # Validate idempotency key
+    if not idempotency_key:
+        raise HTTPException(400, "Idempotency-Key header is required")
 
-    # Check for cached response
-    exists, cached = await idempotency.get_cached_response(idempotency_key)
-    if exists:
-        logger.info(f"Returning cached response for idempotency_key={idempotency_key}")
-        return ClosePositionResponse(**cached)
+    # Check idempotent replay - same position + same key
+    existing_result = await db.execute(
+        select(CloseRequest)
+        .where(CloseRequest.position_id == position_id)
+        .where(CloseRequest.idempotency_key == idempotency_key)
+    )
+    existing = existing_result.scalar_one_or_none()
+    if existing:
+        # Idempotent replay - return existing with 200 status
+        logger.info(f"Idempotent replay for position={position_id}, key={idempotency_key}")
+        response.status_code = 200
 
-    # Fetch position by ID
-    repo = PortfolioRepository(db)
-    position = await repo.get_position_by_id(position_id)
+        # Get current position status
+        result = await db.execute(select(Position).where(Position.id == position_id))
+        position = result.scalar_one_or_none()
 
-    if position is None:
-        raise HTTPException(status_code=404, detail=f"Position {position_id} not found")
+        # Handle status - might be enum or string from raw SQL in tests
+        if position:
+            position_status = (
+                position.status.value if hasattr(position.status, "value") else str(position.status)
+            )
+        else:
+            position_status = "unknown"
 
-    # Validate position is closable (has quantity)
-    if position.quantity == 0:
-        raise HTTPException(
-            status_code=400, detail=f"Position {position_id} has zero quantity, nothing to close"
+        close_request_status = (
+            existing.status.value if hasattr(existing.status, "value") else str(existing.status)
         )
 
-    # Generate order ID for tracking
-    order_id = f"close-{position_id}-{uuid.uuid4().hex[:8]}"
+        return ClosePositionResponseV2(
+            close_request_id=str(existing.id),
+            position_id=position_id,
+            position_status=position_status,
+            close_request_status=close_request_status,
+            target_qty=existing.target_qty,
+            filled_qty=existing.filled_qty,
+            poll_url=f"/api/options/close-requests/{existing.id}",
+        )
+
+    # Get position - use FOR UPDATE on PostgreSQL for row locking
+    is_sqlite = _is_sqlite(db)
+
+    if is_sqlite:
+        # SQLite doesn't support FOR UPDATE, just do a regular select
+        result = await db.execute(select(Position).where(Position.id == position_id))
+    else:
+        # PostgreSQL - use row locking
+        result = await db.execute(
+            select(Position).where(Position.id == position_id).with_for_update(nowait=False)
+        )
+
+    position = result.scalar_one_or_none()
+
+    if not position:
+        raise HTTPException(404, "Position not found")
+
+    # State validation - check if already closing
+    if position.status == PositionStatus.CLOSING:
+        raise HTTPException(
+            409,
+            detail={
+                "error": "position_already_closing",
+                "active_close_request_id": str(position.active_close_request_id)
+                if position.active_close_request_id
+                else None,
+            },
+        )
+
+    if position.status != PositionStatus.OPEN:
+        raise HTTPException(400, f"Cannot close position in {position.status.value} state")
+
+    if position.quantity == 0:
+        raise HTTPException(400, "Position already has zero quantity")
+
+    # Determine side based on position direction
+    side = "sell" if position.quantity > 0 else "buy"
+    target_qty = abs(position.quantity)
+
+    # Get asset_type as string (handle both enum and string from raw SQL in tests)
+    asset_type_str = (
+        position.asset_type.value
+        if hasattr(position.asset_type, "value")
+        else str(position.asset_type)
+    )
+
+    # Create CloseRequest directly (not via repo, to avoid auto-commit)
+    close_request = CloseRequest(
+        id=uuid.uuid4(),
+        position_id=position_id,
+        idempotency_key=idempotency_key,
+        status=CloseRequestStatus.PENDING,
+        symbol=position.symbol,
+        side=side,
+        asset_type=asset_type_str,
+        target_qty=target_qty,
+        filled_qty=0,
+        retry_count=0,
+        max_retries=3,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(close_request)
+
+    # Update position status to CLOSING and set active_close_request_id
+    position.status = PositionStatus.CLOSING
+    position.active_close_request_id = close_request.id
+
+    # Create outbox event for async processing
+    outbox_event = OutboxEvent(
+        event_type="SUBMIT_CLOSE_ORDER",
+        payload={
+            "close_request_id": str(close_request.id),
+            "position_id": position_id,
+            "symbol": position.symbol,
+            "side": side,
+            "qty": target_qty,
+            "asset_type": asset_type_str,
+        },
+        status=OutboxEventStatus.PENDING,
+        retry_count=0,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(outbox_event)
+
+    # Single commit for atomicity
+    await db.commit()
 
     logger.info(
-        f"Creating close order for position {position_id}: "
-        f"symbol={position.symbol}, qty={position.quantity}, "
-        f"reason={request.reason}, order_id={order_id}"
+        f"Created close request {close_request.id} for position {position_id}: "
+        f"symbol={position.symbol}, qty={target_qty}, side={side}"
     )
 
-    # TODO: When OrderManager persistence is implemented:
-    # 1. Create sell order via OrderManager
-    # 2. Mark position status as CLOSING
-    # 3. Resolve related alerts
-
-    response = ClosePositionResponse(
-        success=True,
-        order_id=order_id,
-        message=f"Close order created for {position.symbol} (qty: {position.quantity})",
+    return ClosePositionResponseV2(
+        close_request_id=str(close_request.id),
+        position_id=position_id,
+        position_status=PositionStatus.CLOSING.value,
+        close_request_status=CloseRequestStatus.PENDING.value,
+        target_qty=target_qty,
+        filled_qty=0,
+        orders=[],
+        poll_url=f"/api/options/close-requests/{close_request.id}",
+        poll_interval_ms=1000,
     )
-
-    # Store for idempotency
-    await idempotency.store_key(
-        key=idempotency_key,
-        resource_type="close_position",
-        resource_id=str(position_id),
-        response_data=response.model_dump(),
-    )
-
-    return response
 
 
 @router.post("/alerts/{alert_id}/acknowledge", response_model=AcknowledgeAlertResponse)
