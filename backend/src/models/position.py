@@ -23,6 +23,8 @@ class PositionStatus(str, Enum):
     OPEN = "open"
     CLOSING = "closing"
     CLOSED = "closed"
+    CLOSE_RETRYABLE = "close_retryable"
+    CLOSE_FAILED = "close_failed"
 
 
 class Position(Base):
