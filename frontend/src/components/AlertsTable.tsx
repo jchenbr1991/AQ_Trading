@@ -1,5 +1,6 @@
 // frontend/src/components/AlertsTable.tsx
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAlerts } from '../hooks';
 import type { Alert, AlertSeverity } from '../types';
 
@@ -83,18 +84,19 @@ export function AlertsTable() {
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Summary</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Time</th>
               <th className="px-4 py-3 text-right text-sm font-medium text-gray-500">Suppressed</th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-500">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   Loading...
                 </td>
               </tr>
             ) : !data?.alerts || data.alerts.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                   No alerts found
                 </td>
               </tr>
@@ -114,6 +116,18 @@ export function AlertsTable() {
                   <td className="px-4 py-3 text-sm text-gray-500 text-right">
                     {alert.suppressed_count > 0 ? (
                       <span className="text-orange-600">+{alert.suppressed_count}</span>
+                    ) : (
+                      '-'
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right">
+                    {alert.type === 'option_expiring' ? (
+                      <Link
+                        to={`/options/expiring?alert_id=${alert.id}`}
+                        className="inline-flex items-center px-3 py-1 text-xs font-medium text-blue-700 bg-blue-100 rounded-full hover:bg-blue-200 transition-colors"
+                      >
+                        Go to handle
+                      </Link>
                     ) : (
                       '-'
                     )}

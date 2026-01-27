@@ -8,6 +8,7 @@ from src.api.audit import router as audit_router
 from src.api.backtest import router as backtest_router
 from src.api.degradation import router as degradation_router
 from src.api.health import router as health_router
+from src.api.options import router as options_router
 from src.api.orders import router as orders_router
 from src.api.portfolio import router as portfolio_mock_router
 from src.api.reconciliation import router as reconciliation_router
@@ -48,6 +49,7 @@ app.include_router(storage_router)
 app.include_router(alerts_router)
 app.include_router(audit_router)
 app.include_router(degradation_router)
+app.include_router(options_router)
 
 
 @app.get("/health")

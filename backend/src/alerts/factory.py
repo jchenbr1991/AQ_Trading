@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+from src.alerts.config import DedupeStrategy, get_dedupe_strategy
 from src.alerts.models import (
     RECOVERY_TYPES,
     AlertEvent,
@@ -77,8 +78,8 @@ def create_alert(
     # Build EntityRef if any entity field provided
     entity_ref = _build_entity_ref(account_id, symbol, strategy_id, run_id)
 
-    # Build fingerprint: {type.value}:{account_id or ""}:{symbol or ""}:{strategy_id or ""}
-    fingerprint = _build_fingerprint(type, account_id, symbol, strategy_id)
+    # Build fingerprint (pass details for special types like OPTION_EXPIRING)
+    fingerprint = _build_fingerprint(type, account_id, symbol, strategy_id, details)
 
     # Sanitize details
     sanitized_details = sanitize_details(details) if details else {}
@@ -101,20 +102,39 @@ def create_alert(
 def compute_dedupe_key(alert: AlertEvent) -> str:
     """Compute deduplication key for an alert.
 
-    For recovery types: {fingerprint}:recovery:{alert_id}
-    For normal events: {fingerprint}:{bucket} where bucket = timestamp // (10*60)
-
-    Args:
-        alert: The alert event to compute key for
-
-    Returns:
-        A string key for deduplication
+    Strategy depends on alert type:
+    - RECOVERY_TYPES: {fingerprint}:recovery:{alert_id}
+    - PERMANENT_PER_THRESHOLD: {fingerprint}:threshold_{N}:permanent
+    - WINDOWED_10M (default): {fingerprint}:{bucket}
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     if alert.type in RECOVERY_TYPES:
         # Recovery events: unique by alert_id
         return f"{alert.fingerprint}:recovery:{alert.alert_id}"
-    else:
-        # Normal events: bucket by 10-minute window
+
+    strategy = get_dedupe_strategy(alert.type)
+
+    if strategy == DedupeStrategy.PERMANENT_PER_THRESHOLD:
+        # Permanent deduplication by threshold (e.g., OPTION_EXPIRING)
+        threshold_days = alert.details.get("threshold_days")
+        position_id = alert.details.get("position_id", "UNKNOWN")
+
+        if threshold_days is None:
+            logger.error(
+                f"Alert type {alert.type} requires 'threshold_days' in details "
+                f"(position_id={position_id}, alert_id={alert.alert_id})"
+            )
+            raise ValueError(
+                f"Alert type {alert.type} requires 'threshold_days' in details "
+                f"(position_id={position_id})"
+            )
+
+        return f"{alert.fingerprint}:threshold_{threshold_days}:permanent"
+
+    else:  # WINDOWED_10M (default)
         bucket = int(alert.event_timestamp.timestamp()) // (COOLDOWN_WINDOW_MINUTES * 60)
         return f"{alert.fingerprint}:{bucket}"
 
@@ -181,8 +201,23 @@ def _build_fingerprint(
     account_id: str | None,
     symbol: str | None,
     strategy_id: str | None,
+    details: dict[str, Any] | None = None,
 ) -> str:
-    """Build fingerprint: {type.value}:{account_id or ""}:{symbol or ""}:{strategy_id or ""}."""
+    """Build fingerprint for alert deduplication.
+
+    For OPTION_EXPIRING: uses position_id instead of symbol
+    For other types: uses standard format {type}:{account}:{symbol}:{strategy}
+    """
+    # OPTION_EXPIRING uses position_id for stable entity identification
+    if alert_type == AlertType.OPTION_EXPIRING:
+        position_id = details.get("position_id") if details else None
+        if position_id is None:
+            raise ValueError("OPTION_EXPIRING alert requires 'position_id' in details")
+        # fingerprint: option_expiring:{account_id}:{position_id}
+        # Note: strategy_id excluded - expiration is position-level event
+        return f"{alert_type.value}:{account_id or ''}:{position_id}"
+
+    # Standard fingerprint for other types
     return f"{alert_type.value}:{account_id or ''}:{symbol or ''}:{strategy_id or ''}"
 
 

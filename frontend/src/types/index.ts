@@ -386,3 +386,63 @@ export interface RecoveryStatus {
   started_at: string;
   is_complete: boolean;
 }
+
+// Options expiration types
+export type ExpiringAlertSeverity = 'critical' | 'warning' | 'info';
+export type PutCall = 'put' | 'call';
+
+export interface ExpiringAlertRow {
+  alert_id: string;
+  severity: ExpiringAlertSeverity;
+  threshold_days: number;
+  created_at: string;
+  acknowledged: boolean;
+  acknowledged_at: string | null;
+  position_id: number;
+  symbol: string;
+  strike: number;
+  put_call: PutCall;
+  expiry_date: string;
+  quantity: number;
+  days_to_expiry: number;
+  current_price: number | null;
+  market_value: number | null;
+  unrealized_pnl: number | null;
+  is_closable: boolean;
+}
+
+export interface AlertSummary {
+  critical_count: number;
+  warning_count: number;
+  info_count: number;
+}
+
+export interface ExpiringAlertsResponse {
+  alerts: ExpiringAlertRow[];
+  total: number;
+  summary: AlertSummary;
+}
+
+export interface OptionsClosePositionRequest {
+  reason?: string;
+}
+
+export interface OptionsClosePositionResponse {
+  success: boolean;
+  order_id: string | null;
+  message: string;
+}
+
+export interface AcknowledgeAlertResponse {
+  success: boolean;
+  message: string;
+  acknowledged_at: string | null;
+}
+
+export interface ManualCheckResponse {
+  run_id: string;
+  positions_checked: number;
+  alerts_created: number;
+  alerts_deduplicated: number;
+  errors: string[];
+}
