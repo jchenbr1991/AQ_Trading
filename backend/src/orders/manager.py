@@ -9,10 +9,26 @@ from uuid import uuid4
 
 from src.broker.base import Broker
 from src.broker.errors import BrokerError
+from src.db.repositories.order_repo import OrderRepository
+from src.models import OrderSide, OrderType
+from src.models import OrderStatus as DBOrderStatus
 from src.orders.models import Order, OrderStatus
 from src.strategies.signals import OrderFill, Signal
 
 logger = logging.getLogger(__name__)
+
+
+# Mapping from in-memory OrderStatus to DB OrderStatus
+_STATUS_MAP = {
+    OrderStatus.PENDING: DBOrderStatus.PENDING,
+    OrderStatus.SUBMITTED: DBOrderStatus.SUBMITTED,
+    OrderStatus.PARTIAL_FILL: DBOrderStatus.PARTIAL_FILL,
+    OrderStatus.CANCEL_REQUESTED: DBOrderStatus.CANCEL_REQUESTED,
+    OrderStatus.FILLED: DBOrderStatus.FILLED,
+    OrderStatus.CANCELLED: DBOrderStatus.CANCELLED,
+    OrderStatus.REJECTED: DBOrderStatus.REJECTED,
+    OrderStatus.EXPIRED: DBOrderStatus.EXPIRED,
+}
 
 
 class OrderManager:
@@ -87,8 +103,8 @@ class OrderManager:
         order = Order.from_signal(signal, order_id=str(uuid4()))
         self._active_orders[order.order_id] = order
 
-        # TODO: Persist PENDING order to DB before broker submit
-        # await self._persist_order(order)
+        # Persist PENDING order to DB before broker submit (crash recovery)
+        await self._persist_order(order, is_new=True)
 
         try:
             broker_id = await self._broker.submit_order(order)
@@ -96,10 +112,14 @@ class OrderManager:
             order.status = OrderStatus.SUBMITTED
             order.updated_at = datetime.utcnow()
             self._broker_id_map[broker_id] = order.order_id
+            # Persist SUBMITTED status
+            await self._persist_order(order, is_new=False)
         except BrokerError as e:
             order.status = OrderStatus.REJECTED
             order.error_message = str(e)
             order.updated_at = datetime.utcnow()
+            # Persist REJECTED status
+            await self._persist_order(order, is_new=False)
 
         return order
 
@@ -166,9 +186,11 @@ class OrderManager:
         # Publish fill event
         await self._redis.publish("fills", fill.to_json())
 
+        # Persist fill update
+        await self._persist_order(order, is_new=False)
+
         # Cleanup if fully filled
         if order.status == OrderStatus.FILLED:
-            await self._persist_order(order)
             del self._active_orders[order.order_id]
             del self._broker_id_map[order.broker_order_id]
 
@@ -178,10 +200,43 @@ class OrderManager:
         total_value = (prev_avg * prev_qty) + (fill.price * fill.quantity)
         return total_value / total_qty
 
-    async def _persist_order(self, order: Order) -> None:
-        """Save completed order to database."""
-        # TODO: Implement DB persistence
-        pass
+    async def _persist_order(self, order: Order, is_new: bool = False) -> None:
+        """Save order to database.
+
+        Args:
+            order: The order to persist
+            is_new: True to create new record, False to update existing
+        """
+        try:
+            repo = OrderRepository(self._db)
+            db_status = _STATUS_MAP.get(order.status, DBOrderStatus.PENDING)
+            db_side = OrderSide.BUY if order.side == "buy" else OrderSide.SELL
+            db_type = OrderType.LIMIT if order.order_type == "limit" else OrderType.MARKET
+
+            if is_new:
+                await repo.create_order(
+                    order_id=order.order_id,
+                    account_id=self._account_id,
+                    strategy_id=order.strategy_id,
+                    symbol=order.symbol,
+                    side=db_side,
+                    quantity=order.quantity,
+                    order_type=db_type,
+                    status=db_status,
+                    limit_price=order.limit_price,
+                    broker_order_id=order.broker_order_id,
+                )
+            else:
+                await repo.update_order(
+                    order_id=order.order_id,
+                    broker_order_id=order.broker_order_id,
+                    status=db_status,
+                    filled_qty=order.filled_qty,
+                    avg_fill_price=order.avg_fill_price,
+                    error_message=order.error_message,
+                )
+        except Exception:
+            logger.exception(f"Failed to persist order {order.order_id}")
 
     def _on_fill(self, fill: OrderFill) -> None:
         """Legacy callback - use _on_fill_sync instead."""

@@ -3,6 +3,7 @@ import { AccountSummary } from '../components/AccountSummary';
 import { PositionsTable } from '../components/PositionsTable';
 import { AlertsPanel } from '../components/AlertsPanel';
 import { ErrorBanner } from '../components/ErrorBanner';
+import { useAccountId } from '../contexts/AccountContext';
 import { useAccount } from '../hooks/useAccount';
 import { usePositions } from '../hooks/usePositions';
 import { useTradingState } from '../hooks/useTradingState';
@@ -10,11 +11,10 @@ import { useAlerts } from '../hooks/useAlerts';
 import { useFreshness } from '../hooks/useFreshness';
 import { closePosition } from '../api/orders';
 
-const ACCOUNT_ID = 'ACC001'; // TODO: Make configurable
-
 export function DashboardPage() {
-  const account = useAccount(ACCOUNT_ID);
-  const positions = usePositions(ACCOUNT_ID);
+  const accountId = useAccountId();
+  const account = useAccount(accountId);
+  const positions = usePositions(accountId);
   const tradingState = useTradingState();
   const alerts = useAlerts();
 

@@ -1,11 +1,11 @@
 # backend/src/db/repositories/portfolio_repo.py
 from datetime import datetime
 from decimal import Decimal
-from sqlalchemy import select, delete, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+
+from sqlalchemy import and_, delete, select
 
 from src.db.repositories.base import BaseRepository
-from src.models import Account, Position, Transaction, AssetType, TransactionAction
+from src.models import Account, AssetType, Position, PositionStatus, Transaction, TransactionAction
 
 
 class PortfolioRepository(BaseRepository):
@@ -28,9 +28,7 @@ class PortfolioRepository(BaseRepository):
         return account
 
     async def get_account(self, account_id: str) -> Account | None:
-        result = await self.session.execute(
-            select(Account).where(Account.account_id == account_id)
-        )
+        result = await self.session.execute(select(Account).where(Account.account_id == account_id))
         return result.scalar_one_or_none()
 
     async def update_account(
@@ -104,9 +102,19 @@ class PortfolioRepository(BaseRepository):
         if strategy_id is not None:
             conditions.append(Position.strategy_id == strategy_id)
 
-        result = await self.session.execute(
-            select(Position).where(and_(*conditions))
-        )
+        result = await self.session.execute(select(Position).where(and_(*conditions)))
+        return result.scalar_one_or_none()
+
+    async def get_position_by_id(self, position_id: int) -> Position | None:
+        """Fetch a position by its primary key ID.
+
+        Args:
+            position_id: The position's primary key
+
+        Returns:
+            Position if found, None otherwise
+        """
+        result = await self.session.execute(select(Position).where(Position.id == position_id))
         return result.scalar_one_or_none()
 
     async def get_positions(
@@ -114,6 +122,7 @@ class PortfolioRepository(BaseRepository):
         account_id: str,
         strategy_id: str | None = None,
         symbol: str | None = None,
+        status: PositionStatus | None = None,
     ) -> list[Position]:
         conditions = [Position.account_id == account_id]
 
@@ -121,11 +130,26 @@ class PortfolioRepository(BaseRepository):
             conditions.append(Position.strategy_id == strategy_id)
         if symbol is not None:
             conditions.append(Position.symbol == symbol)
+        if status is not None:
+            conditions.append(Position.status == status)
 
-        result = await self.session.execute(
-            select(Position).where(and_(*conditions))
-        )
+        result = await self.session.execute(select(Position).where(and_(*conditions)))
         return list(result.scalars().all())
+
+    async def get_open_positions(
+        self,
+        account_id: str,
+        strategy_id: str | None = None,
+    ) -> list[Position]:
+        """Get all open positions for an account.
+
+        Convenience method that filters by status=OPEN.
+        """
+        return await self.get_positions(
+            account_id=account_id,
+            strategy_id=strategy_id,
+            status=PositionStatus.OPEN,
+        )
 
     async def update_position(
         self,
@@ -151,6 +175,29 @@ class PortfolioRepository(BaseRepository):
         await self.session.refresh(position)
         return position
 
+    async def update_position_status(
+        self,
+        position_id: int,
+        status: PositionStatus,
+    ) -> Position | None:
+        """Update a position's lifecycle status.
+
+        Args:
+            position_id: The position's primary key
+            status: New status (OPEN, CLOSING, CLOSED)
+
+        Returns:
+            Updated position or None if not found
+        """
+        position = await self.get_position_by_id(position_id)
+        if not position:
+            return None
+
+        position.status = status
+        await self.session.commit()
+        await self.session.refresh(position)
+        return position
+
     async def close_position(
         self,
         account_id: str,
@@ -164,9 +211,7 @@ class PortfolioRepository(BaseRepository):
         if strategy_id is not None:
             conditions.append(Position.strategy_id == strategy_id)
 
-        result = await self.session.execute(
-            delete(Position).where(and_(*conditions))
-        )
+        result = await self.session.execute(delete(Position).where(and_(*conditions)))
         await self.session.commit()
         return result.rowcount > 0
 

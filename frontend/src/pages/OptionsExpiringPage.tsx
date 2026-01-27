@@ -1,6 +1,7 @@
 // frontend/src/pages/OptionsExpiringPage.tsx
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useAccountId } from '../contexts/AccountContext';
 import { fetchExpiringAlerts, closePosition, acknowledgeAlert } from '../api/options';
 import type { ExpiringAlertRow, ExpiringAlertsResponse } from '../types';
 import { ConfirmModal } from '../components/ConfirmModal';
@@ -63,8 +64,7 @@ export function OptionsExpiringPage() {
 
   const highlightRef = useRef<HTMLTableRowElement | null>(null);
 
-  // Hardcoded for V1 - would come from context/auth in production
-  const accountId = 'default_account';
+  const accountId = useAccountId();
 
   // Fetch data on mount
   useEffect(() => {

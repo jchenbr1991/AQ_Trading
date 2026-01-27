@@ -19,21 +19,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Pre-check: Ensure transactions_old exists
-    op.execute("""
-        DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1 FROM information_schema.tables
-                WHERE table_name = 'transactions_old'
-            ) THEN
-                RAISE EXCEPTION 'transactions_old does not exist. Migration may have already run or data migration was not performed.';
-            END IF;
-        END $$;
-    """)
-
-    # Drop old table
-    op.execute("DROP TABLE transactions_old")
+    # Drop old table if it exists (may not exist in fresh installs)
+    op.execute("DROP TABLE IF EXISTS transactions_old")
 
 
 def downgrade() -> None:

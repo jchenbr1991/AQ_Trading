@@ -34,11 +34,13 @@ def upgrade() -> None:
     )
 
     # Create audit_logs table
+    # Note: TimescaleDB requires partitioning column in primary key
     op.create_table(
         "audit_logs",
-        sa.Column("id", UUID(as_uuid=True), primary_key=True),
-        sa.Column("sequence_id", sa.BIGINT, nullable=False, unique=True),
+        sa.Column("id", UUID(as_uuid=True), nullable=False),
+        sa.Column("sequence_id", sa.BIGINT, nullable=False),
         sa.Column("timestamp", sa.TIMESTAMP(timezone=True), nullable=False),
+        sa.PrimaryKeyConstraint("id", "timestamp"),
         sa.Column("event_type", sa.VARCHAR(50), nullable=False),
         sa.Column("severity", sa.VARCHAR(20), nullable=False),
         sa.Column("actor_id", sa.VARCHAR(100), nullable=False),
