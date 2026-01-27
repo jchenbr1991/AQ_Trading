@@ -1,8 +1,10 @@
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
 from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.database import Base
@@ -62,6 +64,12 @@ class Position(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+    # Close request tracking
+    active_close_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     @property
     def market_value(self) -> Decimal:

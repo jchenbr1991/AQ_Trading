@@ -73,7 +73,9 @@ async def options_db_session():
                 expiry TEXT,
                 put_call TEXT,
                 opened_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                active_close_request_id TEXT,
+                closed_at TEXT
             )
         """)
         )
