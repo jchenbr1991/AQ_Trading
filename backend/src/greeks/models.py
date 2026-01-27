@@ -12,6 +12,7 @@ Enums:
 
 Dataclasses:
     - PositionGreeks: Single position's Greeks values in normalized dollar terms
+    - AggregatedGreeks: Portfolio-level or strategy-level aggregated Greeks
 """
 
 from dataclasses import dataclass, field
@@ -272,3 +273,121 @@ class PositionGreeks:
             abs(quantity) × underlying_price × multiplier
         """
         return abs(self.quantity) * self.underlying_price * self.multiplier
+
+
+@dataclass
+class AggregatedGreeks:
+    """Portfolio-level or strategy-level aggregated Greeks.
+
+    This dataclass represents aggregated Greeks for either an entire account
+    or a specific strategy. All values are in normalized dollar terms.
+
+    Timestamp Semantic Convention:
+        - as_of_ts = as_of_ts_min (most conservative / oldest timestamp)
+        - UI, Alert, and Snapshot operations all use as_of_ts (= as_of_ts_min)
+        - as_of_ts_min: Earliest data timestamp, used for staleness calculation
+        - as_of_ts_max: Latest data timestamp, for reference only
+
+    Scope Types:
+        - ACCOUNT: Entire portfolio aggregation (scope_id = account identifier)
+        - STRATEGY: Single strategy aggregation (scope_id = strategy_id)
+
+    Coverage Calculation:
+        - coverage_pct = valid_notional / total_notional * 100
+        - Returns 100.0% if no positions or total_notional == 0
+        - is_coverage_sufficient: coverage_pct >= 95.0%
+
+    High Risk Missing Legs (V1):
+        - has_high_risk_missing_legs: True if missing positions have high gamma/vega
+        - Used for enhanced alerting when data quality issues affect risk metrics
+
+    Attributes:
+        scope: "ACCOUNT" or "STRATEGY"
+        scope_id: Identifier for the scope (account ID or strategy ID)
+        strategy_id: Strategy ID (only for STRATEGY scope)
+        dollar_delta: Aggregated dollar delta exposure
+        gamma_dollar: Aggregated dollar gamma for threshold monitoring
+        gamma_pnl_1pct: Aggregated dollar PnL for 1% underlying move
+        vega_per_1pct: Aggregated dollar vega per 1% IV change
+        theta_per_day: Aggregated dollar theta per trading day
+        valid_legs_count: Number of positions with valid Greeks
+        total_legs_count: Total number of positions
+        valid_notional: Notional value of positions with valid Greeks
+        total_notional: Total notional value of all positions
+        missing_positions: List of position IDs with missing/invalid Greeks
+        has_high_risk_missing_legs: V1 flag for high gamma/vega missing positions
+        warning_legs_count: Number of positions with quality warnings
+        has_positions: Whether any positions exist in scope
+        as_of_ts: Reference timestamp (= as_of_ts_min, conservative)
+        as_of_ts_min: Earliest data timestamp (for staleness)
+        as_of_ts_max: Latest data timestamp (reference only)
+        calc_duration_ms: Calculation time in milliseconds
+    """
+
+    # Scope identification
+    scope: Literal["ACCOUNT", "STRATEGY"]
+    scope_id: str
+
+    # Strategy association (only for STRATEGY scope)
+    strategy_id: str | None = None
+
+    # Aggregated Dollar Greeks
+    dollar_delta: Decimal = Decimal("0")
+    gamma_dollar: Decimal = Decimal("0")
+    gamma_pnl_1pct: Decimal = Decimal("0")
+    vega_per_1pct: Decimal = Decimal("0")
+    theta_per_day: Decimal = Decimal("0")
+
+    # Coverage tracking
+    valid_legs_count: int = 0
+    total_legs_count: int = 0
+    valid_notional: Decimal = Decimal("0")
+    total_notional: Decimal = Decimal("0")
+    missing_positions: list[int] = field(default_factory=list)
+
+    # Data quality flags
+    has_high_risk_missing_legs: bool = False  # V1: high gamma/vega missing
+    warning_legs_count: int = 0
+    has_positions: bool = True
+
+    # Timestamps
+    as_of_ts: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    as_of_ts_min: datetime | None = None  # Earliest data, for staleness
+    as_of_ts_max: datetime | None = None  # Latest data, reference only
+
+    # Performance metrics
+    calc_duration_ms: int = 0
+
+    @property
+    def coverage_pct(self) -> Decimal:
+        """Calculate coverage percentage.
+
+        Returns:
+            (valid_notional / total_notional) * 100, or 100.0 if no positions
+            or total_notional == 0.
+        """
+        if not self.has_positions or self.total_notional == Decimal("0"):
+            return Decimal("100.0")
+        return (self.valid_notional / self.total_notional) * Decimal("100")
+
+    @property
+    def is_coverage_sufficient(self) -> bool:
+        """Check if coverage meets the 95% threshold.
+
+        Returns:
+            True if coverage_pct >= 95.0%.
+        """
+        return self.coverage_pct >= Decimal("95.0")
+
+    @property
+    def staleness_seconds(self) -> int:
+        """Calculate staleness from as_of_ts_min.
+
+        Returns:
+            Seconds since as_of_ts_min, or 0 if as_of_ts_min is not set.
+        """
+        if self.as_of_ts_min is None:
+            return 0
+        now = datetime.now(timezone.utc)
+        delta = now - self.as_of_ts_min
+        return int(delta.total_seconds())
