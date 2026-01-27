@@ -2378,13 +2378,895 @@ class GreeksMonitor:
 
 ## 4. API 设计
 
-（待续）
+### 4.1 API 端点概览
 
----
+```
+/api/greeks/
+├── GET  /snapshot                    # 获取当前 Greeks 快照（账户+策略列表）
+├── GET  /snapshot/{strategy_id}      # 获取单个策略 Greeks（返回 strategy 单对象）
+├── GET  /limits                      # 获取当前限额配置
+├── PUT  /limits                      # 更新限额配置（V2）
+├── GET  /history                     # 历史 Greeks 查询
+├── GET  /alerts                      # 告警历史查询
+├── GET  /contributors/{metric}       # Top N 贡献者查询
+├── WS   /ws                          # WebSocket 实时推送
+```
 
-## 5. 前端架构
+**认证**：所有端点需要 `Authorization: Bearer {token}`，从 token 解析 `account_id`。
 
-（待续）
+**Meta 规范（所有接口统一）**：
+```python
+"meta": {
+    "as_of_ts": "...",           # 展示用主时间 = as_of_ts_max
+    "as_of_ts_min": "...",       # 数据覆盖范围最早时间
+    "as_of_ts_max": "...",       # 数据覆盖范围最晚时间
+    "staleness_seconds": 5,      # = now - as_of_ts_max
+    "request_id": "req_abc123"
+}
+```
+
+**通用错误码**：
+| HTTP | Code | 说明 |
+|------|------|------|
+| 400 | INVALID_ARGUMENT | 参数错误（metric 枚举无效、top_n>50 等） |
+| 401 | UNAUTHORIZED | 未认证或 token 无效 |
+| 403 | FORBIDDEN | token 有效但无该 account 权限 |
+| 429 | RATE_LIMITED | 请求过于频繁（尤其 WS/历史查询） |
+| 500 | INTERNAL_ERROR | 服务器内部错误 |
+| 503 | GREEKS_NOT_AVAILABLE | Greeks 服务不可用 |
+
+**错误响应格式**：
+```python
+{
+    "error": {
+        "code": "INVALID_ARGUMENT",
+        "message": "metric must be one of: delta, gamma, vega, theta",
+        "details": {
+            "field": "metric",
+            "value": "invalid_metric"
+        }
+    },
+    "meta": {
+        "request_id": "req_abc123"  # 错误响应也带 request_id
+    }
+}
+```
+
+### 4.2 核心端点设计
+
+#### GET /api/greeks/snapshot
+
+获取当前 Greeks 快照，包含账户级汇总 + 所有策略明细。
+
+**Query Parameters:**
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| include_strategies | bool | N | true | 是否包含策略列表 |
+| include_warnings | bool | N | false | 是否包含 quality_warnings |
+
+**Response 200:**
+```python
+{
+    "data": {
+        "account": {
+            "account_id": "acc123",
+            "dollar_delta": 45000.0,
+            "gamma_dollar": 8500.0,
+            "vega_per_1pct": 15000.0,
+            "theta_per_day": -3200.0,
+            "coverage_pct": 98.5,
+            "valid_legs_count": 12,
+            "total_legs_count": 12,
+            "warning_legs_count": 1,
+            "levels": {
+                "delta": "warn",
+                "gamma": "normal",
+                "vega": "normal",
+                "theta": "normal",
+                "coverage": "normal"
+            },
+            "utilization": {
+                "delta": { "value": 45000.0, "limit": 50000.0, "pct": 90.0 },
+                "gamma": { "value": 8500.0, "limit": 10000.0, "pct": 85.0 },
+                "vega": { "value": 15000.0, "limit": 20000.0, "pct": 75.0 },
+                "theta": { "value": 3200.0, "limit": 5000.0, "pct": 64.0 }
+            }
+        },
+        "strategies": [
+            {
+                "strategy_id": "wheel_aapl",
+                "dollar_delta": 25000.0,
+                "gamma_dollar": 5000.0,
+                "vega_per_1pct": 8000.0,
+                "theta_per_day": -1800.0,
+                "coverage_pct": 100.0,
+                "valid_legs_count": 5,
+                "total_legs_count": 5,
+                "levels": { "delta": "normal", "gamma": "normal", ... }
+            },
+            ...
+        ]
+    },
+    "meta": {
+        "as_of_ts": "2026-01-28T10:30:00Z",
+        "as_of_ts_min": "2026-01-28T10:29:55Z",
+        "as_of_ts_max": "2026-01-28T10:30:00Z",
+        "staleness_seconds": 5,
+        "calc_duration_ms": 120,
+        "request_id": "req_abc123"
+    }
+}
+```
+
+**Response 503 (服务不可用):**
+
+Headers:
+```
+Retry-After: 1
+Cache-Control: no-store
+```
+
+Body:
+```python
+{
+    "error": {
+        "code": "GREEKS_NOT_AVAILABLE",
+        "message": "Greeks calculation in progress",
+        "details": {
+            "reason": "starting",  # starting | in_progress | downstream_unavailable
+            "downstream_service": null,
+            "retry_after_ms": 1000
+        }
+    },
+    "meta": {
+        "request_id": "req_abc123"
+    }
+}
+```
+
+#### GET /api/greeks/snapshot/{strategy_id}
+
+获取单个策略的 Greeks 快照。
+
+**Response 200:**
+```python
+{
+    "data": {
+        "strategy": {
+            "strategy_id": "wheel_aapl",
+            "dollar_delta": 25000.0,
+            "gamma_dollar": 5000.0,
+            "vega_per_1pct": 8000.0,
+            "theta_per_day": -1800.0,
+            "coverage_pct": 100.0,
+            "valid_legs_count": 5,
+            "total_legs_count": 5,
+            "warning_legs_count": 0,
+            "levels": { ... },
+            "utilization": { ... }
+        }
+    },
+    "meta": { ... }
+}
+```
+
+**Response 404:**
+```python
+{
+    "error": {
+        "code": "STRATEGY_NOT_FOUND",
+        "message": "Strategy 'invalid_id' not found or has no positions"
+    },
+    "meta": { "request_id": "..." }
+}
+```
+
+#### GET /api/greeks/contributors/{metric}
+
+获取指定 metric 的 Top N 贡献者持仓。
+
+**Path Parameters:**
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| metric | enum | delta / gamma / vega / theta |
+
+**Query Parameters:**
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| top_n | int | N | 10 | 返回数量，最大 50 |
+| strategy_id | string | N | - | 筛选特定策略 |
+
+**Response 200:**
+```python
+{
+    "data": {
+        "metric": "delta",
+        "total_value": 45000.0,
+        "total_abs_value": 63000.0,
+        "contributors": [
+            {
+                "rank": 1,
+                "position_id": 123,
+                "symbol": "AAPL260220C00180000",
+                "underlying": "AAPL",
+                "strategy_id": "wheel_aapl",
+                "quantity": 10,
+                "option_type": "call",
+                "strike": 180.0,
+                "expiry": "2026-02-20",
+                "value_signed": 18000.0,
+                "contribution_abs": 18000.0,
+                "contribution_pct": 28.57
+            },
+            ...
+        ]
+    },
+    "meta": {
+        "as_of_ts": "2026-01-28T10:30:00Z",
+        "as_of_ts_min": "2026-01-28T10:29:55Z",
+        "as_of_ts_max": "2026-01-28T10:30:00Z",
+        "staleness_seconds": 5,
+        "request_id": "req_abc123"
+    }
+}
+```
+
+#### GET /api/greeks/history
+
+历史 Greeks 查询（时序数据）。
+
+**Query Parameters:**
+| 参数 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| scope | enum | N | ACCOUNT | ACCOUNT / STRATEGY |
+| scope_id | string | 条件 | - | scope=STRATEGY 时必填 |
+| start_ts | datetime | Y | - | 开始时间（ISO 8601） |
+| end_ts | datetime | N | now | 结束时间 |
+| interval | enum | N | 5m | 1m / 5m / 15m / 1h / raw |
+| metrics | list | N | 全部 | 指标列表 |
+
+**interval 限制：**
+- `raw`：最大时间跨度 24h，超过返回 400
+- `1m`：最大时间跨度 7d
+- `5m/15m`：最大时间跨度 30d
+- `1h`：最大时间跨度 90d
+
+**Response 200:**
+```python
+{
+    "data": {
+        "scope": "ACCOUNT",
+        "scope_id": "acc123",
+        "interval": "5m",
+        "points": [
+            {
+                "ts": "2026-01-28T10:00:00Z",
+                "dollar_delta": 42000.0,
+                "gamma_dollar": 8000.0,
+                "vega_per_1pct": 14000.0,
+                "theta_per_day": -3000.0,
+                "coverage_pct": 100.0
+            },
+            ...
+        ]
+    },
+    "meta": {
+        "as_of_ts": "2026-01-28T10:30:00Z",
+        "as_of_ts_min": "2026-01-28T10:00:00Z",
+        "as_of_ts_max": "2026-01-28T10:30:00Z",
+        "staleness_seconds": 0,
+        "total_points": 7,
+        "request_id": "req_abc123"
+    }
+}
+```
+
+### 4.3 WebSocket 协议
+
+#### 4.3.1 连接与认证
+
+**Endpoint:** `wss://api.example.com/api/greeks/ws`
+
+**认证方式：**
+
+| 方式 | 适用场景 | 安全性 |
+|------|----------|--------|
+| **首条消息 auth（推荐）** | 生产环境 | ✅ token 不进 URL/日志 |
+| Query param | 仅开发/调试 | ⚠️ 需短期或一次性 token |
+
+```python
+# 方式 1（推荐）：首条消息认证
+ws.connect("wss://api.example.com/api/greeks/ws")
+ws.send({ "type": "auth", "token": "{jwt_token}" })
+
+# 方式 2（仅开发调试）：Query parameter
+wss://api.example.com/api/greeks/ws?token={short_lived_token}
+# ⚠️ 生产环境必须：网关脱敏 query string，禁止记录到日志
+```
+
+**连接流程：**
+```
+Client                                 Server
+   |                                      |
+   |------- WS Connect ------------------>|
+   |------- { type: "auth" } ------------>|
+   |                                      | 验证 token
+   |<------ { type: "connected" } --------|
+   |                                      |
+   |------- { type: "subscribe" } ------->|
+   |<------ { type: "subscribed" } -------|
+   |                                      |
+   |<------ { type: "snapshot" } ---------|  首次全量
+   |<------ { type: "update" } -----------|  后续增量（patch）
+   |<------ { type: "alert" } ------------|  告警推送
+   |                                      |
+   |<------ { type: "ping" } -------------|  30s 心跳
+   |------- { type: "pong" } ------------>|
+   |                                      |
+```
+
+#### 4.3.2 消息类型定义
+
+**通用 Meta 结构（所有服务端消息必带）：**
+```python
+"meta": {
+    "connection_id": "conn_abc123",
+    "seq": 12,
+    "server_ts": "2026-01-28T10:30:00Z"
+}
+```
+
+**服务端消息类型：**
+
+| 类型 | 说明 |
+|------|------|
+| connected | 连接成功 |
+| subscribed | 订阅确认 |
+| snapshot | 全量快照 |
+| update | 增量更新（Patch 语义） |
+| alert | 告警推送 |
+| ping | 心跳（30s 间隔） |
+| error | 错误通知 |
+
+**Update 合并规则（Patch 语义）：**
+
+| 字段 | 合并语义 |
+|------|----------|
+| `account` | Deep-merge patch：未出现的字段保持不变 |
+| `account.levels` | 按 key merge：`{ delta: "crit" }` 只更新 delta |
+| `account.utilization` | 按 key merge |
+| `strategies` | 以 `strategy_id` 为 key 做 patch |
+| `strategies[i]` | Deep-merge：未出现字段保持不变 |
+| `strategies[i].deleted=true` | Tombstone：从本地状态删除该策略 |
+
+**客户端消息类型：**
+
+| 类型 | 说明 |
+|------|------|
+| auth | 认证（首条消息） |
+| subscribe | 订阅频道 |
+| unsubscribe | 取消订阅 |
+| pong | 心跳响应 |
+
+**subscribe 选项：**
+```python
+{
+    "type": "subscribe",
+    "channels": ["greeks", "alerts"],
+    "options": {
+        "include_strategies": true,
+        "strategy_ids": ["wheel_aapl", "cc_tsla"],  # null = 全部
+        "metrics": ["delta", "gamma"],              # null = 全部
+        "throttle_ms": 1000
+    }
+}
+```
+
+#### 4.3.3 序列号与断线重连
+
+**seq 机制用途：**
+- 检测增量缺失（服务端丢弃消息）
+- 识别重连导致的不连续
+- 发现实现 bug（乱序写入）
+
+**关键规则：**
+1. 每个 `connection_id` 的 seq 从 0 开始单调递增
+2. `connection_id` 变化 → 新连接，seq 重新从 0 开始
+3. 同一 `connection_id` 出现 seq gap → 增量丢失，需要重新请求 snapshot
+
+**断线重连流程：**
+1. 检测断线（WS close / ping timeout 90s）
+2. 指数退避重连：1s → 2s → 4s → 8s → 16s（最大）
+3. 重连成功后：收到新 connection_id，发送 subscribe，等待 snapshot 全量覆盖
+
+#### 4.3.4 心跳机制
+
+- 服务端每 **30s** 发送 `ping`
+- 客户端需在 **90s 内** 回复 `pong`（考虑浏览器后台 tab throttling）
+- 超时未收到 pong → 服务端关闭连接（code 4001）
+
+#### 4.3.5 限流与背压
+
+**服务端限流：**
+| 限制项 | 值 | 说明 |
+|--------|-----|------|
+| 最大连接数/账户 | 5 | 超过发送 error 后关闭 |
+| 最小推送间隔 | 100ms | 服务端硬限制 |
+| 客户端节流 | 可配置 | subscribe.options.throttle_ms |
+| 消息队列深度 | 100 | 超过触发 resync |
+
+**队列溢出处理：**
+发生溢出后，服务端直接发送一次 snapshot（seq 继续递增），客户端收到 snapshot 全量覆盖本地状态。
+
+#### 4.3.6 连接关闭码
+
+| Code | 名称 | 说明 | 关闭前发 error |
+|------|------|------|----------------|
+| 1000 | NORMAL | 正常关闭 | 否 |
+| 1008 | AUTH_FAILED | 认证失败 | 是 |
+| 1013 | SERVICE_OVERLOAD | 服务过载 | 是 |
+| 4001 | HEARTBEAT_TIMEOUT | 90s 无 pong | 否 |
+| 4002 | INVALID_SUBSCRIPTION | 订阅无效 | 是 |
+| 4003 | TOO_MANY_CONNECTIONS | 连接数超限（>5） | 是 |
+
+### 4.4 Pydantic Schema 定义
+
+#### 4.4.1 基础类型与枚举
+
+```python
+# backend/src/greeks/schemas.py
+
+from datetime import datetime
+from enum import Enum
+from typing import Literal
+
+from pydantic import BaseModel, Field, ConfigDict
+
+
+class GreeksMetricEnum(str, Enum):
+    DELTA = "delta"
+    GAMMA = "gamma"
+    VEGA = "vega"
+    THETA = "theta"
+    COVERAGE = "coverage"
+
+
+class GreeksLevelEnum(str, Enum):
+    NORMAL = "normal"
+    WARN = "warn"
+    CRIT = "crit"
+    HARD = "hard"
+
+
+class GreeksScopeEnum(str, Enum):
+    ACCOUNT = "ACCOUNT"
+    STRATEGY = "STRATEGY"
+
+
+class IntervalEnum(str, Enum):
+    RAW = "raw"
+    ONE_MIN = "1m"
+    FIVE_MIN = "5m"
+    FIFTEEN_MIN = "15m"
+    ONE_HOUR = "1h"
+
+
+class ThresholdDirectionEnum(str, Enum):
+    ABS = "abs"
+    MAX = "max"
+    MIN = "min"
+
+
+WSChannelType = Literal["greeks", "alerts"]
+```
+
+#### 4.4.2 通用响应结构
+
+```python
+class MetaResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    as_of_ts: datetime
+    as_of_ts_min: datetime | None = None
+    as_of_ts_max: datetime | None = None
+    staleness_seconds: int = Field(..., ge=0)
+    request_id: str
+    calc_duration_ms: int | None = Field(None, ge=0)
+    total_points: int | None = Field(None, ge=0)
+
+
+class ErrorDetail(BaseModel):
+    field: str | None = None
+    value: str | None = None
+    max_range_hours: int | None = None
+    requested_range_hours: int | None = None
+    reason: str | None = None
+    downstream_service: str | None = None
+    retry_after_ms: int | None = None
+
+
+class ErrorResponse(BaseModel):
+    code: str
+    message: str
+    details: ErrorDetail | None = None
+
+
+class APIErrorResponse(BaseModel):
+    error: ErrorResponse
+    meta: MetaResponse | None = None
+```
+
+#### 4.4.3 Snapshot Schema
+
+```python
+class UtilizationItem(BaseModel):
+    value: float
+    limit: float
+    pct: float = Field(..., ge=0)
+
+
+# Full 版本（REST Snapshot）
+class LevelsMap(BaseModel):
+    delta: GreeksLevelEnum = GreeksLevelEnum.NORMAL
+    gamma: GreeksLevelEnum = GreeksLevelEnum.NORMAL
+    vega: GreeksLevelEnum = GreeksLevelEnum.NORMAL
+    theta: GreeksLevelEnum = GreeksLevelEnum.NORMAL
+    coverage: GreeksLevelEnum = GreeksLevelEnum.NORMAL
+
+
+class UtilizationMap(BaseModel):
+    delta: UtilizationItem | None = None
+    gamma: UtilizationItem | None = None
+    vega: UtilizationItem | None = None
+    theta: UtilizationItem | None = None
+
+
+# Patch 版本（WS Update）
+class LevelsPatch(BaseModel):
+    delta: GreeksLevelEnum | None = None
+    gamma: GreeksLevelEnum | None = None
+    vega: GreeksLevelEnum | None = None
+    theta: GreeksLevelEnum | None = None
+    coverage: GreeksLevelEnum | None = None
+
+
+class UtilizationPatch(BaseModel):
+    delta: UtilizationItem | None = None
+    gamma: UtilizationItem | None = None
+    vega: UtilizationItem | None = None
+    theta: UtilizationItem | None = None
+
+
+class AccountGreeksResponse(BaseModel):
+    account_id: str
+    dollar_delta: float
+    gamma_dollar: float
+    vega_per_1pct: float
+    theta_per_day: float
+    coverage_pct: float = Field(..., ge=0, le=100)
+    valid_legs_count: int = Field(..., ge=0)
+    total_legs_count: int = Field(..., ge=0)
+    warning_legs_count: int = Field(0, ge=0)
+    levels: LevelsMap
+    utilization: UtilizationMap
+
+
+class StrategyGreeksResponse(BaseModel):
+    strategy_id: str
+    dollar_delta: float
+    gamma_dollar: float
+    vega_per_1pct: float
+    theta_per_day: float
+    coverage_pct: float = Field(..., ge=0, le=100)
+    valid_legs_count: int = Field(..., ge=0)
+    total_legs_count: int = Field(..., ge=0)
+    warning_legs_count: int = Field(0, ge=0)
+    levels: LevelsMap
+    utilization: UtilizationMap | None = None
+
+
+class SnapshotData(BaseModel):
+    account: AccountGreeksResponse
+    strategies: list[StrategyGreeksResponse] = Field(default_factory=list)
+
+
+class SnapshotResponse(BaseModel):
+    data: SnapshotData
+    meta: MetaResponse
+
+
+class SingleStrategyData(BaseModel):
+    strategy: StrategyGreeksResponse
+
+
+class SingleStrategyResponse(BaseModel):
+    data: SingleStrategyData
+    meta: MetaResponse
+```
+
+#### 4.4.4 Contributors Schema
+
+```python
+class ContributorItem(BaseModel):
+    rank: int = Field(..., ge=1)
+    position_id: int
+    symbol: str
+    underlying: str
+    strategy_id: str | None = None
+    quantity: int
+    option_type: Literal["call", "put"]
+    strike: float = Field(..., gt=0)
+    expiry: str
+    value_signed: float
+    contribution_abs: float = Field(..., ge=0)
+    contribution_pct: float = Field(..., ge=0, le=100)
+
+
+class ContributorsData(BaseModel):
+    metric: GreeksMetricEnum
+    total_value: float
+    total_abs_value: float = Field(..., ge=0)
+    contributors: list[ContributorItem]
+
+
+class ContributorsResponse(BaseModel):
+    data: ContributorsData
+    meta: MetaResponse
+```
+
+#### 4.4.5 History Schema
+
+```python
+class HistoryPoint(BaseModel):
+    ts: datetime
+    dollar_delta: float | None = None
+    gamma_dollar: float | None = None
+    vega_per_1pct: float | None = None
+    theta_per_day: float | None = None
+    coverage_pct: float | None = None
+
+
+class HistoryData(BaseModel):
+    scope: GreeksScopeEnum
+    scope_id: str
+    interval: IntervalEnum
+    points: list[HistoryPoint]
+
+
+class HistoryResponse(BaseModel):
+    data: HistoryData
+    meta: MetaResponse
+
+
+class HistoryQueryParams(BaseModel):
+    scope: GreeksScopeEnum = GreeksScopeEnum.ACCOUNT
+    scope_id: str | None = None
+    start_ts: datetime
+    end_ts: datetime | None = None
+    interval: IntervalEnum = IntervalEnum.FIVE_MIN
+    metrics: list[GreeksMetricEnum] | None = None
+```
+
+#### 4.4.6 Alerts Schema
+
+```python
+class AlertItem(BaseModel):
+    alert_id: str
+    scope: GreeksScopeEnum
+    scope_id: str
+    metric: GreeksMetricEnum
+    level: GreeksLevelEnum
+    trigger_types: list[str]
+    value_raw: float
+    value_eval: float
+    limit: float
+    threshold: float
+    utilization_pct: float = Field(..., ge=0)
+    explains: list[str]
+    is_recovery: bool = False
+    created_at: datetime
+
+
+class AlertsData(BaseModel):
+    alerts: list[AlertItem]
+    total_count: int = Field(..., ge=0)
+    has_more: bool = False
+
+
+class AlertsResponse(BaseModel):
+    data: AlertsData
+    meta: MetaResponse
+
+
+class AlertsQueryParams(BaseModel):
+    scope: GreeksScopeEnum | None = None
+    scope_id: str | None = None
+    metric: GreeksMetricEnum | None = None
+    level: GreeksLevelEnum | None = None
+    start_ts: datetime | None = None
+    end_ts: datetime | None = None
+    limit: int = Field(50, ge=1, le=200)
+    offset: int = Field(0, ge=0)
+```
+
+#### 4.4.7 Limits Schema
+
+```python
+class ThresholdConfigItem(BaseModel):
+    metric: GreeksMetricEnum
+    direction: ThresholdDirectionEnum = ThresholdDirectionEnum.ABS
+    limit: float = Field(..., gt=0)
+    warn_pct: float = Field(0.80, ge=0, le=1)
+    crit_pct: float = Field(1.00, ge=0, le=2)
+    hard_pct: float = Field(1.20, ge=0, le=3)
+    warn_recover_pct: float = Field(0.75, ge=0, le=1)
+    crit_recover_pct: float = Field(0.90, ge=0, le=1)
+    rate_window_seconds: int = Field(300, ge=60, le=3600)
+    rate_change_pct: float = Field(0.20, ge=0, le=1)
+    rate_change_abs: float = Field(0, ge=0)
+
+
+class LimitsConfigData(BaseModel):
+    scope: GreeksScopeEnum
+    scope_id: str
+    thresholds: dict[GreeksMetricEnum, ThresholdConfigItem]
+    min_coverage_pct: float = Field(95.0, ge=0, le=100)
+    dedupe_window_seconds: dict[GreeksLevelEnum, int]
+
+
+class LimitsResponse(BaseModel):
+    data: LimitsConfigData
+    meta: MetaResponse
+
+
+class LimitsUpdateRequest(BaseModel):
+    thresholds: dict[GreeksMetricEnum, ThresholdConfigItem] | None = None
+    min_coverage_pct: float | None = Field(None, ge=0, le=100)
+    dedupe_window_seconds: dict[GreeksLevelEnum, int] | None = None
+```
+
+#### 4.4.8 WebSocket Schema
+
+```python
+class WSMeta(BaseModel):
+    connection_id: str
+    seq: int = Field(..., ge=0)
+    server_ts: datetime
+    as_of_ts: datetime | None = None
+    as_of_ts_min: datetime | None = None
+    as_of_ts_max: datetime | None = None
+    staleness_seconds: int | None = Field(None, ge=0)
+
+
+class WSConnectedData(BaseModel):
+    account_id: str  # connection_id 只在 meta
+
+
+class WSConnectedMessage(BaseModel):
+    type: Literal["connected"] = "connected"
+    data: WSConnectedData
+    meta: WSMeta
+
+
+class WSSubscribeOptions(BaseModel):
+    include_strategies: bool = True
+    strategy_ids: list[str] | None = None
+    metrics: list[GreeksMetricEnum] | None = None
+    throttle_ms: int = Field(1000, ge=100, le=60000)
+
+
+class WSSubscribedData(BaseModel):
+    channels: list[WSChannelType]
+    options: WSSubscribeOptions
+
+
+class WSSubscribedMessage(BaseModel):
+    type: Literal["subscribed"] = "subscribed"
+    data: WSSubscribedData
+    meta: WSMeta
+
+
+class WSSnapshotMessage(BaseModel):
+    type: Literal["snapshot"] = "snapshot"
+    channel: Literal["greeks"] = "greeks"
+    data: SnapshotData
+    meta: WSMeta
+
+
+class WSStrategyUpdate(BaseModel):
+    strategy_id: str
+    dollar_delta: float | None = None
+    gamma_dollar: float | None = None
+    vega_per_1pct: float | None = None
+    theta_per_day: float | None = None
+    coverage_pct: float | None = None
+    valid_legs_count: int | None = None
+    total_legs_count: int | None = None
+    levels: LevelsPatch | None = None
+    utilization: UtilizationPatch | None = None
+    deleted: bool = False
+
+
+class WSAccountUpdate(BaseModel):
+    dollar_delta: float | None = None
+    gamma_dollar: float | None = None
+    vega_per_1pct: float | None = None
+    theta_per_day: float | None = None
+    coverage_pct: float | None = None
+    valid_legs_count: int | None = None
+    total_legs_count: int | None = None
+    levels: LevelsPatch | None = None
+    utilization: UtilizationPatch | None = None
+
+
+class WSUpdateData(BaseModel):
+    account: WSAccountUpdate | None = None
+    strategies: list[WSStrategyUpdate] | None = None
+
+
+class WSUpdateMessage(BaseModel):
+    type: Literal["update"] = "update"
+    channel: Literal["greeks"] = "greeks"
+    data: WSUpdateData
+    meta: WSMeta
+
+
+class WSAlertData(BaseModel):
+    alert_id: str
+    scope: GreeksScopeEnum
+    scope_id: str
+    metric: GreeksMetricEnum
+    level: GreeksLevelEnum
+    trigger_types: list[str]
+    value_raw: float
+    value_eval: float
+    limit: float
+    threshold: float
+    utilization_pct: float = Field(..., ge=0)
+    explains: list[str]
+    is_recovery: bool = False
+
+
+class WSAlertMessage(BaseModel):
+    type: Literal["alert"] = "alert"
+    channel: Literal["alerts"] = "alerts"
+    data: WSAlertData
+    meta: WSMeta
+
+
+class WSPingMessage(BaseModel):
+    type: Literal["ping"] = "ping"
+    meta: WSMeta
+
+
+class WSErrorMessage(BaseModel):
+    type: Literal["error"] = "error"
+    code: str
+    message: str
+    details: dict | None = None
+    meta: WSMeta
+
+
+# 客户端消息
+class WSAuthMessage(BaseModel):
+    type: Literal["auth"] = "auth"
+    token: str
+
+
+class WSSubscribeMessage(BaseModel):
+    type: Literal["subscribe"] = "subscribe"
+    channels: list[WSChannelType]
+    options: WSSubscribeOptions | None = None
+
+
+class WSUnsubscribeMessage(BaseModel):
+    type: Literal["unsubscribe"] = "unsubscribe"
+    channels: list[WSChannelType]
+
+
+class WSPongMessage(BaseModel):
+    type: Literal["pong"] = "pong"
+```
 
 ---
 
