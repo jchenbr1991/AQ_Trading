@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from sqlalchemy import JSON, BigInteger, DateTime, Integer, String
+from sqlalchemy import JSON, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.database import Base
@@ -28,7 +28,8 @@ class OutboxEvent(Base):
 
     __tablename__ = "outbox_events"
 
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # Use Integer for SQLite test compatibility (PostgreSQL migration uses BigInteger)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     event_type: Mapped[str] = mapped_column(String(50), index=True)
     payload: Mapped[dict[str, Any]] = mapped_column(JSON)
     status: Mapped[OutboxEventStatus] = mapped_column(String(20), default=OutboxEventStatus.PENDING)
