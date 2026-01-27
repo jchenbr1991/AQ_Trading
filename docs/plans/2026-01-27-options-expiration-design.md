@@ -56,7 +56,29 @@
 | 7天内 | **INFO (SEV3)** | 蓝色 | 提前知晓 |
 | 3天内 | **WARNING (SEV2)** | 黄色 | 需要关注 |
 | 1天内 | **CRITICAL (SEV1)** | 红色 | 紧急处理 |
-| 当天到期 | **CRITICAL (SEV1)** | 灰色 | 今日收盘到期 |
+| 当天到期 | **CRITICAL (SEV1)** | 灰色 + 红色icon | **今日收盘到期（最后操作机会）** |
+
+**⚠️ UX 风险提醒**：
+- "当天到期"使用灰色是为了与"已失效"视觉区分
+- **必须配合红色icon或明显badge**，避免用户误认为"无需处理"
+- 文案必须强调"最后操作机会"，不能仅显示日期
+
+### 1.6 时区处理重要说明
+
+**系统时区架构**：
+- **服务器时区**：UTC（标准做法）
+- **业务时区**：America/New_York（美股交易所时区）
+- **前端展示**：用户本地时区（浏览器自动转换）
+
+**关键转换点**：
+1. **DTE 计算**：使用 `datetime.now(market_tz).date()` 确保与交易所日历一致
+2. **定时任务**：APScheduler 配置 `timezone=market_tz`
+3. **前端展示**：所有时间戳以 ISO 8601 格式传输，前端自动转换为用户时区
+
+**避免的陷阱**：
+- ❌ 使用 `date.today()`（服务器本地时区）
+- ❌ 硬编码 UTC offset（忽略 DST 切换）
+- ✅ 使用 `ZoneInfo("America/New_York")`（自动处理 DST）
 
 ---
 
@@ -587,6 +609,8 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -595,21 +619,32 @@ class ExpirationScheduler:
 
     部署策略（二选一）：
     1. 单副本部署（推荐）：scheduler 独立服务，只部署一个实例
-    2. 分布式锁：使用 Postgres advisory lock 或 Redis lock
+    2. 分布式锁：使用 Postgres advisory lock（推荐优先使用）
+
+    **为什么优先 Postgres Advisory Lock**：
+    - 不需要引入额外的 Redis 维护成本
+    - 与现有数据库事务完全兼容
+    - 连接断开时锁自动释放
+    - 性能开销极小
     """
 
     def __init__(
         self,
         checker,
         account_id: str,
+        session: AsyncSession,
         market_tz: ZoneInfo = ZoneInfo("America/New_York"),
         use_distributed_lock: bool = False,
     ):
         self.checker = checker
         self.account_id = account_id
+        self.session = session
         self.market_tz = market_tz
         self.use_distributed_lock = use_distributed_lock
         self.scheduler = AsyncIOScheduler(timezone=market_tz)
+
+        # Postgres advisory lock key（使用固定 hash 避免冲突）
+        self.lock_key = hash("options_expiration_check") % (2**31)
 
     async def _run_check_with_lock(self):
         """带分布式锁的检查执行"""
@@ -617,7 +652,10 @@ class ExpirationScheduler:
             # 使用 Postgres advisory lock
             lock_acquired = await self._try_acquire_lock()
             if not lock_acquired:
-                logger.info("Expiration check skipped: another instance is running")
+                logger.info(
+                    f"Expiration check skipped: lock held by another instance "
+                    f"(lock_key={self.lock_key})"
+                )
                 return {"executed": False, "reason": "lock_held_by_another_instance"}
 
             try:
@@ -633,19 +671,42 @@ class ExpirationScheduler:
             return stats
 
     async def _try_acquire_lock(self) -> bool:
-        """尝试获取分布式锁（Postgres advisory lock 示例）"""
-        # 使用 position_id hash 作为 lock key
-        lock_key = hash("expiration_check") % (2**31)
+        """尝试获取 Postgres advisory lock
 
-        # SELECT pg_try_advisory_lock(lock_key)
-        # 返回 True 表示成功获取锁
-        # 这里需要注入 DB session
-        pass
+        使用 pg_try_advisory_lock() 非阻塞式获取锁。
+        如果锁已被其他会话持有，立即返回 False。
+
+        锁的生命周期：
+        - 锁绑定到数据库会话（connection）
+        - 连接断开时锁自动释放
+        - 不需要显式超时管理
+        """
+        sql = text("SELECT pg_try_advisory_lock(:lock_key)")
+        result = await self.session.execute(sql, {"lock_key": self.lock_key})
+        acquired = result.scalar()
+
+        if acquired:
+            logger.info(f"Acquired advisory lock: lock_key={self.lock_key}")
+        else:
+            logger.debug(f"Failed to acquire lock: lock_key={self.lock_key}")
+
+        return acquired
 
     async def _release_lock(self):
-        """释放分布式锁"""
-        # SELECT pg_advisory_unlock(lock_key)
-        pass
+        """释放 Postgres advisory lock
+
+        注意：只有持有锁的会话可以释放锁
+        """
+        sql = text("SELECT pg_advisory_unlock(:lock_key)")
+        result = await self.session.execute(sql, {"lock_key": self.lock_key})
+        released = result.scalar()
+
+        if released:
+            logger.info(f"Released advisory lock: lock_key={self.lock_key}")
+        else:
+            logger.warning(
+                f"Failed to release lock (may not be held): lock_key={self.lock_key}"
+            )
 
     def start(self):
         """启动调度器"""
@@ -1046,23 +1107,33 @@ interface ExpiringAlertsResponse {
 
 **必须通过的测试**：
 
-1. **阈值匹配逻辑**（修正期望值）
+1. **阈值匹配逻辑**（修正期望值 - 这是验证去重策略的最直接手段）
    - DTE=1 → 3条告警（1/3/7）
    - DTE=0 → 4条告警（0/1/3/7）
+   - 重复运行 → `alerts_deduplicated` = 总阈值数
 
 2. **幂等性持久化**
    - 同 key 重复请求 → 返回缓存结果
    - 重启后仍有效
+   - 不同 key → 正常创建新订单
 
 3. **事务原子性**
    - 订单创建失败 → alerts 不变
+   - Position 状态更新失败 → 整体回滚
 
-4. **多实例安全**
-   - 两个实例同时运行 → 只有一个执行
+4. **多实例安全**（使用 Postgres Advisory Lock）
+   - 两个实例同时运行 → 只有一个获得锁并执行
+   - 日志验证：skipped instance 记录 "lock_held_by_another_instance"
 
 5. **回归测试**
    - 旧类型告警不受影响
    - details=None 时不崩溃
+   - 现有 alert 创建流程不变
+
+6. **时区边界测试**
+   - 模拟 DST 切换日（3月第二个周日、11月第一个周日）
+   - 验证 23:59:59 → 00:00:01 的 DTE 计算正确
+   - 定时任务在 DST 切换后仍按正确时间执行（8:00 ET, 15:00 ET）
 
 ### 5.4 部署检查清单
 
@@ -1083,22 +1154,109 @@ interface ExpiringAlertsResponse {
 - [ ] 次日 8:00 验证定时任务执行
 - [ ] Metrics dashboard 趋势正常
 
-### 5.5 性能目标
+### 5.5 性能目标与优化路径
 
+**V1 性能目标**（富余设计）：
 - 1000 个期权持仓检查 < 10s
 - GET /api/options/expiring < 500ms (P95)
 - POST close < 1s (P95)
 - 幂等键查询 < 50ms (P95)
 
+**性能边界说明**：
+- 当前目标适合初创公司起步阶段
+- 预留充足的性能余量（实际可能 < 5s）
+
+**V2 性能优化路径**（当持仓数 > 5000 或涉及高频策略时）：
+
+```python
+# backend/src/options/expiration.py
+
+async def check_expirations_optimized(self, account_id: str) -> dict:
+    """优化版：批量插入告警（减少 DB 往返）"""
+
+    # 1. 批量收集所有待创建的告警
+    alerts_to_create = []
+
+    for pos in option_positions:
+        thresholds = get_applicable_thresholds(days_to_expiry)
+        for threshold in thresholds:
+            alert = self._create_expiration_alert(...)
+            alerts_to_create.append(alert)
+
+    # 2. 批量插入（使用 executemany 或 bulk_insert_mappings）
+    # 利用 ON CONFLICT ... DO NOTHING 实现幂等
+    sql = text("""
+        INSERT INTO alerts (id, type, severity, fingerprint, dedupe_key, ...)
+        VALUES (:id, :type, :severity, :fingerprint, :dedupe_key, ...)
+        ON CONFLICT (type, dedupe_key) DO NOTHING
+    """)
+
+    await self.session.execute(sql, [alert.to_dict() for alert in alerts_to_create])
+    await self.session.commit()
+
+    # 3. 查询实际创建的数量（通过 INSERT ... RETURNING 或后续查询）
+```
+
+**优化收益**：
+- 减少 DB 往返次数：从 N 次减少到 1 次
+- 预期可支持 10,000+ 持仓在 < 10s 完成
+
 ### 5.6 可观测性（Prometheus Metrics）
+
+**导出的 Metrics**：
 
 ```
 options_expiration_check_runs_total{status="success|failed|skipped"}
 options_expiration_alerts_created_total
 options_expiration_alerts_deduped_total
-options_expiration_check_errors_total{error_type="..."}
+options_expiration_check_errors_total{error_type="missing_expiry|alert_creation|position_processing"}
 options_expiration_check_duration_seconds
-options_expiration_pending_alerts
+options_expiration_pending_alerts  # Gauge: 当前待处理告警数
+```
+
+**Grafana Dashboard 建议面板**：
+
+1. **告警趋势图**（时间序列）
+   - `rate(options_expiration_alerts_created_total[5m])`
+   - `rate(options_expiration_alerts_deduped_total[5m])`
+
+2. **待处理告警数**（Gauge）
+   - `options_expiration_pending_alerts`
+   - **告警阈值设置**：> 100 且持续 1 小时
+
+3. **检查执行状态**（饼图）
+   - `options_expiration_check_runs_total` by status
+
+4. **错误分布**（柱状图）
+   - `options_expiration_check_errors_total` by error_type
+
+5. **检查耗时**（直方图）
+   - `histogram_quantile(0.95, options_expiration_check_duration_seconds)`
+
+**告警规则示例**：
+
+```yaml
+# Prometheus alerting rules
+groups:
+  - name: options_expiration
+    rules:
+      - alert: OptionsExpirationPendingAlertsHigh
+        expr: options_expiration_pending_alerts > 100
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "期权到期告警积压（可能存在 Bug）"
+          description: "待处理告警数 {{ $value }} 超过阈值且持续 1 小时"
+
+      - alert: OptionsExpirationCheckFailed
+        expr: rate(options_expiration_check_runs_total{status="failed"}[5m]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "期权到期检查失败"
+          description: "过去 5 分钟内检查任务失败"
 ```
 
 ### 5.7 回滚计划
@@ -1270,4 +1428,97 @@ function ExpiringAlertsList({ alerts, onClose, onAck }) {
 
 ---
 
-**文档结束**
+## 附录 C：演进风险点（V2 考虑）
+
+### C.1 Position ID 复用风险
+
+**当前设计**：
+```
+dedupe_key = "option_expiring:{account_id}:{position_id}:threshold_X:permanent"
+```
+
+**潜在风险**：
+- 某些券商系统 position_id 可能被复用
+- Position soft-delete + recreate 场景
+
+**V2 建议**（不是现在）：
+```python
+# TODO: 当 position_id 复用成为实际问题时，升级 dedupe_key 为：
+# option_expiring:{account_id}:{position_uuid}:threshold_X
+# 或包含 opened_at 时间戳确保唯一性
+```
+
+**现在的做法**：
+- 在代码注释中标注 TODO
+- 监控是否出现"已平仓期权仍提醒"的问题
+- V1 阶段概率极低，不阻塞发布
+
+### C.2 "灰色"语义的 UX 风险
+
+**问题**：
+- 灰色在交易系统中常被理解为"已失效/无需处理"
+- 但"当天到期"是"最后操作机会"
+
+**现在的做法**（已在 1.5 明确）：
+- 文案必须强调："**今日收盘到期（最后操作机会）**"
+- 必须配合红色 icon 或明显 badge
+- 不能仅显示日期
+
+**V2 优化**：
+- A/B 测试不同颜色方案（橙色、深红色）
+- 用户调研验证是否存在"忽略最关键一天"的情况
+
+### C.3 Close Position 并发竞争窗口
+
+**问题**：
+幂等键兜住了同一请求的重复，但不同幂等键的并发请求仍可能发生：
+
+```
+User A: Idempotency-Key=uuid-1 → 检查 is_closable → 创建订单
+User B: Idempotency-Key=uuid-2 → 检查 is_closable → 创建订单
+```
+
+**当前方案**（行业标准解法）：
+1. 幂等键兜底 API 层
+2. OrderService 内部处理重复卖出/交易所拒单
+3. 数据库事务保证一致性
+
+**V2 增强**（可选）：
+```sql
+-- Position 表增加状态字段
+ALTER TABLE positions ADD COLUMN closing_request_id UUID;
+ALTER TABLE positions ADD COLUMN closing_at TIMESTAMP;
+
+-- DB 约束兜底
+CREATE UNIQUE INDEX idx_position_closing
+ON positions(id)
+WHERE status = 'closing';
+```
+
+**V1 不阻塞发布**：
+- 极端并发概率低（双击 + 网络抖动）
+- OrderService 已有基础防护
+- V2 可根据实际监控数据决定是否加强
+
+### C.4 测试重点确认
+
+**关键测试用例（务必执行）**：
+
+1. **边界值测试**：
+   - DTE=1 触发 3 条告警（1/3/7）✅
+   - DTE=0 触发 4 条告警（0/1/3/7）✅
+
+2. **去重验证**：
+   - 重复运行 checker，`alerts_deduplicated` 应等于总阈值数
+
+3. **监控对齐**：
+   - `options_expiration_pending_alerts` 接入 Grafana
+   - 设置告警：pending > 100 且持续 1 小时
+
+4. **时区边界**：
+   - 模拟 DST 切换日
+   - 验证 23:59 和 00:01 的 DTE 计算正确
+
+---
+
+**文档结束 - 版本 1.0（已冻结）**
