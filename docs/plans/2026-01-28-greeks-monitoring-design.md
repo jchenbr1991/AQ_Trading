@@ -3272,13 +3272,199 @@ class WSPongMessage(BaseModel):
 
 ## 5. 前端架构
 
-（待续）
+### 5.1 组件结构
+
+```
+frontend/src/features/greeks/
+├── api/
+│   ├── greeksApi.ts          # REST API 客户端
+│   ├── greeksWsClient.ts     # WebSocket 客户端
+│   └── types.ts              # 类型定义（从后端 schema 生成）
+├── hooks/
+│   ├── useGreeksSnapshot.ts  # 获取快照（REST + WS 混合）
+│   ├── useGreeksHistory.ts   # 历史数据查询
+│   ├── useGreeksAlerts.ts    # 告警数据
+│   └── useGreeksWs.ts        # WebSocket 连接管理
+├── components/
+│   ├── GreeksDashboard/      # 主 Dashboard 容器
+│   ├── GreeksCard/           # 单指标卡片
+│   ├── GreeksTrend/          # 趋势图
+│   ├── GreeksAlerts/         # 告警列表
+│   └── GreeksContributors/   # 贡献度排名
+├── store/
+│   ├── greeksStore.ts        # Zustand store
+│   ├── selectors.ts          # 派生数据选择器
+│   └── wsIntegration.ts      # WS 事件桥接
+└── utils/
+    ├── formatters.ts         # 数值格式化
+    └── constants.ts          # 常量定义
+```
+
+### 5.2 WebSocket 客户端
+
+**设计要点：**
+- 使用 `mitt` 替代 Node EventEmitter（避免构建兼容问题）
+- 单例管理（避免多组件多连接）
+- seq gap 时进入 `needsResync` 模式，丢弃 update 直到收到 snapshot
+- 心跳：subscribed 后启动，任意消息刷新
+- 重连：指数退避（1s→2s→4s→8s→16s），支持取消
+- `manualClose` 标志防止主动断开后自动重连
+
+**关键接口：**
+```typescript
+class GreeksWsClient {
+  connect(): void;
+  disconnect(): void;
+  on<K extends keyof WSEvents>(event: K, handler: (data: WSEvents[K]) => void): void;
+  off<K extends keyof WSEvents>(event: K, handler: (data: WSEvents[K]) => void): void;
+  isConnected(): boolean;
+  isResyncing(): boolean;
+}
+
+type WSEvents = {
+  subscribed: { channels: string[]; options: any };
+  snapshot: SnapshotData;      // 协议原始数据
+  update: WSUpdateData;        // 协议原始数据
+  alert: WSAlertData;
+  wsError: { code: string; message: string };
+  disconnected: { code: number; reason: string };
+  resyncRequired: { reason: 'seq_gap' | 'queue_overflow' };
+  stateChange: WSState;
+};
+```
+
+**Deep Merge Patch 规则：**
+- `null`/`undefined` 表示"字段未包含在 patch 中"，不覆盖
+- 删除只能通过 tombstone (`deleted=true`)
+- 只对 plain object 递归，Date/Array 直接覆盖
+
+### 5.3 React Hooks
+
+**useGreeksWs（单例）：** 管理 WS 连接，维护状态，分发事件
+
+**useGreeksSnapshot：**
+- 数据源优先级：WebSocket > REST
+- WS 未连接或 resync 时启用 REST fallback
+- 返回 `dataSource: 'websocket' | 'rest'` 标识
+
+**useGreeksHistory：** 历史数据查询（TanStack Query）
+
+**useGreeksAlerts：** 合并实时告警 + 历史告警（去重）
+
+### 5.4 组件设计
+
+**组件层次：**
+```
+GreeksDashboard
+├── ConnectionStatus          # WS 连接状态
+├── AccountSummary            # 账户汇总
+│   ├── GreeksCard × 4        # Delta/Gamma/Vega/Theta
+│   │   ├── UtilizationBar    # 限额进度条（阈值从 config 传入）
+│   │   └── LevelBadge        # 告警级别徽章
+│   └── CoverageIndicator
+├── StrategyTabs              # 策略切换
+├── GreeksTrend               # 趋势图
+├── GreeksAlertPanel          # 告警面板
+└── ContributorsPanel         # 贡献度
+```
+
+**UtilizationBar 阈值：** 从 `limitsConfig` 传入，不硬编码
+
+### 5.5 状态管理（Zustand）
+
+**Store 设计原则：**
+- 使用 plain object 而非 Map/Set（便于序列化、DevTools）
+- Deep merge patch（levels/utilization 按 key merge）
+- 未知 strategy 的 patch 忽略（等待 snapshot）
+
+**关键 State：**
+```typescript
+interface GreeksState {
+  account: AccountGreeks | null;
+  strategiesById: Record<string, StrategyGreeks>;
+  alerts: AlertData[];
+  connectionState: WSState;
+  isResyncing: boolean;
+  dataSource: 'websocket' | 'rest' | null;
+  selectedStrategyId: string | null;
+  expandedPanels: Record<string, boolean>;
+}
+```
+
+**WS 集成规则：**
+- WS Client emit 协议原始数据
+- Store 负责数据结构转换和 patch 合并
 
 ---
 
 ## 6. 实施计划
 
-（待续）
+### 6.1 开发阶段
+
+| Phase | 时间 | 内容 |
+|-------|------|------|
+| P1: 核心后端 | Week 1-2 | Calculator + Aggregator + AlertEngine + Monitor |
+| P2: API + 存储 | Week 3 | REST + WebSocket + TimescaleDB + Redis |
+| P3: 前端 V1 | Week 4 | Dashboard + 告警面板 + E2E |
+| P4: 集成上线 | Week 5 | RiskManager 集成 + 监控 + 灰度 |
+
+### 6.2 Phase 1 任务
+
+**P1.1 数据模型 + 迁移**
+- 创建 greeks 模块目录
+- 实现 Section 2 数据模型
+- 创建 TimescaleDB 表 + 索引
+- Alembic 迁移脚本
+
+**P1.2 GreeksCalculator**
+- IVCacheManager（Redis）
+- Futu 数据获取
+- BS + Bjerksund-Stensland 计算
+- 单位规范化 + 质量校验
+- 单元测试（覆盖率 > 90%）
+
+**P1.3 Aggregator + AlertEngine**
+- 单遍聚合 + coverage 计算
+- 阈值评估 + ROC 检测
+- is_breached / is_recovered
+- level-scoped dedupe + escalation-through
+
+**P1.4 GreeksMonitor**
+- Single-flight refresh
+- Graceful stop
+- Aligned scheduling
+- Send-side alert dedupe
+- SnapshotStore + Redis publish
+
+### 6.3 Phase 2 任务
+
+**REST API：** snapshot / contributors / history / alerts / limits
+
+**WebSocket：** 认证 + subscribe + snapshot/update 推送 + 心跳 + backpressure
+
+**存储：** TimescaleDB 快照 + Redis IV 缓存
+
+### 6.4 Phase 3 任务
+
+**前端：** 类型生成 + WS Client + Store + Dashboard 组件 + E2E 测试
+
+### 6.5 里程碑
+
+| 里程碑 | 时间 | 交付物 |
+|--------|------|--------|
+| M1 | Week 2 | 后端核心 + 测试 |
+| M2 | Week 3 | API + 存储 |
+| M3 | Week 4 | 前端 V1 |
+| M4 | Week 5 | 上线 |
+
+### 6.6 风险
+
+| 风险 | 缓解 |
+|------|------|
+| Futu Greeks 不准确 | Model fallback + 对比验证 |
+| WS 连接数超限 | 单例管理 |
+| 前端状态同步错误 | 完整测试 seq gap / resync |
+| 告警风暴 | level-scoped dedupe + 回差 |
 
 ---
 
