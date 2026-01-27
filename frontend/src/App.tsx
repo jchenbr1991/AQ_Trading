@@ -6,6 +6,7 @@ import { StoragePage } from './pages/StoragePage';
 import { AlertsPage } from './pages/AlertsPage';
 import { AuditPage } from './pages/AuditPage';
 import { SystemPage } from './pages/SystemPage';
+import { OptionsExpiringPage } from './pages/OptionsExpiringPage';
 
 function Navigation() {
   return (
@@ -27,6 +28,9 @@ function Navigation() {
             </Link>
             <Link to="/alerts" className="text-gray-300 hover:text-white">
               Alerts
+            </Link>
+            <Link to="/options/expiring" className="text-gray-300 hover:text-white">
+              Options
             </Link>
             <Link to="/audit" className="text-gray-300 hover:text-white">
               Audit
@@ -52,6 +56,7 @@ function App() {
           <Route path="/backtest" element={<BacktestPage />} />
           <Route path="/storage" element={<StoragePage />} />
           <Route path="/alerts" element={<AlertsPage />} />
+          <Route path="/options/expiring" element={<OptionsExpiringPage />} />
           <Route path="/audit" element={<AuditPage />} />
           <Route path="/system" element={<SystemPage />} />
         </Routes>
