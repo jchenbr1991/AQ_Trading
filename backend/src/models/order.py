@@ -1,9 +1,11 @@
 # backend/src/models/order.py
+import uuid
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.database import Base
@@ -64,6 +66,25 @@ class OrderRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
+
+    # Close request tracking (nullable - only set for close orders)
+    close_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        PGUUID(as_uuid=True), nullable=True, index=True
+    )
+
+    # Broker update sequence for monotonic updates (nullable if broker doesn't provide)
+    broker_update_seq: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    last_broker_update_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Reconciler retry tracking
+    reconcile_not_found_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    def __init__(self, **kwargs):
+        """Initialize OrderRecord with defaults for optional fields."""
+        # Apply defaults for fields not provided
+        kwargs.setdefault("filled_qty", 0)
+        kwargs.setdefault("reconcile_not_found_count", 0)
+        super().__init__(**kwargs)
 
     @property
     def is_terminal(self) -> bool:
