@@ -44,6 +44,9 @@ class AlertType(str, Enum):
         DB_WRITE_FAIL: Database write operation failed
         STORAGE_THRESHOLD: Storage usage exceeded threshold
         ALERT_DELIVERY_FAILED: Failed to deliver an alert notification
+
+    Options alerts:
+        OPTION_EXPIRING: Option position approaching expiration
     """
 
     # Trading alerts
@@ -59,6 +62,9 @@ class AlertType(str, Enum):
     DB_WRITE_FAIL = "db_write_fail"
     STORAGE_THRESHOLD = "storage_threshold"
     ALERT_DELIVERY_FAILED = "alert_delivery_failed"
+
+    # Options alerts
+    OPTION_EXPIRING = "option_expiring"
 
 
 class Severity(int, Enum):
