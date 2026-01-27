@@ -44,7 +44,12 @@ CREATE TABLE close_requests (
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     -- pending → submitted → completed/failed/retryable
 
-    target_qty INTEGER NOT NULL,          -- requested close quantity
+    -- Order parameters (stored for retry consistency, don't re-derive from position)
+    symbol VARCHAR(50) NOT NULL,
+    side VARCHAR(10) NOT NULL,             -- 'buy' or 'sell' (stored at creation)
+    asset_type VARCHAR(20) NOT NULL,       -- 'option', 'stock', etc.
+
+    target_qty INTEGER NOT NULL,           -- requested close quantity
     filled_qty INTEGER NOT NULL DEFAULT 0, -- aggregate from all orders
     remaining_qty INTEGER GENERATED ALWAYS AS (target_qty - filled_qty) STORED,
 
@@ -183,6 +188,67 @@ async def close_position(position_id: int, idempotency_key: str) -> ClosePositio
 
             if not position:
                 raise HTTPException(404, "Position not found")
+
+            # 1.2 Idempotency check
+            existing_request = await db.execute(
+                select(CloseRequest)
+                .where(CloseRequest.position_id == position_id)
+                .where(CloseRequest.idempotency_key == idempotency_key)
+            ).scalar_one_or_none()
+
+            if existing_request:
+                # Idempotent replay - return existing request
+                return await build_response(existing_request, position)
+
+            # 1.3 State validation
+            if position.status == PositionStatus.CLOSING:
+                raise HTTPException(409, detail={
+                    "error": "position_already_closing",
+                    "active_close_request_id": str(position.active_close_request_id)
+                })
+
+            if position.status != PositionStatus.OPEN:
+                raise HTTPException(400, f"Cannot close position in {position.status} state")
+
+            if position.quantity == 0:
+                raise HTTPException(400, "Position already has zero quantity")
+
+            # 1.4 Determine side (store in CloseRequest for retry consistency)
+            side = "sell" if position.quantity > 0 else "buy"
+
+            # 1.5 Create CloseRequest (with side stored for retry)
+            close_request = CloseRequest(
+                id=uuid4(),
+                position_id=position_id,
+                idempotency_key=idempotency_key,
+                status=CloseRequestStatus.PENDING,
+                target_qty=abs(position.quantity),
+                side=side,  # Store for retry, don't re-derive from position
+                symbol=position.symbol,
+                asset_type=position.asset_type,
+            )
+            db.add(close_request)
+
+            # 1.6 Update position state
+            position.status = PositionStatus.CLOSING
+            position.active_close_request_id = close_request.id
+
+            # 1.7 Write outbox event (atomic with above)
+            outbox_event = OutboxEvent(
+                event_type="SUBMIT_CLOSE_ORDER",
+                payload={
+                    "close_request_id": str(close_request.id),
+                    "position_id": position_id,
+                    "symbol": position.symbol,
+                    "side": side,
+                    "qty": abs(position.quantity),
+                    "asset_type": position.asset_type,
+                }
+            )
+            db.add(outbox_event)
+
+        # Transaction committed, lock released
+
     except asyncpg.exceptions.LockNotAvailableError:
         # Another request is processing this position
         raise HTTPException(
@@ -194,67 +260,17 @@ async def close_position(position_id: int, idempotency_key: str) -> ClosePositio
             }
         )
 
-        # 1.2 Idempotency check
-        existing_request = await db.execute(
-            select(CloseRequest)
-            .where(CloseRequest.position_id == position_id)
-            .where(CloseRequest.idempotency_key == idempotency_key)
-        ).scalar_one_or_none()
-
-        if existing_request:
-            # Idempotent replay - return existing request
-            return await build_response(existing_request, position)
-
-        # 1.3 State validation
-        if position.status == PositionStatus.CLOSING:
-            raise HTTPException(409, detail={
-                "error": "position_already_closing",
-                "active_close_request_id": str(position.active_close_request_id)
-            })
-
-        if position.status != PositionStatus.OPEN:
-            raise HTTPException(400, f"Cannot close position in {position.status} state")
-
-        if position.quantity == 0:
-            raise HTTPException(400, "Position already has zero quantity")
-
-        # 1.4 Create CloseRequest
-        close_request = CloseRequest(
-            id=uuid4(),
-            position_id=position_id,
-            idempotency_key=idempotency_key,
-            status=CloseRequestStatus.PENDING,
-            target_qty=abs(position.quantity),
-        )
-        db.add(close_request)
-
-        # 1.5 Update position state
-        position.status = PositionStatus.CLOSING
-        position.active_close_request_id = close_request.id
-
-        # 1.6 Write outbox event (atomic with above)
-        outbox_event = OutboxEvent(
-            event_type="SUBMIT_CLOSE_ORDER",
-            payload={
-                "close_request_id": str(close_request.id),
-                "position_id": position_id,
-                "symbol": position.symbol,
-                "side": "sell" if position.quantity > 0 else "buy",
-                "qty": abs(position.quantity),
-                "asset_type": position.asset_type,
-            }
-        )
-        db.add(outbox_event)
-
-    # Transaction committed, lock released
     # Phase 2 & 3 happen async via outbox worker
-
     return ClosePositionResponse(
         close_request_id=str(close_request.id),
         position_id=position_id,
-        position_status=position.status,
+        position_status=PositionStatus.CLOSING,
+        close_request_status=CloseRequestStatus.PENDING,
         target_qty=close_request.target_qty,
+        filled_qty=0,
         orders=[],
+        poll_url=f"/api/options/close-requests/{close_request.id}",
+        poll_interval_ms=1000,
     )
 ```
 
@@ -263,25 +279,33 @@ async def close_position(position_id: int, idempotency_key: str) -> ClosePositio
 ```python
 async def process_outbox():
     """
-    Runs every 1 second, processes pending outbox events.
-    Handles SUBMIT_CLOSE_ORDER events.
+    Processes pending outbox events with batch support.
+
+    MVP: Process 1 event at a time (safest)
+    Future: Batch N events with semaphore for broker rate limiting
     """
+    BATCH_SIZE = 1  # MVP: 1, can increase to 10-20 for throughput
+
     while True:
         async with db.begin():
-            # Claim oldest pending event with lock
-            event = await db.execute(
+            # Claim oldest pending events with lock (skip_locked for concurrency)
+            events = await db.execute(
                 select(OutboxEvent)
                 .where(OutboxEvent.status == "pending")
                 .order_by(OutboxEvent.created_at)
-                .limit(1)
+                .limit(BATCH_SIZE)
                 .with_for_update(skip_locked=True)
-            ).scalar_one_or_none()
+            ).scalars().all()
 
-            if not event:
+            if not events:
                 await asyncio.sleep(1)
                 continue
 
-            event.status = "processing"
+            for event in events:
+                event.status = "processing"
+
+        # Process events (could parallelize with asyncio.gather for BATCH_SIZE > 1)
+        for event in events:
 
         # Outside transaction: call broker
         try:
@@ -293,11 +317,23 @@ async def process_outbox():
                 event.processed_at = utcnow()
 
         except Exception as e:
+            logger.exception(f"Outbox event {event.id} failed: {e}")
             async with db.begin():
                 event.retry_count += 1
                 if event.retry_count >= 3:
                     event.status = "failed"
                     await handle_outbox_failure(event)
+                    # CRITICAL: Alert for human intervention
+                    await emit_alert(
+                        AlertType.CLOSE_REQUEST_FAILED,
+                        severity=1,  # SEV1 - requires immediate attention
+                        details={
+                            "event_id": event.id,
+                            "event_type": event.event_type,
+                            "close_request_id": event.payload.get("close_request_id"),
+                            "error": str(e),
+                        }
+                    )
                 else:
                     event.status = "pending"  # retry
 
@@ -311,12 +347,24 @@ async def handle_submit_close_order(payload: dict):
         if close_request.status != CloseRequestStatus.PENDING:
             return  # Already processed (idempotent)
 
+    # Get current quote for aggressive limit order
+    # (Avoids market order slippage on illiquid options)
+    quote = await market_data.get_quote(payload["symbol"])
+
+    if payload["side"] == "sell":
+        # Sell: use bid * 0.95 (aggressive, accept 5% worse)
+        limit_price = quote.bid * Decimal("0.95")
+    else:
+        # Buy: use ask * 1.05 (aggressive, accept 5% worse)
+        limit_price = quote.ask * Decimal("1.05")
+
     # Call broker (outside transaction)
     order = await order_manager.submit_order(
         symbol=payload["symbol"],
         side=payload["side"],
         qty=payload["qty"],
-        order_type="market",  # MVP: market order
+        order_type="limit",
+        limit_price=limit_price,
         close_request_id=close_request_id,
     )
 
@@ -384,12 +432,27 @@ async def on_order_update(
                 logger.debug(f"Skipping stale update for {order_id}")
                 return
 
-        # Terminal state check: once FILLED, never change status
+        # Terminal state handling with special case for late FILLED arrival
         if order.status in TERMINAL_STATES:
             if order.status == "FILLED":
+                # Already FILLED - ignore any further updates
                 logger.debug(f"Order {order_id} already FILLED, ignoring {broker_status}")
                 return
-            # Other terminal states: still update filled_qty if higher
+
+            # Currently in CANCELLED/REJECTED/EXPIRED state
+            if broker_status == "FILLED" and filled_qty > order.filled_qty:
+                # Late FILLED arrival (broker out-of-order push)
+                # This can happen: CANCELLED pushed first, then FILLED arrives late
+                logger.info(f"Late FILLED for {order_id}: upgrading from {order.status}")
+                order.status = "FILLED"
+                order.filled_qty = filled_qty
+                order.broker_update_seq = broker_update_seq
+                order.last_broker_update_at = utcnow()
+                if order.close_request_id:
+                    await update_close_request_from_order(order)
+                return
+
+            # Other terminal->terminal transitions: just update filled_qty if higher
             order.filled_qty = max(order.filled_qty, filled_qty)
             order.broker_update_seq = broker_update_seq
             return
@@ -484,10 +547,10 @@ async def update_close_request_from_order(order: OrderRecord):
 ```python
 async def reconcile_closing_positions():
     """
-    Runs every 5 minutes. Handles:
-    1. Zombie requests (PENDING but no order sent)
-    2. Stuck CLOSING (orders not updating)
-    3. CLOSE_RETRYABLE auto-retry
+    Runs on different schedules:
+    - Case 1 (Zombie): Every 1 minute (fast detection of crashed requests)
+    - Case 2 (Stuck): Every 5 minutes (respect broker rate limits)
+    - Case 3 (Retry): Every 2 minutes (timely retry of partial fills)
     """
     now = utcnow()
 
@@ -581,25 +644,27 @@ async def reconcile_closing_positions():
 
     for request in retryable_requests:
         async with db.begin():
-            position = await db.get(Position, request.position_id)
-
             # Create new outbox event for remaining qty
+            # Use stored side/symbol from CloseRequest, NOT position.quantity
             outbox_event = OutboxEvent(
                 event_type="SUBMIT_CLOSE_ORDER",
                 payload={
                     "close_request_id": str(request.id),
                     "position_id": request.position_id,
-                    "symbol": position.symbol,
-                    "side": "sell" if position.quantity > 0 else "buy",
+                    "symbol": request.symbol,  # From CloseRequest, not Position
+                    "side": request.side,       # From CloseRequest, not Position
                     "qty": request.remaining_qty,
-                    "asset_type": position.asset_type,
+                    "asset_type": request.asset_type,
                     "is_retry": True,
                 }
             )
             db.add(outbox_event)
 
-            request.status = CloseRequestStatus.SUBMITTED
+            # Stay in PENDING until outbox worker actually submits
+            request.status = CloseRequestStatus.PENDING
             request.retry_count += 1
+
+            position = await db.get(Position, request.position_id)
             position.status = PositionStatus.CLOSING
 ```
 
