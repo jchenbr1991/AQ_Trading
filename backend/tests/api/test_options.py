@@ -56,6 +56,44 @@ async def options_db_session():
         """)
         )
 
+        # Create positions table for close position tests
+        await conn.execute(
+            text("""
+            CREATE TABLE positions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                asset_type TEXT DEFAULT 'stock',
+                strategy_id TEXT,
+                status TEXT DEFAULT 'open',
+                quantity INTEGER DEFAULT 0,
+                avg_cost REAL DEFAULT 0,
+                current_price REAL DEFAULT 0,
+                strike REAL,
+                expiry TEXT,
+                put_call TEXT,
+                opened_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        )
+
+        # Create accounts table (foreign key reference)
+        await conn.execute(
+            text("""
+            CREATE TABLE accounts (
+                account_id TEXT PRIMARY KEY,
+                broker TEXT DEFAULT 'futu',
+                currency TEXT DEFAULT 'USD',
+                cash REAL DEFAULT 0,
+                buying_power REAL DEFAULT 0,
+                margin_used REAL DEFAULT 0,
+                total_equity REAL DEFAULT 0,
+                synced_at TEXT
+            )
+        """)
+        )
+
     async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with async_session() as session:
@@ -277,6 +315,87 @@ class TestAcknowledgeAlert:
         assert data["acknowledged_at"] is not None
 
 
+async def insert_test_position(
+    session: AsyncSession,
+    position_id: int | None = None,
+    account_id: str = "acc123",
+    symbol: str = "AAPL",
+    quantity: int = 10,
+    asset_type: str = "option",
+    strike: float = 150.0,
+    put_call: str = "call",
+    expiry: str = "2025-02-15",
+) -> int:
+    """Insert a test position into the database.
+
+    Returns:
+        The position ID
+    """
+    now = datetime.now(timezone.utc).isoformat()
+
+    if position_id is not None:
+        await session.execute(
+            text("""
+                INSERT INTO positions (
+                    id, account_id, symbol, asset_type, quantity,
+                    avg_cost, current_price, strike, expiry, put_call,
+                    opened_at, updated_at
+                ) VALUES (
+                    :id, :account_id, :symbol, :asset_type, :quantity,
+                    :avg_cost, :current_price, :strike, :expiry, :put_call,
+                    :opened_at, :updated_at
+                )
+            """),
+            {
+                "id": position_id,
+                "account_id": account_id,
+                "symbol": symbol,
+                "asset_type": asset_type,
+                "quantity": quantity,
+                "avg_cost": 2.50,
+                "current_price": 3.00,
+                "strike": strike,
+                "expiry": expiry,
+                "put_call": put_call,
+                "opened_at": now,
+                "updated_at": now,
+            },
+        )
+        await session.commit()
+        return position_id
+    else:
+        result = await session.execute(
+            text("""
+                INSERT INTO positions (
+                    account_id, symbol, asset_type, quantity,
+                    avg_cost, current_price, strike, expiry, put_call,
+                    opened_at, updated_at
+                ) VALUES (
+                    :account_id, :symbol, :asset_type, :quantity,
+                    :avg_cost, :current_price, :strike, :expiry, :put_call,
+                    :opened_at, :updated_at
+                )
+            """),
+            {
+                "account_id": account_id,
+                "symbol": symbol,
+                "asset_type": asset_type,
+                "quantity": quantity,
+                "avg_cost": 2.50,
+                "current_price": 3.00,
+                "strike": strike,
+                "expiry": expiry,
+                "put_call": put_call,
+                "opened_at": now,
+                "updated_at": now,
+            },
+        )
+        await session.commit()
+        # Get last inserted ID
+        id_result = await session.execute(text("SELECT last_insert_rowid()"))
+        return id_result.scalar()
+
+
 class TestClosePosition:
     """Tests for POST /api/options/{position_id}/close endpoint."""
 
@@ -291,11 +410,36 @@ class TestClosePosition:
         assert response.status_code == 422
 
     @pytest.mark.asyncio
-    async def test_close_position_returns_placeholder(self, options_client):
-        """Should return placeholder response for V1."""
+    async def test_close_position_not_found(self, options_client):
+        """Should return 404 when position doesn't exist."""
         from unittest.mock import AsyncMock, patch
 
-        # Mock the IdempotencyService to avoid SQLite/PostgreSQL compatibility issues
+        with patch("src.api.options.IdempotencyService") as MockIdempotency:
+            mock_service = AsyncMock()
+            mock_service.get_cached_response.return_value = (False, None)
+            MockIdempotency.return_value = mock_service
+
+            response = await options_client.post(
+                "/api/options/99999/close",
+                json={"reason": "test close"},
+                headers={"Idempotency-Key": "test-key-notfound"},
+            )
+
+        assert response.status_code == 404
+        assert "not found" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_close_position_success(self, options_client, options_db_session):
+        """Should return close order response for existing position."""
+        from unittest.mock import AsyncMock, patch
+
+        # Create a test position
+        position_id = await insert_test_position(
+            options_db_session,
+            symbol="AAPL",
+            quantity=10,
+        )
+
         with patch("src.api.options.IdempotencyService") as MockIdempotency:
             mock_service = AsyncMock()
             mock_service.get_cached_response.return_value = (False, None)
@@ -303,13 +447,66 @@ class TestClosePosition:
             MockIdempotency.return_value = mock_service
 
             response = await options_client.post(
-                "/api/options/123/close",
-                json={"reason": "test close"},
+                f"/api/options/{position_id}/close",
+                json={"reason": "expiring_soon"},
                 headers={"Idempotency-Key": "test-key-123"},
             )
 
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert data["order_id"] == "order-123-placeholder"
-        assert "V1 placeholder" in data["message"]
+        assert data["order_id"].startswith(f"close-{position_id}-")
+        assert "AAPL" in data["message"]
+        assert "qty: 10" in data["message"]
+
+    @pytest.mark.asyncio
+    async def test_close_position_zero_quantity(self, options_client, options_db_session):
+        """Should return 400 when position has zero quantity."""
+        from unittest.mock import AsyncMock, patch
+
+        # Create a position with zero quantity
+        position_id = await insert_test_position(
+            options_db_session,
+            symbol="MSFT",
+            quantity=0,
+        )
+
+        with patch("src.api.options.IdempotencyService") as MockIdempotency:
+            mock_service = AsyncMock()
+            mock_service.get_cached_response.return_value = (False, None)
+            MockIdempotency.return_value = mock_service
+
+            response = await options_client.post(
+                f"/api/options/{position_id}/close",
+                json={"reason": "test"},
+                headers={"Idempotency-Key": "test-key-zero"},
+            )
+
+        assert response.status_code == 400
+        assert "zero quantity" in response.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_close_position_idempotent(self, options_client, options_db_session):
+        """Should return cached response for duplicate requests."""
+        from unittest.mock import AsyncMock, patch
+
+        cached_response = {
+            "success": True,
+            "order_id": "close-1-cached",
+            "message": "Close order created for AAPL (qty: 10)",
+        }
+
+        with patch("src.api.options.IdempotencyService") as MockIdempotency:
+            mock_service = AsyncMock()
+            mock_service.get_cached_response.return_value = (True, cached_response)
+            MockIdempotency.return_value = mock_service
+
+            response = await options_client.post(
+                "/api/options/1/close",
+                json={"reason": "test"},
+                headers={"Idempotency-Key": "already-used-key"},
+            )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["order_id"] == "close-1-cached"

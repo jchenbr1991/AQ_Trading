@@ -1,7 +1,8 @@
-from datetime import datetime, date
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
-from sqlalchemy import String, Numeric, DateTime, Date, Integer, ForeignKey
+
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.database import Base
@@ -18,11 +19,19 @@ class PutCall(str, Enum):
     CALL = "call"
 
 
+class PositionStatus(str, Enum):
+    OPEN = "open"
+    CLOSING = "closing"
+    CLOSED = "closed"
+
+
 class Position(Base):
     __tablename__ = "positions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    account_id: Mapped[str] = mapped_column(String(50), ForeignKey("accounts.account_id"), index=True)
+    account_id: Mapped[str] = mapped_column(
+        String(50), ForeignKey("accounts.account_id"), index=True
+    )
 
     # Identification
     symbol: Mapped[str] = mapped_column(String(50), index=True)
@@ -30,6 +39,11 @@ class Position(Base):
 
     # Strategy tagging
     strategy_id: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+
+    # Lifecycle status
+    status: Mapped[PositionStatus] = mapped_column(
+        String(20), default=PositionStatus.OPEN, index=True
+    )
 
     # Position data
     quantity: Mapped[int] = mapped_column(Integer, default=0)
@@ -43,7 +57,9 @@ class Position(Base):
 
     # Timestamps
     opened_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
     @property
     def market_value(self) -> Decimal:

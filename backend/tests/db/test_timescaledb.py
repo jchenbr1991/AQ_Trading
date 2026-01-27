@@ -39,14 +39,45 @@ async def test_transactions_new_is_hypertable(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_compression_settings_configured(db_session: AsyncSession):
     """Compression settings should be configured."""
+    # Check compression is enabled on the hypertable
     result = await db_session.execute(
         text("""
-            SELECT segmentby, orderby
+            SELECT compression_enabled
             FROM timescaledb_information.hypertables
             WHERE hypertable_name = 'transactions_new'
         """)
     )
     row = result.fetchone()
-    # May return None if compression not fully configured yet
-    # The important thing is the table exists as hypertable
     assert row is not None
+    assert row[0] is True, "Compression should be enabled"
+
+    # Check segmentby columns are configured (account_id, symbol)
+    result = await db_session.execute(
+        text("""
+            SELECT attname
+            FROM timescaledb_information.compression_settings
+            WHERE hypertable_name = 'transactions_new'
+            AND segmentby_column_index IS NOT NULL
+            ORDER BY segmentby_column_index
+        """)
+    )
+    segmentby_cols = [row[0] for row in result.fetchall()]
+    assert segmentby_cols == [
+        "account_id",
+        "symbol",
+    ], f"Expected segmentby columns, got {segmentby_cols}"
+
+    # Check orderby column is configured (executed_at DESC)
+    result = await db_session.execute(
+        text("""
+            SELECT attname, orderby_asc
+            FROM timescaledb_information.compression_settings
+            WHERE hypertable_name = 'transactions_new'
+            AND orderby_column_index IS NOT NULL
+            ORDER BY orderby_column_index
+        """)
+    )
+    orderby_rows = result.fetchall()
+    assert len(orderby_rows) == 1
+    assert orderby_rows[0][0] == "executed_at"
+    assert orderby_rows[0][1] is False, "executed_at should be ordered DESC"

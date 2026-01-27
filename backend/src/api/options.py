@@ -8,6 +8,7 @@ Endpoints:
 """
 
 import logging
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -15,6 +16,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.database import get_session
+from src.db.repositories.portfolio_repo import PortfolioRepository
 from src.options.idempotency import IdempotencyService
 from src.options.models import (
     AcknowledgeAlertResponse,
@@ -233,17 +235,37 @@ async def close_position(
         logger.info(f"Returning cached response for idempotency_key={idempotency_key}")
         return ClosePositionResponse(**cached)
 
-    # V1 Placeholder: In a full implementation, this would:
-    # 1. Fetch the position and validate it's closable
-    # 2. Create a sell order via OrderService
-    # 3. Mark position as closing
-    # 4. Resolve related alerts
+    # Fetch position by ID
+    repo = PortfolioRepository(db)
+    position = await repo.get_position_by_id(position_id)
 
-    # For now, return a placeholder response
+    if position is None:
+        raise HTTPException(status_code=404, detail=f"Position {position_id} not found")
+
+    # Validate position is closable (has quantity)
+    if position.quantity == 0:
+        raise HTTPException(
+            status_code=400, detail=f"Position {position_id} has zero quantity, nothing to close"
+        )
+
+    # Generate order ID for tracking
+    order_id = f"close-{position_id}-{uuid.uuid4().hex[:8]}"
+
+    logger.info(
+        f"Creating close order for position {position_id}: "
+        f"symbol={position.symbol}, qty={position.quantity}, "
+        f"reason={request.reason}, order_id={order_id}"
+    )
+
+    # TODO: When OrderManager persistence is implemented:
+    # 1. Create sell order via OrderManager
+    # 2. Mark position status as CLOSING
+    # 3. Resolve related alerts
+
     response = ClosePositionResponse(
         success=True,
-        order_id=f"order-{position_id}-placeholder",
-        message=f"Close order created for position {position_id} (V1 placeholder)",
+        order_id=order_id,
+        message=f"Close order created for {position.symbol} (qty: {position.quantity})",
     )
 
     # Store for idempotency

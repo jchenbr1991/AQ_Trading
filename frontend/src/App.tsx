@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
+import { AccountProvider } from './contexts/AccountContext';
 import { DashboardPage } from './pages/DashboardPage';
 import { HealthPage } from './pages/HealthPage';
 import { BacktestPage } from './pages/BacktestPage';
@@ -47,21 +48,23 @@ function Navigation() {
 
 function App() {
   return (
-    <BrowserRouter>
-      <div className="min-h-screen bg-gray-100">
-        <Navigation />
-        <Routes>
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/health" element={<HealthPage />} />
-          <Route path="/backtest" element={<BacktestPage />} />
-          <Route path="/storage" element={<StoragePage />} />
-          <Route path="/alerts" element={<AlertsPage />} />
-          <Route path="/options/expiring" element={<OptionsExpiringPage />} />
-          <Route path="/audit" element={<AuditPage />} />
-          <Route path="/system" element={<SystemPage />} />
-        </Routes>
-      </div>
-    </BrowserRouter>
+    <AccountProvider>
+      <BrowserRouter>
+        <div className="min-h-screen bg-gray-100">
+          <Navigation />
+          <Routes>
+            <Route path="/" element={<DashboardPage />} />
+            <Route path="/health" element={<HealthPage />} />
+            <Route path="/backtest" element={<BacktestPage />} />
+            <Route path="/storage" element={<StoragePage />} />
+            <Route path="/alerts" element={<AlertsPage />} />
+            <Route path="/options/expiring" element={<OptionsExpiringPage />} />
+            <Route path="/audit" element={<AuditPage />} />
+            <Route path="/system" element={<SystemPage />} />
+          </Routes>
+        </div>
+      </BrowserRouter>
+    </AccountProvider>
   );
 }
 
