@@ -4,16 +4,13 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.db.repositories.base import BaseRepository
 from src.models.close_request import CloseRequest, CloseRequestStatus
 
 
-class CloseRequestRepository:
+class CloseRequestRepository(BaseRepository):
     """Repository for close request database operations."""
-
-    def __init__(self, session: AsyncSession):
-        self.session = session
 
     async def create(
         self,
@@ -40,7 +37,8 @@ class CloseRequestRepository:
             created_at=datetime.now(timezone.utc),
         )
         self.session.add(cr)
-        await self.session.flush()
+        await self.session.commit()
+        await self.session.refresh(cr)
         return cr
 
     async def get_by_id(self, request_id: uuid.UUID) -> CloseRequest | None:
@@ -61,7 +59,9 @@ class CloseRequestRepository:
         )
         return result.scalar_one_or_none()
 
-    async def update_status(self, request_id: uuid.UUID, status: CloseRequestStatus) -> None:
+    async def update_status(
+        self, request_id: uuid.UUID, status: CloseRequestStatus
+    ) -> CloseRequest | None:
         """Update close request status."""
         cr = await self.get_by_id(request_id)
         if cr:
@@ -70,11 +70,15 @@ class CloseRequestRepository:
                 cr.submitted_at = datetime.now(timezone.utc)
             elif status in (CloseRequestStatus.COMPLETED, CloseRequestStatus.FAILED):
                 cr.completed_at = datetime.now(timezone.utc)
-            await self.session.flush()
+            await self.session.commit()
+            await self.session.refresh(cr)
+        return cr
 
-    async def increment_filled_qty(self, request_id: uuid.UUID, delta: int) -> None:
+    async def increment_filled_qty(self, request_id: uuid.UUID, delta: int) -> CloseRequest | None:
         """Increment filled quantity."""
         cr = await self.get_by_id(request_id)
         if cr:
             cr.filled_qty += delta
-            await self.session.flush()
+            await self.session.commit()
+            await self.session.refresh(cr)
+        return cr
