@@ -349,14 +349,35 @@ async def handle_submit_close_order(payload: dict):
 
     # Get current quote for aggressive limit order
     # (Avoids market order slippage on illiquid options)
-    quote = await market_data.get_quote(payload["symbol"])
+    try:
+        quote = await asyncio.wait_for(
+            market_data.get_quote(payload["symbol"]),
+            timeout=5.0  # Don't block worker indefinitely
+        )
+    except asyncio.TimeoutError:
+        raise RetryableError("Market data timeout, will retry")
 
-    if payload["side"] == "sell":
+    # Price sanity check - don't trust garbage quotes
+    if quote.bid <= 0 or quote.ask <= 0:
+        raise RetryableError(f"Invalid quote: bid={quote.bid}, ask={quote.ask}")
+
+    spread_pct = (quote.ask - quote.bid) / quote.bid if quote.bid > 0 else float('inf')
+    if spread_pct > 0.20:  # >20% spread = illiquid or bad data
+        logger.warning(f"Wide spread {spread_pct:.1%} for {payload['symbol']}")
+        # Fall back to last trade price with penalty
+        if quote.last > 0:
+            limit_price = quote.last * (Decimal("0.90") if payload["side"] == "sell" else Decimal("1.10"))
+        else:
+            raise NonRetryableError(f"Cannot price order: bad quote for {payload['symbol']}")
+    elif payload["side"] == "sell":
         # Sell: use bid * 0.95 (aggressive, accept 5% worse)
         limit_price = quote.bid * Decimal("0.95")
     else:
         # Buy: use ask * 1.05 (aggressive, accept 5% worse)
         limit_price = quote.ask * Decimal("1.05")
+
+    # Ensure minimum price (avoid $0.00 orders)
+    limit_price = max(limit_price, Decimal("0.01"))
 
     # Call broker (outside transaction)
     order = await order_manager.submit_order(
