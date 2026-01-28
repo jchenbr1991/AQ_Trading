@@ -779,3 +779,312 @@ class TestAggregatedGreeks:
         assert ag.is_coverage_sufficient is True
         # staleness_seconds should be approximately 15
         assert 14 <= ag.staleness_seconds <= 17
+
+
+class TestGreeksThresholdConfig:
+    """Tests for GreeksThresholdConfig dataclass."""
+
+    def test_default_percentages(self):
+        """GreeksThresholdConfig has correct default percentages."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric
+
+        config = GreeksThresholdConfig(metric=RiskMetric.DELTA)
+
+        assert config.warn_pct == Decimal("0.80")
+        assert config.crit_pct == Decimal("1.00")
+        assert config.hard_pct == Decimal("1.20")
+
+    def test_recovery_thresholds(self):
+        """GreeksThresholdConfig has correct recovery thresholds."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric
+
+        config = GreeksThresholdConfig(metric=RiskMetric.GAMMA)
+
+        assert config.warn_recover_pct == Decimal("0.75")
+        assert config.crit_recover_pct == Decimal("0.90")
+
+    def test_warn_threshold_calculation(self):
+        """warn_threshold property calculates limit * warn_pct."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric
+
+        config = GreeksThresholdConfig(
+            metric=RiskMetric.DELTA,
+            limit=Decimal("50000"),
+        )
+
+        # warn_threshold = 50000 * 0.80 = 40000
+        assert config.warn_threshold == Decimal("40000.00")
+
+    def test_crit_threshold_calculation(self):
+        """crit_threshold property calculates limit * crit_pct."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric
+
+        config = GreeksThresholdConfig(
+            metric=RiskMetric.VEGA,
+            limit=Decimal("20000"),
+        )
+
+        # crit_threshold = 20000 * 1.00 = 20000
+        assert config.crit_threshold == Decimal("20000.00")
+
+    def test_hard_threshold_calculation(self):
+        """hard_threshold property calculates limit * hard_pct."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric
+
+        config = GreeksThresholdConfig(
+            metric=RiskMetric.GAMMA,
+            limit=Decimal("10000"),
+        )
+
+        # hard_threshold = 10000 * 1.20 = 12000
+        assert config.hard_threshold == Decimal("12000.00")
+
+    def test_threshold_calculations_with_custom_percentages(self):
+        """Threshold calculations work with custom percentages."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric
+
+        config = GreeksThresholdConfig(
+            metric=RiskMetric.THETA,
+            limit=Decimal("5000"),
+            warn_pct=Decimal("0.70"),
+            crit_pct=Decimal("0.95"),
+            hard_pct=Decimal("1.10"),
+        )
+
+        # warn_threshold = 5000 * 0.70 = 3500
+        assert config.warn_threshold == Decimal("3500.0")
+        # crit_threshold = 5000 * 0.95 = 4750
+        assert config.crit_threshold == Decimal("4750.0")
+        # hard_threshold = 5000 * 1.10 = 5500
+        assert config.hard_threshold == Decimal("5500.0")
+
+    def test_default_direction_is_abs(self):
+        """Default direction is ABS."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric, ThresholdDirection
+
+        config = GreeksThresholdConfig(metric=RiskMetric.DELTA)
+
+        assert config.direction == ThresholdDirection.ABS
+
+    def test_direction_can_be_max(self):
+        """Direction can be set to MAX."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric, ThresholdDirection
+
+        config = GreeksThresholdConfig(
+            metric=RiskMetric.IMPLIED_VOLATILITY,
+            direction=ThresholdDirection.MAX,
+        )
+
+        assert config.direction == ThresholdDirection.MAX
+
+    def test_default_rate_settings(self):
+        """Default rate of change settings are correct."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric
+
+        config = GreeksThresholdConfig(metric=RiskMetric.DELTA)
+
+        assert config.rate_window_seconds == 300  # 5 minutes
+        assert config.rate_change_pct == Decimal("0.20")
+        assert config.rate_change_abs == Decimal("0")
+
+    def test_custom_rate_settings(self):
+        """Custom rate of change settings work."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric
+
+        config = GreeksThresholdConfig(
+            metric=RiskMetric.DELTA,
+            limit=Decimal("50000"),
+            rate_window_seconds=600,
+            rate_change_pct=Decimal("0.15"),
+            rate_change_abs=Decimal("5000"),
+        )
+
+        assert config.rate_window_seconds == 600
+        assert config.rate_change_pct == Decimal("0.15")
+        assert config.rate_change_abs == Decimal("5000")
+
+    def test_zero_limit_thresholds(self):
+        """Threshold calculations handle zero limit gracefully."""
+        from src.greeks.models import GreeksThresholdConfig, RiskMetric
+
+        config = GreeksThresholdConfig(
+            metric=RiskMetric.DELTA,
+            limit=Decimal("0"),
+        )
+
+        assert config.warn_threshold == Decimal("0")
+        assert config.crit_threshold == Decimal("0")
+        assert config.hard_threshold == Decimal("0")
+
+
+class TestGreeksLimitsConfig:
+    """Tests for GreeksLimitsConfig dataclass."""
+
+    def test_default_account_config_scope(self):
+        """default_account_config creates ACCOUNT scope config."""
+        from src.greeks.models import GreeksLimitsConfig
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        assert config.scope == "ACCOUNT"
+        assert config.scope_id == "account_001"
+
+    def test_default_account_config_delta_threshold(self):
+        """default_account_config has correct DELTA threshold."""
+        from src.greeks.models import GreeksLimitsConfig, RiskMetric
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        delta_config = config.thresholds[RiskMetric.DELTA]
+        assert delta_config.limit == Decimal("50000")
+        assert delta_config.rate_change_abs == Decimal("5000")
+
+    def test_default_account_config_gamma_threshold(self):
+        """default_account_config has correct GAMMA threshold."""
+        from src.greeks.models import GreeksLimitsConfig, RiskMetric
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        gamma_config = config.thresholds[RiskMetric.GAMMA]
+        assert gamma_config.limit == Decimal("10000")
+        assert gamma_config.rate_change_abs == Decimal("1000")
+
+    def test_default_account_config_vega_threshold(self):
+        """default_account_config has correct VEGA threshold."""
+        from src.greeks.models import GreeksLimitsConfig, RiskMetric
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        vega_config = config.thresholds[RiskMetric.VEGA]
+        assert vega_config.limit == Decimal("20000")
+        assert vega_config.rate_change_abs == Decimal("2000")
+
+    def test_default_account_config_theta_threshold(self):
+        """default_account_config has correct THETA threshold."""
+        from src.greeks.models import GreeksLimitsConfig, RiskMetric
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        theta_config = config.thresholds[RiskMetric.THETA]
+        assert theta_config.limit == Decimal("5000")
+        assert theta_config.rate_change_abs == Decimal("500")
+
+    def test_default_account_config_iv_threshold(self):
+        """default_account_config has correct IMPLIED_VOLATILITY threshold."""
+        from src.greeks.models import GreeksLimitsConfig, RiskMetric, ThresholdDirection
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        iv_config = config.thresholds[RiskMetric.IMPLIED_VOLATILITY]
+        assert iv_config.direction == ThresholdDirection.MAX
+        assert iv_config.limit == Decimal("2.0")
+        assert iv_config.rate_change_abs == Decimal("0.3")
+
+    def test_default_account_config_has_five_thresholds(self):
+        """default_account_config has all five expected thresholds."""
+        from src.greeks.models import GreeksLimitsConfig, RiskMetric
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        assert len(config.thresholds) == 5
+        assert RiskMetric.DELTA in config.thresholds
+        assert RiskMetric.GAMMA in config.thresholds
+        assert RiskMetric.VEGA in config.thresholds
+        assert RiskMetric.THETA in config.thresholds
+        assert RiskMetric.IMPLIED_VOLATILITY in config.thresholds
+
+    def test_dedupe_window_seconds_by_level_warn(self):
+        """dedupe_window_seconds_by_level has correct WARN window."""
+        from src.greeks.models import GreeksLevel, GreeksLimitsConfig
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        assert config.dedupe_window_seconds_by_level[GreeksLevel.WARN] == 900  # 15 minutes
+
+    def test_dedupe_window_seconds_by_level_crit(self):
+        """dedupe_window_seconds_by_level has correct CRIT window."""
+        from src.greeks.models import GreeksLevel, GreeksLimitsConfig
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        assert config.dedupe_window_seconds_by_level[GreeksLevel.CRIT] == 300  # 5 minutes
+
+    def test_dedupe_window_seconds_by_level_hard(self):
+        """dedupe_window_seconds_by_level has correct HARD window."""
+        from src.greeks.models import GreeksLevel, GreeksLimitsConfig
+
+        config = GreeksLimitsConfig.default_account_config("account_001")
+
+        assert config.dedupe_window_seconds_by_level[GreeksLevel.HARD] == 60  # 1 minute
+
+    def test_default_min_coverage_pct(self):
+        """Default min_coverage_pct is 95.0%."""
+        from src.greeks.models import GreeksLimitsConfig
+
+        config = GreeksLimitsConfig(
+            scope="ACCOUNT",
+            scope_id="test_account",
+        )
+
+        assert config.min_coverage_pct == Decimal("95.0")
+
+    def test_empty_thresholds_default(self):
+        """Default thresholds is an empty dict."""
+        from src.greeks.models import GreeksLimitsConfig
+
+        config = GreeksLimitsConfig(
+            scope="STRATEGY",
+            scope_id="test_strategy",
+        )
+
+        assert config.thresholds == {}
+
+    def test_strategy_scope_creation(self):
+        """GreeksLimitsConfig can be created with STRATEGY scope."""
+        from src.greeks.models import GreeksLimitsConfig, GreeksThresholdConfig, RiskMetric
+
+        config = GreeksLimitsConfig(
+            scope="STRATEGY",
+            scope_id="momentum_v1",
+            thresholds={
+                RiskMetric.DELTA: GreeksThresholdConfig(
+                    metric=RiskMetric.DELTA,
+                    limit=Decimal("25000"),
+                ),
+            },
+        )
+
+        assert config.scope == "STRATEGY"
+        assert config.scope_id == "momentum_v1"
+        assert RiskMetric.DELTA in config.thresholds
+        assert config.thresholds[RiskMetric.DELTA].limit == Decimal("25000")
+
+    def test_custom_dedupe_windows(self):
+        """Custom dedupe windows can be set."""
+        from src.greeks.models import GreeksLevel, GreeksLimitsConfig
+
+        config = GreeksLimitsConfig(
+            scope="ACCOUNT",
+            scope_id="custom_account",
+            dedupe_window_seconds_by_level={
+                GreeksLevel.WARN: 1800,  # 30 minutes
+                GreeksLevel.CRIT: 600,  # 10 minutes
+                GreeksLevel.HARD: 120,  # 2 minutes
+            },
+        )
+
+        assert config.dedupe_window_seconds_by_level[GreeksLevel.WARN] == 1800
+        assert config.dedupe_window_seconds_by_level[GreeksLevel.CRIT] == 600
+        assert config.dedupe_window_seconds_by_level[GreeksLevel.HARD] == 120
+
+    def test_custom_min_coverage_pct(self):
+        """Custom min_coverage_pct can be set."""
+        from src.greeks.models import GreeksLimitsConfig
+
+        config = GreeksLimitsConfig(
+            scope="ACCOUNT",
+            scope_id="custom_coverage",
+            min_coverage_pct=Decimal("90.0"),
+        )
+
+        assert config.min_coverage_pct == Decimal("90.0")

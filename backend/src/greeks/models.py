@@ -391,3 +391,175 @@ class AggregatedGreeks:
         now = datetime.now(timezone.utc)
         delta = now - self.as_of_ts_min
         return int(delta.total_seconds())
+
+
+@dataclass
+class GreeksThresholdConfig:
+    """Configuration for a single Greek metric threshold.
+
+    This dataclass defines the threshold settings for monitoring a single risk metric.
+    It includes absolute limits, percentage thresholds for alert levels, hysteresis
+    recovery thresholds, and rate-of-change detection settings.
+
+    Alert Level Thresholds:
+        - warn_threshold: limit * warn_pct (default 80% of limit)
+        - crit_threshold: limit * crit_pct (default 100% of limit)
+        - hard_threshold: limit * hard_pct (default 120% of limit)
+
+    Hysteresis Recovery:
+        To prevent alert flapping, recovery thresholds are set lower than trigger thresholds:
+        - warn_recover_pct: Value must drop to 75% to clear WARN level
+        - crit_recover_pct: Value must drop to 90% to clear CRIT level
+
+    Rate of Change Detection:
+        - rate_window_seconds: Time window for measuring rate of change (default 5 min)
+        - rate_change_pct: Percentage of limit that triggers rate alert (default 20%)
+        - rate_change_abs: Absolute change threshold (0 = disabled)
+
+    Attributes:
+        metric: The risk metric this config applies to
+        direction: How to evaluate against threshold (ABS, MAX, MIN)
+        limit: Absolute limit value, always positive
+        warn_pct: Percentage of limit for WARN threshold (default 0.80)
+        crit_pct: Percentage of limit for CRIT threshold (default 1.00)
+        hard_pct: Percentage of limit for HARD threshold (default 1.20)
+        warn_recover_pct: Percentage to recover from WARN (default 0.75)
+        crit_recover_pct: Percentage to recover from CRIT (default 0.90)
+        rate_window_seconds: Time window for rate detection (default 300s)
+        rate_change_pct: Rate change as percentage of limit (default 0.20)
+        rate_change_abs: Absolute rate change threshold (default 0)
+    """
+
+    metric: RiskMetric
+    direction: ThresholdDirection = ThresholdDirection.ABS
+    limit: Decimal = Decimal("0")
+    warn_pct: Decimal = Decimal("0.80")
+    crit_pct: Decimal = Decimal("1.00")
+    hard_pct: Decimal = Decimal("1.20")
+    warn_recover_pct: Decimal = Decimal("0.75")
+    crit_recover_pct: Decimal = Decimal("0.90")
+    rate_window_seconds: int = 300
+    rate_change_pct: Decimal = Decimal("0.20")
+    rate_change_abs: Decimal = Decimal("0")
+
+    @property
+    def warn_threshold(self) -> Decimal:
+        """Calculate WARN threshold value.
+
+        Returns:
+            limit * warn_pct
+        """
+        return self.limit * self.warn_pct
+
+    @property
+    def crit_threshold(self) -> Decimal:
+        """Calculate CRIT threshold value.
+
+        Returns:
+            limit * crit_pct
+        """
+        return self.limit * self.crit_pct
+
+    @property
+    def hard_threshold(self) -> Decimal:
+        """Calculate HARD threshold value.
+
+        Returns:
+            limit * hard_pct
+        """
+        return self.limit * self.hard_pct
+
+
+@dataclass
+class GreeksLimitsConfig:
+    """Greeks limits configuration for account or strategy level.
+
+    This dataclass defines the complete limits configuration for monitoring
+    Greeks at either the account level or strategy level. It includes
+    threshold configurations for each metric and deduplication settings
+    for alerts.
+
+    Scope Types:
+        - ACCOUNT: Configuration applies to the entire portfolio
+        - STRATEGY: Configuration applies to a specific strategy
+
+    Alert Deduplication:
+        Different alert levels have different deduplication windows to
+        balance alert fatigue vs responsiveness:
+        - WARN: 15 minutes (less urgent, reduce noise)
+        - CRIT: 5 minutes (more urgent, faster notification)
+        - HARD: 1 minute (critical, minimal delay)
+
+    Attributes:
+        scope: "ACCOUNT" or "STRATEGY"
+        scope_id: Identifier for the scope (account ID or strategy ID)
+        thresholds: Dict mapping RiskMetric to GreeksThresholdConfig
+        min_coverage_pct: Minimum coverage percentage required (default 95.0%)
+        dedupe_window_seconds_by_level: Deduplication windows by alert level
+    """
+
+    scope: Literal["ACCOUNT", "STRATEGY"]
+    scope_id: str
+    thresholds: dict[RiskMetric, GreeksThresholdConfig] = field(default_factory=dict)
+    min_coverage_pct: Decimal = Decimal("95.0")
+    dedupe_window_seconds_by_level: dict[GreeksLevel, int] = field(
+        default_factory=lambda: {
+            GreeksLevel.WARN: 900,  # 15 minutes
+            GreeksLevel.CRIT: 300,  # 5 minutes
+            GreeksLevel.HARD: 60,  # 1 minute
+        }
+    )
+
+    @classmethod
+    def default_account_config(cls, account_id: str) -> "GreeksLimitsConfig":
+        """Create default account-level configuration.
+
+        Creates a standard configuration with sensible defaults for
+        account-level Greeks monitoring.
+
+        Default Limits:
+            - DELTA: limit=50000, rate_change_abs=5000
+            - GAMMA: limit=10000, rate_change_abs=1000
+            - VEGA: limit=20000, rate_change_abs=2000
+            - THETA: limit=5000, rate_change_abs=500
+            - IMPLIED_VOLATILITY: direction=MAX, limit=2.0 (200% IV),
+              rate_change_abs=0.3
+
+        Args:
+            account_id: The account identifier
+
+        Returns:
+            GreeksLimitsConfig with default account-level settings
+        """
+        return cls(
+            scope="ACCOUNT",
+            scope_id=account_id,
+            thresholds={
+                RiskMetric.DELTA: GreeksThresholdConfig(
+                    metric=RiskMetric.DELTA,
+                    limit=Decimal("50000"),
+                    rate_change_abs=Decimal("5000"),
+                ),
+                RiskMetric.GAMMA: GreeksThresholdConfig(
+                    metric=RiskMetric.GAMMA,
+                    limit=Decimal("10000"),
+                    rate_change_abs=Decimal("1000"),
+                ),
+                RiskMetric.VEGA: GreeksThresholdConfig(
+                    metric=RiskMetric.VEGA,
+                    limit=Decimal("20000"),
+                    rate_change_abs=Decimal("2000"),
+                ),
+                RiskMetric.THETA: GreeksThresholdConfig(
+                    metric=RiskMetric.THETA,
+                    limit=Decimal("5000"),
+                    rate_change_abs=Decimal("500"),
+                ),
+                RiskMetric.IMPLIED_VOLATILITY: GreeksThresholdConfig(
+                    metric=RiskMetric.IMPLIED_VOLATILITY,
+                    direction=ThresholdDirection.MAX,
+                    limit=Decimal("2.0"),
+                    rate_change_abs=Decimal("0.3"),
+                ),
+            },
+        )
