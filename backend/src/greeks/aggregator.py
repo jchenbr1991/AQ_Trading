@@ -8,6 +8,7 @@ High-risk thresholds for missing positions:
     - VEGA_HIGH_RISK_THRESHOLD: 2000 - positions with vega above this are high-risk
 """
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
@@ -161,3 +162,45 @@ class GreeksAggregator:
             result.as_of_ts_max = acc.as_of_ts_max
 
         return result
+
+    def aggregate_by_strategy(
+        self,
+        positions: list[PositionGreeks],
+        account_id: str,
+    ) -> tuple[AggregatedGreeks, dict[str, AggregatedGreeks]]:
+        """Aggregate positions by strategy, returning account total and per-strategy breakdown.
+
+        Args:
+            positions: List of PositionGreeks to aggregate.
+            account_id: The account identifier.
+
+        Returns:
+            Tuple of (account_total, strategy_dict) where:
+            - account_total: AggregatedGreeks for entire account
+            - strategy_dict: Dict mapping strategy_id to AggregatedGreeks
+              (positions without strategy_id go to "_unassigned_")
+        """
+        # Group positions by strategy_id
+        positions_by_strategy: dict[str, list[PositionGreeks]] = defaultdict(list)
+
+        for pg in positions:
+            strategy_key = pg.strategy_id if pg.strategy_id is not None else "_unassigned_"
+            positions_by_strategy[strategy_key].append(pg)
+
+        # Build strategy-level aggregations
+        strategy_dict: dict[str, AggregatedGreeks] = {}
+        for strategy_id, strategy_positions in positions_by_strategy.items():
+            strategy_dict[strategy_id] = self.aggregate(
+                strategy_positions,
+                scope="STRATEGY",
+                scope_id=strategy_id,
+            )
+
+        # Build account-level aggregation
+        account_total = self.aggregate(
+            positions,
+            scope="ACCOUNT",
+            scope_id=account_id,
+        )
+
+        return account_total, strategy_dict

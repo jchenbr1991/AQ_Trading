@@ -461,3 +461,143 @@ class TestGreeksAggregatorBasic:
 
         assert result.scope == "STRATEGY"
         assert result.scope_id == "momentum_v1"
+
+
+class TestGreeksAggregatorByStrategy:
+    """Tests for GreeksAggregator.aggregate_by_strategy() - Task 6."""
+
+    def test_aggregate_by_strategy_multiple_strategies(self):
+        """aggregate_by_strategy groups positions by strategy_id."""
+        from src.greeks.aggregator import GreeksAggregator
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                dollar_delta=Decimal("5000.00"),
+                gamma_dollar=Decimal("100.00"),
+                strategy_id="momentum_v1",
+            ),
+            _make_position_greeks(
+                position_id=2,
+                dollar_delta=Decimal("3000.00"),
+                gamma_dollar=Decimal("80.00"),
+                strategy_id="momentum_v1",
+            ),
+            _make_position_greeks(
+                position_id=3,
+                dollar_delta=Decimal("-2000.00"),
+                gamma_dollar=Decimal("50.00"),
+                strategy_id="mean_reversion",
+            ),
+        ]
+
+        account_total, strategy_dict = agg.aggregate_by_strategy(positions, "acc_001")
+
+        # Check strategy breakdown
+        assert "momentum_v1" in strategy_dict
+        assert "mean_reversion" in strategy_dict
+
+        # momentum_v1: 5000 + 3000 = 8000 delta, 100 + 80 = 180 gamma
+        assert strategy_dict["momentum_v1"].dollar_delta == Decimal("8000.00")
+        assert strategy_dict["momentum_v1"].gamma_dollar == Decimal("180.00")
+        assert strategy_dict["momentum_v1"].scope == "STRATEGY"
+        assert strategy_dict["momentum_v1"].scope_id == "momentum_v1"
+        assert strategy_dict["momentum_v1"].valid_legs_count == 2
+
+        # mean_reversion: -2000 delta, 50 gamma
+        assert strategy_dict["mean_reversion"].dollar_delta == Decimal("-2000.00")
+        assert strategy_dict["mean_reversion"].gamma_dollar == Decimal("50.00")
+        assert strategy_dict["mean_reversion"].valid_legs_count == 1
+
+    def test_aggregate_by_strategy_with_unassigned(self):
+        """aggregate_by_strategy puts positions without strategy_id in '_unassigned_'."""
+        from src.greeks.aggregator import GreeksAggregator
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                dollar_delta=Decimal("5000.00"),
+                strategy_id="momentum_v1",
+            ),
+            _make_position_greeks(
+                position_id=2,
+                dollar_delta=Decimal("3000.00"),
+                strategy_id=None,  # Unassigned
+            ),
+            _make_position_greeks(
+                position_id=3,
+                dollar_delta=Decimal("1000.00"),
+                strategy_id=None,  # Unassigned
+            ),
+        ]
+
+        account_total, strategy_dict = agg.aggregate_by_strategy(positions, "acc_001")
+
+        assert "momentum_v1" in strategy_dict
+        assert "_unassigned_" in strategy_dict
+
+        # Unassigned: 3000 + 1000 = 4000 delta
+        assert strategy_dict["_unassigned_"].dollar_delta == Decimal("4000.00")
+        assert strategy_dict["_unassigned_"].valid_legs_count == 2
+        assert strategy_dict["_unassigned_"].scope == "STRATEGY"
+        assert strategy_dict["_unassigned_"].scope_id == "_unassigned_"
+
+    def test_aggregate_by_strategy_returns_correct_account_total(self):
+        """aggregate_by_strategy returns correct account total as first element."""
+        from src.greeks.aggregator import GreeksAggregator
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                dollar_delta=Decimal("5000.00"),
+                gamma_dollar=Decimal("100.00"),
+                vega_per_1pct=Decimal("200.00"),
+                theta_per_day=Decimal("-50.00"),
+                strategy_id="momentum_v1",
+            ),
+            _make_position_greeks(
+                position_id=2,
+                dollar_delta=Decimal("-2000.00"),
+                gamma_dollar=Decimal("80.00"),
+                vega_per_1pct=Decimal("150.00"),
+                theta_per_day=Decimal("-30.00"),
+                strategy_id="mean_reversion",
+            ),
+            _make_position_greeks(
+                position_id=3,
+                dollar_delta=Decimal("1000.00"),
+                gamma_dollar=Decimal("50.00"),
+                vega_per_1pct=Decimal("100.00"),
+                theta_per_day=Decimal("-20.00"),
+                strategy_id=None,
+            ),
+        ]
+
+        account_total, strategy_dict = agg.aggregate_by_strategy(positions, "acc_001")
+
+        # Account total: 5000 - 2000 + 1000 = 4000 delta
+        assert account_total.scope == "ACCOUNT"
+        assert account_total.scope_id == "acc_001"
+        assert account_total.dollar_delta == Decimal("4000.00")
+        assert account_total.gamma_dollar == Decimal("230.00")  # 100 + 80 + 50
+        assert account_total.vega_per_1pct == Decimal("450.00")  # 200 + 150 + 100
+        assert account_total.theta_per_day == Decimal("-100.00")  # -50 + -30 + -20
+        assert account_total.valid_legs_count == 3
+        assert account_total.total_legs_count == 3
+
+    def test_aggregate_by_strategy_empty_positions(self):
+        """aggregate_by_strategy handles empty position list."""
+        from src.greeks.aggregator import GreeksAggregator
+
+        agg = GreeksAggregator()
+
+        account_total, strategy_dict = agg.aggregate_by_strategy([], "acc_001")
+
+        assert account_total.scope == "ACCOUNT"
+        assert account_total.scope_id == "acc_001"
+        assert account_total.has_positions is False
+        assert account_total.dollar_delta == Decimal("0")
+        assert len(strategy_dict) == 0
