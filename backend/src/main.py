@@ -7,6 +7,7 @@ from src.api.alerts import router as alerts_router
 from src.api.audit import router as audit_router
 from src.api.backtest import router as backtest_router
 from src.api.degradation import router as degradation_router
+from src.api.greeks import router as greeks_router
 from src.api.health import router as health_router
 from src.api.options import router as options_router
 from src.api.orders import router as orders_router
@@ -50,6 +51,7 @@ app.include_router(alerts_router)
 app.include_router(audit_router)
 app.include_router(degradation_router)
 app.include_router(options_router)
+app.include_router(greeks_router)
 
 
 @app.get("/health")
