@@ -647,22 +647,34 @@ class TestConvertToDollarGreeks:
 
 
 class TestFutuGreeksProvider:
-    """Tests for FutuGreeksProvider stub."""
+    """Tests for FutuGreeksProvider."""
 
     def test_source_is_futu(self):
         """FutuGreeksProvider.source returns GreeksDataSource.FUTU."""
         from src.greeks.calculator import FutuGreeksProvider
         from src.greeks.models import GreeksDataSource
 
-        provider = FutuGreeksProvider()
+        provider = FutuGreeksProvider(use_shared=False)
 
         assert provider.source == GreeksDataSource.FUTU
 
-    def test_fetch_greeks_returns_empty_dict(self):
-        """FutuGreeksProvider.fetch_greeks returns empty dict (stub)."""
+    def test_fetch_greeks_with_empty_list(self):
+        """FutuGreeksProvider.fetch_greeks handles empty list."""
+        from src.greeks.calculator import FutuGreeksProvider
+
+        provider = FutuGreeksProvider(use_shared=False)
+
+        result = provider.fetch_greeks([])
+
+        assert result == {}
+
+    def test_fetch_greeks_returns_empty_when_connection_fails(self):
+        """FutuGreeksProvider returns empty dict when connection fails."""
+        from unittest.mock import patch
+
         from src.greeks.calculator import FutuGreeksProvider, PositionInfo
 
-        provider = FutuGreeksProvider()
+        provider = FutuGreeksProvider(use_shared=False)
         positions = [
             PositionInfo(
                 position_id=1,
@@ -676,19 +688,113 @@ class TestFutuGreeksProvider:
             )
         ]
 
-        result = provider.fetch_greeks(positions)
+        # Mock the client to fail connection
+        with patch("src.greeks.futu_client.FutuGreeksClient.connect") as mock_connect:
+            mock_connect.side_effect = Exception("Connection failed")
+            result = provider.fetch_greeks(positions)
 
         assert result == {}
 
-    def test_fetch_greeks_with_empty_list(self):
-        """FutuGreeksProvider.fetch_greeks handles empty list."""
+    def test_fetch_greeks_with_mocked_client(self):
+        """FutuGreeksProvider fetches and converts Greeks correctly."""
+        from unittest.mock import MagicMock, patch
+
+        from src.greeks.calculator import FutuGreeksProvider, PositionInfo
+        from src.greeks.futu_client import FutuOptionGreeks
+
+        positions = [
+            PositionInfo(
+                position_id=1,
+                symbol="AAPL240119C00150000",
+                underlying_symbol="AAPL",
+                quantity=10,
+                multiplier=100,
+                option_type="call",
+                strike=Decimal("150.00"),
+                expiry="2024-01-19",
+            )
+        ]
+
+        # Mock the FutuGreeksClient class
+        mock_client_instance = MagicMock()
+        mock_client_instance.get_underlying_price.return_value = {"US.AAPL": Decimal("150.00")}
+        mock_client_instance.get_option_greeks.return_value = {
+            "US.AAPL240119C00150000": FutuOptionGreeks(
+                code="US.AAPL240119C00150000",
+                delta=Decimal("0.5"),
+                gamma=Decimal("0.02"),
+                vega=Decimal("0.30"),
+                theta=Decimal("-0.04"),
+                implied_volatility=Decimal("0.25"),
+                underlying_price=Decimal("150.00"),
+            )
+        }
+        mock_client_class = MagicMock(return_value=mock_client_instance)
+
+        with patch("src.greeks.futu_client.FutuGreeksClient", mock_client_class):
+            provider = FutuGreeksProvider(use_shared=False)
+            result = provider.fetch_greeks(positions)
+
+        assert len(result) == 1
+        assert 1 in result
+        raw = result[1]
+        assert raw.delta == Decimal("0.5")
+        assert raw.gamma == Decimal("0.02")
+        assert raw.vega == Decimal("0.30")
+        assert raw.theta == Decimal("-0.04")
+        assert raw.implied_vol == Decimal("0.25")
+        assert raw.underlying_price == Decimal("150.00")
+
+    def test_symbol_to_futu_conversion(self):
+        """FutuGreeksProvider converts symbols to Futu format."""
         from src.greeks.calculator import FutuGreeksProvider
 
-        provider = FutuGreeksProvider()
+        provider = FutuGreeksProvider(use_shared=False)
 
-        result = provider.fetch_greeks([])
+        # Test symbol conversion
+        futu_symbol = provider._symbol_to_futu("AAPL240119C00150000", "AAPL")
+        assert futu_symbol == "US.AAPL240119C00150000"
 
-        assert result == {}
+    def test_fetch_greeks_skips_invalid_underlying_price(self):
+        """FutuGreeksProvider skips positions with invalid underlying price."""
+        from unittest.mock import MagicMock, patch
+
+        from src.greeks.calculator import FutuGreeksProvider, PositionInfo
+        from src.greeks.futu_client import FutuOptionGreeks
+
+        positions = [
+            PositionInfo(
+                position_id=1,
+                symbol="AAPL240119C00150000",
+                underlying_symbol="AAPL",
+                quantity=10,
+                multiplier=100,
+                option_type="call",
+                strike=Decimal("150.00"),
+                expiry="2024-01-19",
+            )
+        ]
+
+        mock_client_instance = MagicMock()
+        mock_client_instance.get_underlying_price.return_value = {}  # No underlying price
+        mock_client_instance.get_option_greeks.return_value = {
+            "US.AAPL240119C00150000": FutuOptionGreeks(
+                code="US.AAPL240119C00150000",
+                delta=Decimal("0.5"),
+                gamma=Decimal("0.02"),
+                vega=Decimal("0.30"),
+                theta=Decimal("-0.04"),
+                implied_volatility=Decimal("0.25"),
+                underlying_price=Decimal("0"),  # Invalid price
+            )
+        }
+        mock_client_class = MagicMock(return_value=mock_client_instance)
+
+        with patch("src.greeks.futu_client.FutuGreeksClient", mock_client_class):
+            provider = FutuGreeksProvider(use_shared=False)
+            result = provider.fetch_greeks(positions)
+
+        assert result == {}  # Position skipped due to invalid price
 
 
 class TestGreeksProviderProtocol:
@@ -1042,3 +1148,52 @@ class TestGreeksCalculator:
 
         assert result.position_id == 1
         assert result.valid is False
+
+
+class TestGreeksCalculatorWithModelFallback:
+    """Tests for calculator with model fallback."""
+
+    def test_uses_model_fallback_when_futu_unavailable(self):
+        from src.greeks.calculator import (
+            GreeksCalculator,
+            ModelGreeksProvider,
+            PositionInfo,
+        )
+        from src.greeks.models import GreeksDataSource
+
+        # Empty primary (simulates Futu unavailable)
+        class EmptyPrimary:
+            @property
+            def source(self) -> GreeksDataSource:
+                return GreeksDataSource.FUTU
+
+            def fetch_greeks(self, positions):
+                return {}
+
+        # Model fallback
+        model_fallback = ModelGreeksProvider(default_iv=Decimal("0.25"))
+        model_fallback.set_underlying_prices({"AAPL": Decimal("150.00")})
+
+        calculator = GreeksCalculator(
+            primary_provider=EmptyPrimary(),
+            fallback_provider=model_fallback,
+        )
+
+        positions = [
+            PositionInfo(
+                position_id=1,
+                symbol="AAPL240621C00150000",
+                underlying_symbol="AAPL",
+                quantity=10,
+                multiplier=100,
+                option_type="call",
+                strike=Decimal("150.00"),
+                expiry="2024-06-21",
+            )
+        ]
+
+        results = calculator.calculate(positions)
+
+        assert len(results) == 1
+        assert results[0].valid is True
+        assert results[0].source == GreeksDataSource.MODEL
