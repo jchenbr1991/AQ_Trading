@@ -16,6 +16,29 @@ from typing import Literal
 
 from src.greeks.models import AggregatedGreeks, PositionGreeks, RiskMetric
 
+
+@dataclass
+class ContributorInfo:
+    """Information about a position's contribution to a Greek metric.
+
+    V1.5: Added contribution_signed for risk analysis (hedging vs directional).
+
+    Attributes:
+        position: The PositionGreeks for this contributor.
+        metric: The RiskMetric used for ranking.
+        rank: Position in the ranking (1 = largest contributor).
+        contribution_abs: Absolute contribution value (for threshold comparison).
+        contribution_signed: Signed contribution value (for hedging analysis).
+            - Positive: adds to exposure
+            - Negative: hedges/reduces exposure
+    """
+
+    position: PositionGreeks
+    metric: RiskMetric
+    rank: int
+    contribution_abs: Decimal
+    contribution_signed: Decimal
+
 # High-risk thresholds for missing positions
 GAMMA_HIGH_RISK_THRESHOLD: Decimal = Decimal("1000")
 VEGA_HIGH_RISK_THRESHOLD: Decimal = Decimal("2000")
@@ -210,11 +233,13 @@ class GreeksAggregator:
         positions: list[PositionGreeks],
         metric: RiskMetric,
         top_n: int = 10,
-    ) -> list[tuple[PositionGreeks, Decimal]]:
+    ) -> list[ContributorInfo]:
         """Get top N positions by absolute contribution to a metric.
 
         Only supports GREEK category metrics (DELTA, GAMMA, VEGA, THETA).
         Returns empty list for non-Greek metrics (IV, COVERAGE).
+
+        V1.5: Returns ContributorInfo with both signed and absolute contribution.
 
         Args:
             positions: List of PositionGreeks.
@@ -222,7 +247,7 @@ class GreeksAggregator:
             top_n: Number of top positions to return.
 
         Returns:
-            List of (PositionGreeks, contribution) tuples sorted by absolute value descending.
+            List of ContributorInfo sorted by absolute value descending.
             Excludes invalid positions.
         """
         # Only support Greek metrics
@@ -241,7 +266,7 @@ class GreeksAggregator:
         if field_name is None:
             return []
 
-        # Filter valid positions and extract (position, contribution) tuples
+        # Filter valid positions and extract (position, contribution_signed) tuples
         contributions: list[tuple[PositionGreeks, Decimal]] = []
         for pg in positions:
             if pg.valid:
@@ -251,5 +276,17 @@ class GreeksAggregator:
         # Sort by absolute value of contribution descending
         contributions.sort(key=lambda x: abs(x[1]), reverse=True)
 
-        # Return top N
-        return contributions[:top_n]
+        # Build ContributorInfo list with ranks
+        result: list[ContributorInfo] = []
+        for rank, (pg, contribution_signed) in enumerate(contributions[:top_n], start=1):
+            result.append(
+                ContributorInfo(
+                    position=pg,
+                    metric=metric,
+                    rank=rank,
+                    contribution_abs=abs(contribution_signed),
+                    contribution_signed=contribution_signed,
+                )
+            )
+
+        return result

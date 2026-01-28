@@ -604,11 +604,11 @@ class TestGreeksAggregatorByStrategy:
 
 
 class TestGreeksAggregatorTopContributors:
-    """Tests for GreeksAggregator.get_top_contributors() - Task 7."""
+    """Tests for GreeksAggregator.get_top_contributors() - Task 7 + V1.5."""
 
     def test_get_top_contributors_delta(self):
         """get_top_contributors returns top N positions by absolute delta."""
-        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.aggregator import ContributorInfo, GreeksAggregator
         from src.greeks.models import RiskMetric
 
         agg = GreeksAggregator()
@@ -634,13 +634,20 @@ class TestGreeksAggregatorTopContributors:
         result = agg.get_top_contributors(positions, RiskMetric.DELTA, top_n=3)
 
         assert len(result) == 3
+        assert all(isinstance(r, ContributorInfo) for r in result)
         # Sorted by absolute value descending
-        assert result[0][0].position_id == 2  # |-8000| = 8000
-        assert result[0][1] == Decimal("-8000.00")
-        assert result[1][0].position_id == 1  # |5000| = 5000
-        assert result[1][1] == Decimal("5000.00")
-        assert result[2][0].position_id == 3  # |3000| = 3000
-        assert result[2][1] == Decimal("3000.00")
+        assert result[0].position.position_id == 2  # |-8000| = 8000
+        assert result[0].contribution_signed == Decimal("-8000.00")
+        assert result[0].contribution_abs == Decimal("8000.00")
+        assert result[0].rank == 1
+        assert result[0].metric == RiskMetric.DELTA
+        assert result[1].position.position_id == 1  # |5000| = 5000
+        assert result[1].contribution_signed == Decimal("5000.00")
+        assert result[1].contribution_abs == Decimal("5000.00")
+        assert result[1].rank == 2
+        assert result[2].position.position_id == 3  # |3000| = 3000
+        assert result[2].contribution_signed == Decimal("3000.00")
+        assert result[2].rank == 3
 
     def test_get_top_contributors_excludes_invalid(self):
         """get_top_contributors excludes invalid positions."""
@@ -669,8 +676,8 @@ class TestGreeksAggregatorTopContributors:
         result = agg.get_top_contributors(positions, RiskMetric.DELTA, top_n=10)
 
         assert len(result) == 2  # Only valid positions
-        assert result[0][0].position_id == 1  # |5000| = 5000
-        assert result[1][0].position_id == 3  # |3000| = 3000
+        assert result[0].position.position_id == 1  # |5000| = 5000
+        assert result[1].position.position_id == 3  # |3000| = 3000
         # Position 2 is excluded
 
     def test_get_top_contributors_empty_for_non_greek_iv(self):
@@ -725,9 +732,12 @@ class TestGreeksAggregatorTopContributors:
 
         assert len(result) == 3
         # Should be positions 10, 9, 8 (highest absolute values)
-        assert result[0][0].position_id == 10
-        assert result[1][0].position_id == 9
-        assert result[2][0].position_id == 8
+        assert result[0].position.position_id == 10
+        assert result[0].rank == 1
+        assert result[1].position.position_id == 9
+        assert result[1].rank == 2
+        assert result[2].position.position_id == 8
+        assert result[2].rank == 3
 
     def test_get_top_contributors_gamma(self):
         """get_top_contributors works for GAMMA metric."""
@@ -753,10 +763,12 @@ class TestGreeksAggregatorTopContributors:
         result = agg.get_top_contributors(positions, RiskMetric.GAMMA, top_n=2)
 
         assert len(result) == 2
-        assert result[0][0].position_id == 2  # 500
-        assert result[0][1] == Decimal("500.00")
-        assert result[1][0].position_id == 3  # 200
-        assert result[1][1] == Decimal("200.00")
+        assert result[0].position.position_id == 2  # 500
+        assert result[0].contribution_signed == Decimal("500.00")
+        assert result[0].contribution_abs == Decimal("500.00")
+        assert result[0].metric == RiskMetric.GAMMA
+        assert result[1].position.position_id == 3  # 200
+        assert result[1].contribution_signed == Decimal("200.00")
 
     def test_get_top_contributors_vega(self):
         """get_top_contributors works for VEGA metric."""
@@ -782,10 +794,11 @@ class TestGreeksAggregatorTopContributors:
         result = agg.get_top_contributors(positions, RiskMetric.VEGA, top_n=2)
 
         assert len(result) == 2
-        assert result[0][0].position_id == 2  # |-400| = 400
-        assert result[0][1] == Decimal("-400.00")
-        assert result[1][0].position_id == 1  # |200| = 200
-        assert result[1][1] == Decimal("200.00")
+        assert result[0].position.position_id == 2  # |-400| = 400
+        assert result[0].contribution_signed == Decimal("-400.00")
+        assert result[0].contribution_abs == Decimal("400.00")
+        assert result[1].position.position_id == 1  # |200| = 200
+        assert result[1].contribution_signed == Decimal("200.00")
 
     def test_get_top_contributors_theta(self):
         """get_top_contributors works for THETA metric."""
@@ -811,10 +824,11 @@ class TestGreeksAggregatorTopContributors:
         result = agg.get_top_contributors(positions, RiskMetric.THETA, top_n=2)
 
         assert len(result) == 2
-        assert result[0][0].position_id == 2  # |-150| = 150
-        assert result[0][1] == Decimal("-150.00")
-        assert result[1][0].position_id == 1  # |-50| = 50
-        assert result[1][1] == Decimal("-50.00")
+        assert result[0].position.position_id == 2  # |-150| = 150
+        assert result[0].contribution_signed == Decimal("-150.00")
+        assert result[0].contribution_abs == Decimal("150.00")
+        assert result[1].position.position_id == 1  # |-50| = 50
+        assert result[1].contribution_signed == Decimal("-50.00")
 
     def test_get_top_contributors_empty_positions(self):
         """get_top_contributors handles empty position list."""

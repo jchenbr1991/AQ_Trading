@@ -169,7 +169,7 @@ async def get_greeks_overview(
     for metric in [RiskMetric.DELTA, RiskMetric.GAMMA, RiskMetric.VEGA, RiskMetric.THETA]:
         contributors = aggregator.get_top_contributors(position_greeks, metric, top_n=5)
         top_contributors[metric.value] = [
-            _position_greeks_to_response(pg) for pg, _ in contributors
+            _position_greeks_to_response(c.position) for c in contributors
         ]
 
     # Get unacknowledged alerts

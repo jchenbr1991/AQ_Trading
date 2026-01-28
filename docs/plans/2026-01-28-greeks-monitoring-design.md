@@ -132,19 +132,38 @@
    │  │                                                         │
    │  │ gamma_dollar    = Γ × S² × multiplier                  │
    │  │                   单位: $ / ($1 underlying move)²       │
-   │  │                   注: per $1 的二阶导，不含额外系数     │
+   │  │                   这是"raw"二阶导，用于阈值监控         │
+   │  │                                                         │
+   │  │ gamma_pnl_1pct  = 0.5 × gamma_dollar × (0.01)²         │
+   │  │                   单位: $ (PnL contribution)            │
+   │  │                   这是 1% underlying move 的 gamma PnL  │
+   │  │                   用于情景分析和 UI 展示               │
+   │  │                                                         │
+   │  │ ⚠️ gamma_dollar vs gamma_pnl_1pct 区分：                │
+   │  │   - gamma_dollar: 用于限额监控（阈值比较）             │
+   │  │   - gamma_pnl_1pct: 用于情景分析（PnL 计算）           │
+   │  │   - 两者相差约 5000 倍，切勿混用！                     │
    │  │                                                         │
    │  │ vega_per_1pct   = Vega × multiplier                    │
    │  │                   单位: $ / 1% IV change                │
    │  │                   前提: Futu/Model 输出已是 per 1%      │
    │  │                                                         │
    │  │ theta_per_day   = Θ × multiplier                       │
-   │  │                   单位: $ / day                         │
+   │  │                   单位: $ / day（trading day）         │
    │  │                   前提: 已归一化到 per-day              │
    │  │                                                         │
-   │  │ 情景分析（Scenario Shock）单独计算：                    │
-   │  │   shock_pnl_1pct = dollar_delta × S × 0.01             │
-   │  │                  + 0.5 × gamma_dollar × (S × 0.01)²    │
+   │  │ 情景分析（Scenario Shock）公式：                        │
+   │  │   shock_pnl_1pct = dollar_delta × 0.01                 │
+   │  │                  + gamma_pnl_1pct                       │
+   │  │                                                         │
+   │  │   展开形式（等价）：                                    │
+   │  │   shock_pnl_1pct = dollar_delta × 0.01                 │
+   │  │                  + 0.5 × gamma_dollar × (0.01)²        │
+   │  │                                                         │
+   │  │   ⚠️ 常见错误（不要这样写）：                           │
+   │  │   ✗ dollar_delta × S × 0.01  ← 多乘了 S                │
+   │  │   ✗ 0.5 × gamma_dollar × (S × 0.01)² ← 多乘了 S²      │
+   │  │   因为 dollar_delta 已含 S，gamma_dollar 已含 S²       │
    │  └─────────────────────────────────────────────────────────┘
    │
    │  ┌─────────────────────────────────────────────────────────┐
@@ -153,10 +172,29 @@
    │  │ • valid_legs_count / total_legs_count                  │
    │  │ • valid_notional / total_notional                      │
    │  │ • missing_positions: list[position_id]                 │
+   │  │ • has_high_risk_missing_legs: bool（V1 新增）          │
    │  │                                                         │
    │  │ notional 定义（监控级精度，非清算级）：                  │
    │  │   notional = abs(qty) × underlying_spot × multiplier   │
    │  │   包含所有 legs（option + stock + cash）               │
+   │  │                                                         │
+   │  │ ⚠️ V1 新增：高风险 missing legs 检测                   │
+   │  │   仅看 notional 有盲区（近月深 OTM 的 notional 小但    │
+   │  │   gamma/vega 极高）。V1 最小增强：                     │
+   │  │                                                         │
+   │  │   has_high_risk_missing_legs = any(                    │
+   │  │     abs(pg.gamma_dollar) > GAMMA_HIGH_RISK_THRESHOLD   │
+   │  │     or abs(pg.vega_per_1pct) > VEGA_HIGH_RISK_THRESHOLD│
+   │  │     for pg in missing_position_greeks                  │
+   │  │   )                                                     │
+   │  │                                                         │
+   │  │   默认阈值建议：                                        │
+   │  │   - GAMMA_HIGH_RISK_THRESHOLD = 1000  # per position   │
+   │  │   - VEGA_HIGH_RISK_THRESHOLD = 2000   # per position   │
+   │  │                                                         │
+   │  │   如果 has_high_risk_missing_legs=true：               │
+   │  │   - 即使 coverage_pct >= 95%，也触发 DATA_QUALITY WARN │
+   │  │   - Dashboard 显示 "⚠️ High-risk positions missing"    │
    │  └─────────────────────────────────────────────────────────┘
    │
    └── 聚合维度：
@@ -168,9 +206,20 @@
    │  ┌─────────────────────────────────────────────────────────┐
    │  │ Coverage Check（优先级最高）                            │
    │  ├─────────────────────────────────────────────────────────┤
-   │  │ coverage < 95% → DATA_QUALITY CRIT                     │
-   │  │ Dashboard 显示: "⚠️ Risk may be underestimated"         │
-   │  │ (X legs / Y notional missing)                          │
+   │  │ 触发条件（满足任一即触发）：                           │
+   │  │                                                         │
+   │  │ 1. coverage < 95%                                       │
+   │  │    → DATA_QUALITY CRIT                                  │
+   │  │    → "⚠️ Risk may be underestimated"                    │
+   │  │    → "(X legs / Y% notional missing)"                  │
+   │  │                                                         │
+   │  │ 2. has_high_risk_missing_legs = true（V1 新增）         │
+   │  │    → DATA_QUALITY WARN（即使 coverage >= 95%）          │
+   │  │    → "⚠️ High-risk positions with invalid Greeks"       │
+   │  │    → 列出高风险 missing legs                           │
+   │  │                                                         │
+   │  │ 这样可以兜底：小 notional 但超高 gamma/vega 的 legs    │
+   │  │ （如近月深 OTM）不会被 notional-based coverage 漏掉    │
    │  └─────────────────────────────────────────────────────────┘
    │
    │  ┌─────────────────────────────────────────────────────────┐
@@ -259,14 +308,58 @@ class GreeksLevel(str, Enum):
     HARD = "hard"
 
 
-class GreeksMetric(str, Enum):
-    """Greeks 指标类型"""
+class RiskMetricCategory(str, Enum):
+    """风险指标分类
+
+    区分 Greeks 和非 Greeks 指标，便于：
+    - AlertEngine 分支处理
+    - 后续扩展 Skew / Term Structure
+    """
+    GREEK = "greek"
+    VOLATILITY = "volatility"       # IV 及其衍生
+    DATA_QUALITY = "data_quality"   # Coverage
+
+
+class RiskMetric(str, Enum):
+    """风险指标类型（统一接口）
+
+    V1 设计说明：
+    - IV 不是 Greek，但需要监控，因此抽象为 RiskMetric
+    - 每个 metric 属于一个 category，便于差异化处理
+    - 后续可扩展：SKEW, TERM_STRUCTURE 等
+    """
+    # Greeks（category=GREEK）
     DELTA = "delta"
     GAMMA = "gamma"
     VEGA = "vega"
     THETA = "theta"
+
+    # Volatility（category=VOLATILITY）
+    IMPLIED_VOLATILITY = "iv"
+    # V1.5 预留：IV_SKEW = "iv_skew"
+    # V2 预留：IV_TERM_STRUCTURE = "iv_term"
+
+    # Data Quality（category=DATA_QUALITY）
     COVERAGE = "coverage"
-    IMPLIED_VOLATILITY = "iv"  # IV 异常监控（非 Greek 但复用告警引擎）
+
+    @property
+    def category(self) -> RiskMetricCategory:
+        """获取指标分类"""
+        if self in (RiskMetric.DELTA, RiskMetric.GAMMA,
+                    RiskMetric.VEGA, RiskMetric.THETA):
+            return RiskMetricCategory.GREEK
+        elif self in (RiskMetric.IMPLIED_VOLATILITY,):
+            return RiskMetricCategory.VOLATILITY
+        else:
+            return RiskMetricCategory.DATA_QUALITY
+
+    @property
+    def is_greek(self) -> bool:
+        return self.category == RiskMetricCategory.GREEK
+
+
+# 向后兼容别名（V1 过渡期使用）
+GreeksMetric = RiskMetric
 
 
 class ThresholdDirection(str, Enum):
@@ -305,13 +398,20 @@ class PositionGreeks:
 
     - gamma_dollar = Γ × S² × multiplier
       单位: $ / ($1 underlying move)²
-      这是 per $1 的二阶导，不含额外系数
+      用于阈值监控
+
+    - gamma_pnl_1pct = 0.5 × gamma_dollar × (0.01)²
+      单位: $ (PnL contribution)
+      用于情景分析
+
+    ⚠️ 重要：gamma_dollar vs gamma_pnl_1pct
+      两者相差约 5000 倍，切勿混用！
 
     - vega_per_1pct = Vega × multiplier
       单位: $ / 1% IV change
 
     - theta_per_day = Θ × multiplier
-      单位: $ / day
+      单位: $ / trading day
     """
 
     position_id: int
@@ -328,9 +428,10 @@ class PositionGreeks:
 
     # ========== Dollar Greeks（Canonical，单一数值类型）==========
     dollar_delta: Decimal          # $ / $1 underlying move
-    gamma_dollar: Decimal          # $ / ($1 underlying move)²
+    gamma_dollar: Decimal          # $ / ($1 underlying move)²，用于阈值监控
+    gamma_pnl_1pct: Decimal        # $ PnL for 1% underlying move，用于情景分析
     vega_per_1pct: Decimal         # $ / 1% IV change
-    theta_per_day: Decimal         # $ / day
+    theta_per_day: Decimal         # $ / trading day
 
     # ========== 数据来源 ==========
     source: GreeksDataSource
@@ -357,7 +458,8 @@ class AggregatedGreeks:
 
     # Dollar Greeks 汇总
     dollar_delta: Decimal
-    gamma_dollar: Decimal
+    gamma_dollar: Decimal        # 用于阈值监控
+    gamma_pnl_1pct: Decimal      # 用于情景分析 = 0.5 × gamma_dollar × (0.01)²
     vega_per_1pct: Decimal
     theta_per_day: Decimal
 
@@ -367,6 +469,7 @@ class AggregatedGreeks:
     valid_notional: Decimal
     total_notional: Decimal
     missing_positions: list[int] = field(default_factory=list)
+    has_high_risk_missing_legs: bool = False  # V1 新增：高风险 missing legs
 
     @property
     def coverage_pct(self) -> Decimal:
@@ -516,9 +619,13 @@ class GreeksLimitsConfig:
                 GreeksMetric.THETA: GreeksThresholdConfig(
                     metric=GreeksMetric.THETA,
                     direction=ThresholdDirection.ABS,  # abs(theta) <= limit
-                    limit=Decimal("5000"),             # 正数限额
+                    limit=Decimal("5000"),             # 正数限额，单位: $ / trading day
                     rate_change_abs=Decimal("500"),
                 ),
+                # ⚠️ V1.5 TODO: Theta 是"最容易被误用的 Greek"
+                # Alert explain 中应强制显示时间单位：
+                # - "theta $3200/trading day" 而非 "theta $3200"
+                # - 避免用户误解为 calendar day（周末/节假日不衰减）
                 GreeksMetric.IMPLIED_VOLATILITY: GreeksThresholdConfig(
                     metric=GreeksMetric.IMPLIED_VOLATILITY,
                     direction=ThresholdDirection.MAX,  # IV <= limit
@@ -586,13 +693,19 @@ class GreeksSnapshotDetail:
     ranking 按触发的 metric 排序：
     - 如果是 DELTA 超限，按 abs(dollar_delta) 排
     - 如果是 VEGA 超限，按 abs(vega_per_1pct) 排
+
+    V1.5 预留：contribution_signed
+    - 风险决策时，对冲 vs 同向暴露非常关键
+    - V1 先用 abs(contribution)，V1.5 增加 signed 版本
+    - UI 再决定怎么画（如正负不同颜色）
     """
 
     snapshot_id: str  # FK to greeks_snapshots.id
     position_greeks: PositionGreeks
-    rank_metric: GreeksMetric       # 排名使用的指标
+    rank_metric: RiskMetric         # 排名使用的指标
     contribution_rank: int          # 排名（1 = 最大贡献）
     contribution_value: Decimal     # 贡献值（abs）
+    contribution_signed: Decimal | None = None  # V1.5 预留：带符号贡献值
 ```
 
 ### 2.6 数据库表结构
@@ -964,17 +1077,24 @@ class GreeksCalculator:
 
         输出（带 qty 符号）：
         - dollar_delta = Δ × S × multiplier × qty
-        - gamma_dollar = Γ × S² × multiplier × qty
+        - gamma_dollar = Γ × S² × multiplier × qty（用于阈值监控）
+        - gamma_pnl_1pct = 0.5 × gamma_dollar × (0.01)²（用于情景分析）
         - vega_per_1pct = Vega × multiplier × qty
         - theta_per_day = Θ × multiplier × qty
         """
         qty = greeks.quantity
         S = underlying_price
 
+        gamma_dollar = greeks.gamma_dollar * S * S * multiplier * qty
+        # gamma_pnl_1pct = 0.5 × gamma_dollar × (0.01)²
+        # 注意：不要写成 0.5 × gamma_dollar × (S × 0.01)²，因为 gamma_dollar 已含 S²
+        gamma_pnl_1pct = Decimal("0.5") * gamma_dollar * Decimal("0.0001")
+
         return replace(
             greeks,
             dollar_delta=greeks.dollar_delta * S * multiplier * qty,
-            gamma_dollar=greeks.gamma_dollar * S * S * multiplier * qty,
+            gamma_dollar=gamma_dollar,
+            gamma_pnl_1pct=gamma_pnl_1pct,
             vega_per_1pct=greeks.vega_per_1pct * multiplier * qty,
             theta_per_day=greeks.theta_per_day * multiplier * qty,
         )
@@ -1204,6 +1324,7 @@ class _Accumulator:
     # Dollar Greeks 累加
     dollar_delta: Decimal = Decimal("0")
     gamma_dollar: Decimal = Decimal("0")
+    gamma_pnl_1pct: Decimal = Decimal("0")  # 情景分析用
     vega_per_1pct: Decimal = Decimal("0")
     theta_per_day: Decimal = Decimal("0")
 
@@ -1213,7 +1334,12 @@ class _Accumulator:
     valid_notional: Decimal = Decimal("0")
     total_notional: Decimal = Decimal("0")
     missing_positions: list[int] = field(default_factory=list)
+    high_risk_missing_positions: list[int] = field(default_factory=list)  # V1 新增
     warning_positions: list[int] = field(default_factory=list)
+
+    # 高风险阈值（可配置）
+    GAMMA_HIGH_RISK_THRESHOLD: Decimal = Decimal("1000")
+    VEGA_HIGH_RISK_THRESHOLD: Decimal = Decimal("2000")
 
     # 时间戳追踪
     as_of_ts_min: datetime | None = None
@@ -1235,6 +1361,7 @@ class _Accumulator:
             self.valid_notional += pg.notional
             self.dollar_delta += pg.dollar_delta
             self.gamma_dollar += pg.gamma_dollar
+            self.gamma_pnl_1pct += pg.gamma_pnl_1pct
             self.vega_per_1pct += pg.vega_per_1pct
             self.theta_per_day += pg.theta_per_day
 
@@ -1243,6 +1370,17 @@ class _Accumulator:
                 self.warning_positions.append(pg.position_id)
         else:
             self.missing_positions.append(pg.position_id)
+
+            # V1 新增：检测高风险 missing positions
+            # 即使 notional 小，高 gamma/vega 的 legs 也应标记
+            # 注意：这里用 notional 估算 gamma/vega（因为 valid=false 时可能没有准确的 Greeks）
+            # 更好的方式是用之前缓存的 Greeks 值，但 V1 先简化
+            is_high_risk = (
+                abs(pg.gamma_dollar) >= self.GAMMA_HIGH_RISK_THRESHOLD or
+                abs(pg.vega_per_1pct) >= self.VEGA_HIGH_RISK_THRESHOLD
+            )
+            if is_high_risk:
+                self.high_risk_missing_positions.append(pg.position_id)
 
 
 class GreeksAggregator:
@@ -1291,6 +1429,7 @@ class GreeksAggregator:
             strategy_id=scope_id if scope == "STRATEGY" else None,
             dollar_delta=acc.dollar_delta,
             gamma_dollar=acc.gamma_dollar,
+            gamma_pnl_1pct=acc.gamma_pnl_1pct,
             vega_per_1pct=acc.vega_per_1pct,
             theta_per_day=acc.theta_per_day,
             valid_legs_count=acc.valid_legs_count,
@@ -1298,6 +1437,7 @@ class GreeksAggregator:
             valid_notional=acc.valid_notional,
             total_notional=acc.total_notional,
             missing_positions=acc.missing_positions,
+            has_high_risk_missing_legs=len(acc.high_risk_missing_positions) > 0,
             warning_legs_count=len(acc.warning_positions),
             has_positions=has_positions,
             as_of_ts=as_of_ts,
@@ -1337,30 +1477,37 @@ class GreeksAggregator:
     def get_top_contributors(
         self,
         positions: list[PositionGreeks],
-        metric: GreeksMetric,
+        metric: RiskMetric,
         top_n: int = 10,
     ) -> list[tuple[PositionGreeks, Decimal]]:
         """获取指定指标的 Top N 贡献者
 
         Args:
             positions: PositionGreeks 列表
-            metric: 排序指标（不支持 COVERAGE/IV）
+            metric: 排序指标（仅支持 GREEK 分类）
             top_n: 返回数量
 
         Returns:
             [(PositionGreeks, contribution_value)] 按贡献度降序
+
+        V1 设计说明：
+        - 仅 GREEK 分类的指标支持贡献度排名
+        - VOLATILITY/DATA_QUALITY 分类不是 position-level 指标
         """
-        # COVERAGE 和 IV 不适用于持仓贡献度排名
-        if metric in (GreeksMetric.COVERAGE, GreeksMetric.IMPLIED_VOLATILITY):
-            logger.warning(f"get_top_contributors: metric {metric} not supported")
+        # 仅 GREEK 分类支持持仓贡献度排名
+        if not metric.is_greek:
+            logger.warning(
+                f"get_top_contributors: metric {metric} (category={metric.category}) "
+                "not supported - only GREEK category metrics are applicable"
+            )
             return []
 
-        # 字段映射
+        # 字段映射（仅 Greeks）
         field_map = {
-            GreeksMetric.DELTA: "dollar_delta",
-            GreeksMetric.GAMMA: "gamma_dollar",
-            GreeksMetric.VEGA: "vega_per_1pct",
-            GreeksMetric.THETA: "theta_per_day",
+            RiskMetric.DELTA: "dollar_delta",
+            RiskMetric.GAMMA: "gamma_dollar",
+            RiskMetric.VEGA: "vega_per_1pct",
+            RiskMetric.THETA: "theta_per_day",
         }
 
         field_name = field_map.get(metric)
@@ -1385,7 +1532,16 @@ class GreeksAggregator:
 
 @dataclass
 class AggregatedGreeks:
-    """聚合后的组合 Greeks"""
+    """聚合后的组合 Greeks
+
+    时间戳语义约定：
+    - as_of_ts: 主时间戳 = as_of_ts_min（最保守，即最旧数据时间）
+    - as_of_ts_min: 数据覆盖范围最早时间
+    - as_of_ts_max: 数据覆盖范围最晚时间
+    - staleness_seconds: 基于 as_of_ts_min 计算（最保守）
+
+    UI / Alert / Snapshot 全部使用 as_of_ts（= as_of_ts_min）
+    """
 
     scope: Literal["ACCOUNT", "STRATEGY"]
     scope_id: str
@@ -1393,7 +1549,8 @@ class AggregatedGreeks:
 
     # Dollar Greeks 汇总
     dollar_delta: Decimal = Decimal("0")
-    gamma_dollar: Decimal = Decimal("0")
+    gamma_dollar: Decimal = Decimal("0")        # 用于阈值监控
+    gamma_pnl_1pct: Decimal = Decimal("0")      # 用于情景分析 = 0.5 × gamma_dollar × (0.01)²
     vega_per_1pct: Decimal = Decimal("0")
     theta_per_day: Decimal = Decimal("0")
 
@@ -1403,13 +1560,14 @@ class AggregatedGreeks:
     valid_notional: Decimal = Decimal("0")
     total_notional: Decimal = Decimal("0")
     missing_positions: list[int] = field(default_factory=list)
+    has_high_risk_missing_legs: bool = False  # V1 新增：高风险 missing legs
     warning_legs_count: int = 0
     has_positions: bool = True
 
-    # 时间戳
+    # 时间戳（语义约定：as_of_ts = as_of_ts_min，取最保守值）
     as_of_ts: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    as_of_ts_min: datetime | None = None  # 最早数据时间（最保守）
-    as_of_ts_max: datetime | None = None  # 最新数据时间
+    as_of_ts_min: datetime | None = None  # 最早数据时间（最保守，用于 staleness）
+    as_of_ts_max: datetime | None = None  # 最新数据时间（仅供参考）
 
     # 元数据
     calc_duration_ms: int = 0
@@ -1460,15 +1618,37 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+@dataclass
 class AlertState:
-    """告警状态（用于状态机）"""
+    """告警状态（用于状态机）
+
+    生命周期管理：
+    - TTL: 24 小时无更新自动清理
+    - 或按 snapshot_batch_id 滚动
+    - 内存态 _states 需要定期清理防止泄漏
+
+    ⚠️ 重要变更（V1）：
+    - last_value_eval 已移除，ROC 检测改用 prev_greeks 参数
+    - 这是因为内存态在进程重启/多实例部署时不可靠
+    - ROC 必须基于持久化的 snapshot store 或 time series
+    """
 
     scope: Literal["ACCOUNT", "STRATEGY"]
     scope_id: str
     metric: GreeksMetric
     current_level: GreeksLevel = GreeksLevel.NORMAL
     last_alert_ts: dict[GreeksLevel, datetime] = field(default_factory=dict)
-    last_value_eval: Decimal | None = None  # 用于 ROC 检测
+    last_updated_ts: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    # ⚠️ 不再存储 last_value_eval，ROC 检测使用 prev_greeks 参数
+    # last_value_eval: Decimal | None = None  # REMOVED: 使用 prev_greeks 替代
+
+    @property
+    def is_expired(self) -> bool:
+        """检查状态是否过期（TTL 24h）"""
+        ttl_seconds = 24 * 60 * 60  # 24 hours
+        elapsed = (datetime.now(timezone.utc) - self.last_updated_ts).total_seconds()
+        return elapsed > ttl_seconds
 
 
 class GreeksAlertEngine:
@@ -1476,19 +1656,26 @@ class GreeksAlertEngine:
 
     职责：
     1. 阈值触发检测（WARN/CRIT/HARD）
-    2. 变化率异常检测
+    2. 变化率异常检测（ROC）
     3. 告警去重（level-scoped）
     4. 升级穿透（escalation-through）
     5. 回差恢复检测（hysteresis）
 
+    ⚠️ ROC 检测重要变更：
+    - ROC 不再使用内存态 last_value_eval
+    - 必须通过 prev_greeks 参数传入（来自 snapshot store / time series）
+    - 这是因为内存态在进程重启/多实例部署时不可靠
+
     状态管理：
-    - AlertState 存储在内存（单进程）
-    - 可选持久化到 Redis（多进程）
+    - AlertState 存储在内存，仅用于 dedupe 和 level tracking
+    - _states 需要定期清理（TTL 24h）防止内存泄漏
+    - 多进程部署时需持久化到 Redis
     """
 
     def __init__(self, limits_config: GreeksLimitsConfig):
         self._config = limits_config
         self._states: dict[str, AlertState] = {}  # key: "{scope}:{scope_id}:{metric}"
+        self._last_cleanup_ts: datetime = datetime.now(timezone.utc)
 
     def evaluate(
         self,
@@ -1503,19 +1690,31 @@ class GreeksAlertEngine:
 
         Returns:
             触发的告警列表（已去重）
+
+        V1 分类处理说明（RiskMetricCategory）：
+        - DATA_QUALITY (Coverage): 单独处理，优先级最高
+        - GREEK (Delta/Gamma/Vega/Theta): 标准阈值 + ROC 检测
+        - VOLATILITY (IV): 仅阈值检测，不参与 contribution ranking
+
+        后续扩展（V1.5/V2）：
+        - 添加 Skew / Term Structure 到 VOLATILITY 分类
+        - 每个分类可以有不同的处理逻辑
         """
         results: list[GreeksEvalResult] = []
 
-        # 1. Coverage 检查（优先）
+        # 1. DATA_QUALITY 分类：Coverage 检查（优先）
         coverage_result = self._evaluate_coverage(greeks)
         if coverage_result:
             results.append(coverage_result)
 
-        # 2. 各 metric 阈值检查
+        # 2. GREEK + VOLATILITY 分类：各 metric 阈值检查
         for metric, threshold_cfg in self._config.thresholds.items():
-            if metric == GreeksMetric.COVERAGE:
-                continue  # 已单独处理
+            # DATA_QUALITY 分类已单独处理
+            if metric.category == RiskMetricCategory.DATA_QUALITY:
+                continue
 
+            # GREEK 和 VOLATILITY 分类使用相同的评估逻辑
+            # 但 VOLATILITY 分类不参与 contribution ranking（在 _get_top_contributors 中处理）
             result = self._evaluate_metric(greeks, metric, threshold_cfg, prev_greeks)
             if result:
                 results.append(result)
@@ -1526,7 +1725,12 @@ class GreeksAlertEngine:
         return merged
 
     def _evaluate_coverage(self, greeks: AggregatedGreeks) -> GreeksEvalResult | None:
-        """评估 Coverage"""
+        """评估 Coverage
+
+        V1 触发条件（满足任一）：
+        1. coverage_pct < min_coverage → CRIT
+        2. has_high_risk_missing_legs = true → WARN（即使 coverage >= 95%）
+        """
         coverage_pct = greeks.coverage_pct
         min_coverage = self._config.min_coverage_pct
 
@@ -1535,7 +1739,7 @@ class GreeksAlertEngine:
             state_key, greeks.scope, greeks.scope_id, GreeksMetric.COVERAGE
         )
 
-        # Coverage 低于阈值
+        # 条件 1：Coverage 低于阈值
         if coverage_pct < min_coverage:
             new_level = GreeksLevel.CRIT  # Coverage 问题直接 CRIT
 
@@ -1560,6 +1764,34 @@ class GreeksAlertEngine:
                 explains=[
                     f"coverage {coverage_pct}% < {min_coverage}% "
                     f"({greeks.valid_legs_count}/{greeks.total_legs_count} legs valid)"
+                ],
+            )
+
+        # 条件 2：V1 新增 - 高风险 missing legs（即使 coverage >= 95%）
+        if greeks.has_high_risk_missing_legs:
+            new_level = GreeksLevel.WARN
+
+            should_alert = self._should_alert(state, new_level)
+            if should_alert:
+                state.current_level = new_level
+                state.last_alert_ts[new_level] = datetime.now(timezone.utc)
+
+            return GreeksEvalResult(
+                scope=greeks.scope,
+                scope_id=greeks.scope_id,
+                metric=GreeksMetric.COVERAGE,
+                level=new_level,
+                trigger_types={"COVERAGE"},
+                value_raw=coverage_pct,
+                value_eval=coverage_pct,
+                limit=min_coverage,
+                threshold=min_coverage,
+                direction=ThresholdDirection.MIN,
+                should_alert=should_alert,
+                should_recover=False,
+                explains=[
+                    f"high-risk positions with invalid Greeks "
+                    f"(coverage {coverage_pct}% OK but missing legs have high gamma/vega)"
                 ],
             )
 
@@ -1634,12 +1866,17 @@ class GreeksAlertEngine:
                 f"{cfg.warn_pct*100:.0f}% of limit {limit}"
             )
 
-        # 变化率检测
+        # 变化率检测（基于 prev_greeks，不再使用内存态）
         roc_triggered = self._check_rate_of_change(
-            state, value_eval, cfg, prev_greeks, metric
+            value_eval, cfg, prev_greeks, metric
         )
         if roc_triggered:
-            delta_change = abs(value_eval - (state.last_value_eval or Decimal("0")))
+            # 从 prev_greeks 计算 delta_change
+            prev_value = Decimal("0")
+            if prev_greeks:
+                prev_raw = self._get_metric_value(prev_greeks, metric)
+                prev_value = self._apply_direction(prev_raw, cfg.direction)
+            delta_change = abs(value_eval - prev_value)
             trigger_types.add("RATE_OF_CHANGE")
             explains.append(
                 f"rate of change {delta_change} >= "
@@ -1650,8 +1887,8 @@ class GreeksAlertEngine:
                 new_level = GreeksLevel.WARN
                 threshold_triggered = Decimal("0")  # ROC-only 没有阈值
 
-        # 更新 ROC 检测用的历史值
-        state.last_value_eval = value_eval
+        # ⚠️ 已移除：state.last_value_eval = value_eval
+        # ROC 检测现在完全依赖 prev_greeks（来自持久层）
 
         # 恢复检测（带回差）
         if new_level == GreeksLevel.NORMAL and state.current_level != GreeksLevel.NORMAL:
@@ -1828,17 +2065,35 @@ class GreeksAlertEngine:
 
     def _check_rate_of_change(
         self,
-        state: AlertState,
         value_eval: Decimal,
         cfg: GreeksThresholdConfig,
         prev_greeks: AggregatedGreeks | None,
         metric: GreeksMetric,
     ) -> bool:
-        """检测变化率异常"""
-        if state.last_value_eval is None:
+        """检测变化率异常
+
+        ⚠️ 重要：ROC 必须基于 prev_greeks（来自持久层）
+        - 不使用内存态 state.last_value_eval
+        - 因为进程重启/多实例部署时内存态不可靠
+        - prev_greeks 应从 GreeksSnapshotStore 获取
+
+        Args:
+            value_eval: 当前用于比较的值（ABS 后的量）
+            cfg: 阈值配置
+            prev_greeks: 上一次聚合结果（必须来自持久化存储）
+            metric: 指标类型
+
+        Returns:
+            是否触发 ROC 告警
+        """
+        if prev_greeks is None:
             return False
 
-        delta = abs(value_eval - state.last_value_eval)
+        # 从 prev_greeks 获取上一次的 value_eval
+        prev_value_raw = self._get_metric_value(prev_greeks, metric)
+        prev_value_eval = self._apply_direction(prev_value_raw, cfg.direction)
+
+        delta = abs(value_eval - prev_value_eval)
         threshold = max(
             cfg.limit * cfg.rate_change_pct,
             cfg.rate_change_abs,
@@ -1893,7 +2148,35 @@ class GreeksAlertEngine:
             self._states[key] = AlertState(
                 scope=scope, scope_id=scope_id, metric=metric
             )
-        return self._states[key]
+
+        state = self._states[key]
+        # 更新最后访问时间
+        state.last_updated_ts = datetime.now(timezone.utc)
+
+        # 定期清理过期状态（每小时执行一次）
+        self._maybe_cleanup_states()
+
+        return state
+
+    def _maybe_cleanup_states(self) -> None:
+        """定期清理过期的 AlertState（TTL 24h）
+
+        防止 _states 字典无限增长导致内存泄漏
+        """
+        now = datetime.now(timezone.utc)
+        elapsed = (now - self._last_cleanup_ts).total_seconds()
+
+        # 每小时清理一次
+        if elapsed < 3600:
+            return
+
+        self._last_cleanup_ts = now
+        expired_keys = [k for k, v in self._states.items() if v.is_expired]
+        for k in expired_keys:
+            del self._states[k]
+
+        if expired_keys:
+            logger.info(f"Cleaned up {len(expired_keys)} expired AlertState entries")
 
     def _merge_alerts(self, results: list[GreeksEvalResult]) -> list[GreeksEvalResult]:
         """合并同一 metric 的多个触发类型"""
@@ -1962,6 +2245,9 @@ class GreeksEvalResult:
     dedupe_key: str = ""
 
     # 可读解释（列表形式）
+    # ⚠️ V1.5 TODO: Theta explain 应明确显示时间单位
+    #    - "theta $3200/trading day >= 80% of limit $5000"
+    #    - 不要写 "theta $3200 >= ..." 容易误解为 calendar day
     explains: list[str] = field(default_factory=list)
 
     def __post_init__(self):
