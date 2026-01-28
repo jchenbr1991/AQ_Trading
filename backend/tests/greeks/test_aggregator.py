@@ -601,3 +601,250 @@ class TestGreeksAggregatorByStrategy:
         assert account_total.has_positions is False
         assert account_total.dollar_delta == Decimal("0")
         assert len(strategy_dict) == 0
+
+
+class TestGreeksAggregatorTopContributors:
+    """Tests for GreeksAggregator.get_top_contributors() - Task 7."""
+
+    def test_get_top_contributors_delta(self):
+        """get_top_contributors returns top N positions by absolute delta."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                dollar_delta=Decimal("5000.00"),
+            ),
+            _make_position_greeks(
+                position_id=2,
+                dollar_delta=Decimal("-8000.00"),  # Highest absolute
+            ),
+            _make_position_greeks(
+                position_id=3,
+                dollar_delta=Decimal("3000.00"),
+            ),
+            _make_position_greeks(
+                position_id=4,
+                dollar_delta=Decimal("-1000.00"),  # Lowest absolute
+            ),
+        ]
+
+        result = agg.get_top_contributors(positions, RiskMetric.DELTA, top_n=3)
+
+        assert len(result) == 3
+        # Sorted by absolute value descending
+        assert result[0][0].position_id == 2  # |-8000| = 8000
+        assert result[0][1] == Decimal("-8000.00")
+        assert result[1][0].position_id == 1  # |5000| = 5000
+        assert result[1][1] == Decimal("5000.00")
+        assert result[2][0].position_id == 3  # |3000| = 3000
+        assert result[2][1] == Decimal("3000.00")
+
+    def test_get_top_contributors_excludes_invalid(self):
+        """get_top_contributors excludes invalid positions."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                dollar_delta=Decimal("5000.00"),
+                valid=True,
+            ),
+            _make_position_greeks(
+                position_id=2,
+                dollar_delta=Decimal("-10000.00"),  # Would be highest, but invalid
+                valid=False,
+            ),
+            _make_position_greeks(
+                position_id=3,
+                dollar_delta=Decimal("3000.00"),
+                valid=True,
+            ),
+        ]
+
+        result = agg.get_top_contributors(positions, RiskMetric.DELTA, top_n=10)
+
+        assert len(result) == 2  # Only valid positions
+        assert result[0][0].position_id == 1  # |5000| = 5000
+        assert result[1][0].position_id == 3  # |3000| = 3000
+        # Position 2 is excluded
+
+    def test_get_top_contributors_empty_for_non_greek_iv(self):
+        """get_top_contributors returns empty list for IMPLIED_VOLATILITY."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(position_id=1, dollar_delta=Decimal("5000.00")),
+            _make_position_greeks(position_id=2, dollar_delta=Decimal("3000.00")),
+        ]
+
+        result = agg.get_top_contributors(
+            positions, RiskMetric.IMPLIED_VOLATILITY, top_n=10
+        )
+
+        assert result == []
+
+    def test_get_top_contributors_empty_for_non_greek_coverage(self):
+        """get_top_contributors returns empty list for COVERAGE."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(position_id=1, dollar_delta=Decimal("5000.00")),
+            _make_position_greeks(position_id=2, dollar_delta=Decimal("3000.00")),
+        ]
+
+        result = agg.get_top_contributors(positions, RiskMetric.COVERAGE, top_n=10)
+
+        assert result == []
+
+    def test_get_top_contributors_respects_top_n(self):
+        """get_top_contributors respects top_n limit."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+        # Create 10 positions
+        positions = [
+            _make_position_greeks(
+                position_id=i,
+                dollar_delta=Decimal(str(i * 1000)),
+            )
+            for i in range(1, 11)
+        ]
+
+        # Request only top 3
+        result = agg.get_top_contributors(positions, RiskMetric.DELTA, top_n=3)
+
+        assert len(result) == 3
+        # Should be positions 10, 9, 8 (highest absolute values)
+        assert result[0][0].position_id == 10
+        assert result[1][0].position_id == 9
+        assert result[2][0].position_id == 8
+
+    def test_get_top_contributors_gamma(self):
+        """get_top_contributors works for GAMMA metric."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                gamma_dollar=Decimal("100.00"),
+            ),
+            _make_position_greeks(
+                position_id=2,
+                gamma_dollar=Decimal("500.00"),
+            ),
+            _make_position_greeks(
+                position_id=3,
+                gamma_dollar=Decimal("200.00"),
+            ),
+        ]
+
+        result = agg.get_top_contributors(positions, RiskMetric.GAMMA, top_n=2)
+
+        assert len(result) == 2
+        assert result[0][0].position_id == 2  # 500
+        assert result[0][1] == Decimal("500.00")
+        assert result[1][0].position_id == 3  # 200
+        assert result[1][1] == Decimal("200.00")
+
+    def test_get_top_contributors_vega(self):
+        """get_top_contributors works for VEGA metric."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                vega_per_1pct=Decimal("200.00"),
+            ),
+            _make_position_greeks(
+                position_id=2,
+                vega_per_1pct=Decimal("-400.00"),
+            ),
+            _make_position_greeks(
+                position_id=3,
+                vega_per_1pct=Decimal("100.00"),
+            ),
+        ]
+
+        result = agg.get_top_contributors(positions, RiskMetric.VEGA, top_n=2)
+
+        assert len(result) == 2
+        assert result[0][0].position_id == 2  # |-400| = 400
+        assert result[0][1] == Decimal("-400.00")
+        assert result[1][0].position_id == 1  # |200| = 200
+        assert result[1][1] == Decimal("200.00")
+
+    def test_get_top_contributors_theta(self):
+        """get_top_contributors works for THETA metric."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                theta_per_day=Decimal("-50.00"),
+            ),
+            _make_position_greeks(
+                position_id=2,
+                theta_per_day=Decimal("-150.00"),
+            ),
+            _make_position_greeks(
+                position_id=3,
+                theta_per_day=Decimal("-30.00"),
+            ),
+        ]
+
+        result = agg.get_top_contributors(positions, RiskMetric.THETA, top_n=2)
+
+        assert len(result) == 2
+        assert result[0][0].position_id == 2  # |-150| = 150
+        assert result[0][1] == Decimal("-150.00")
+        assert result[1][0].position_id == 1  # |-50| = 50
+        assert result[1][1] == Decimal("-50.00")
+
+    def test_get_top_contributors_empty_positions(self):
+        """get_top_contributors handles empty position list."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+
+        result = agg.get_top_contributors([], RiskMetric.DELTA, top_n=10)
+
+        assert result == []
+
+    def test_get_top_contributors_fewer_than_top_n(self):
+        """get_top_contributors works when fewer valid positions than top_n."""
+        from src.greeks.aggregator import GreeksAggregator
+        from src.greeks.models import RiskMetric
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                dollar_delta=Decimal("5000.00"),
+            ),
+            _make_position_greeks(
+                position_id=2,
+                dollar_delta=Decimal("3000.00"),
+            ),
+        ]
+
+        result = agg.get_top_contributors(positions, RiskMetric.DELTA, top_n=10)
+
+        # Should return all 2 positions
+        assert len(result) == 2

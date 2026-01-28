@@ -14,7 +14,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from src.greeks.models import AggregatedGreeks, PositionGreeks
+from src.greeks.models import AggregatedGreeks, PositionGreeks, RiskMetric
 
 # High-risk thresholds for missing positions
 GAMMA_HIGH_RISK_THRESHOLD: Decimal = Decimal("1000")
@@ -204,3 +204,52 @@ class GreeksAggregator:
         )
 
         return account_total, strategy_dict
+
+    def get_top_contributors(
+        self,
+        positions: list[PositionGreeks],
+        metric: RiskMetric,
+        top_n: int = 10,
+    ) -> list[tuple[PositionGreeks, Decimal]]:
+        """Get top N positions by absolute contribution to a metric.
+
+        Only supports GREEK category metrics (DELTA, GAMMA, VEGA, THETA).
+        Returns empty list for non-Greek metrics (IV, COVERAGE).
+
+        Args:
+            positions: List of PositionGreeks.
+            metric: The RiskMetric to rank by.
+            top_n: Number of top positions to return.
+
+        Returns:
+            List of (PositionGreeks, contribution) tuples sorted by absolute value descending.
+            Excludes invalid positions.
+        """
+        # Only support Greek metrics
+        if not metric.is_greek:
+            return []
+
+        # Map metric to the appropriate field
+        metric_field_map = {
+            RiskMetric.DELTA: "dollar_delta",
+            RiskMetric.GAMMA: "gamma_dollar",
+            RiskMetric.VEGA: "vega_per_1pct",
+            RiskMetric.THETA: "theta_per_day",
+        }
+
+        field_name = metric_field_map.get(metric)
+        if field_name is None:
+            return []
+
+        # Filter valid positions and extract (position, contribution) tuples
+        contributions: list[tuple[PositionGreeks, Decimal]] = []
+        for pg in positions:
+            if pg.valid:
+                contribution = getattr(pg, field_name)
+                contributions.append((pg, contribution))
+
+        # Sort by absolute value of contribution descending
+        contributions.sort(key=lambda x: abs(x[1]), reverse=True)
+
+        # Return top N
+        return contributions[:top_n]
