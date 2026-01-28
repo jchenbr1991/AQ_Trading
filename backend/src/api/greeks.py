@@ -4,8 +4,9 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, HTTPException, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.websockets import WebSocketDisconnect
 
 from src.db.database import get_session
 from src.greeks.aggregator import GreeksAggregator
@@ -13,6 +14,7 @@ from src.greeks.calculator import GreeksCalculator
 from src.greeks.models import AggregatedGreeks, PositionGreeks, RiskMetric
 from src.greeks.monitor import load_positions_from_db
 from src.greeks.repository import GreeksRepository
+from src.greeks.websocket import greeks_ws_manager
 from src.schemas.greeks import (
     AggregatedGreeksResponse,
     AlertAcknowledgeRequest,
@@ -353,18 +355,21 @@ async def greeks_websocket(
 ):
     """WebSocket for real-time Greeks updates.
 
-    Stub implementation - will be integrated with monitoring loop later.
-    Accepts connection and sends periodic updates.
+    Connects client to receive real-time Greeks and alert updates.
+    Messages are JSON with types: greeks_update, greeks_alert
 
     Args:
         websocket: The WebSocket connection.
         account_id: The account identifier.
     """
     await websocket.accept()
+    await greeks_ws_manager.connect(account_id, websocket)
+
     try:
         while True:
-            # Stub: receive messages but don't process
+            # Keep connection alive, handle any incoming messages
             data = await websocket.receive_text()
-            await websocket.send_json({"status": "received", "message": data})
+            # Echo back for ping/pong
+            await websocket.send_json({"type": "pong", "received": data})
     except WebSocketDisconnect:
-        pass
+        await greeks_ws_manager.disconnect(account_id, websocket)
