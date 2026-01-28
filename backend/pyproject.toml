@@ -16,6 +16,7 @@ dependencies = [
     "pyyaml>=6.0",
     "aiosmtplib>=3.0.0",
     "jsonpatch>=1.33",
+    "moomoo>=2.0.0",
 ]
 
 [project.optional-dependencies]

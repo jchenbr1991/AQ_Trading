@@ -446,3 +446,97 @@ export interface ManualCheckResponse {
   alerts_deduplicated: number;
   errors: string[];
 }
+
+// Greeks types
+export interface PositionGreeks {
+  position_id: number;
+  symbol: string;
+  underlying_symbol: string;
+  quantity: number;
+  dollar_delta: number;
+  gamma_dollar: number;
+  gamma_pnl_1pct: number;
+  vega_per_1pct: number;
+  theta_per_day: number;
+  notional: number;
+  valid: boolean;
+  source: string;
+  as_of_ts: string;
+}
+
+export interface AggregatedGreeks {
+  scope: 'ACCOUNT' | 'STRATEGY';
+  scope_id: string;
+  strategy_id: string | null;
+  dollar_delta: number;
+  gamma_dollar: number;
+  gamma_pnl_1pct: number;
+  vega_per_1pct: number;
+  theta_per_day: number;
+  coverage_pct: number;
+  is_coverage_sufficient: boolean;
+  has_high_risk_missing_legs: boolean;
+  valid_legs_count: number;
+  total_legs_count: number;
+  staleness_seconds: number;
+  as_of_ts: string;
+}
+
+export type GreeksAlertLevel = 'normal' | 'warn' | 'crit' | 'hard';
+
+export interface GreeksAlert {
+  alert_id: string;
+  alert_type: string;
+  scope: string;
+  scope_id: string;
+  metric: string;
+  level: GreeksAlertLevel;
+  current_value: number;
+  threshold_value: number | null;
+  message: string;
+  created_at: string;
+  acknowledged_at: string | null;
+  acknowledged_by: string | null;
+}
+
+export interface GreeksOverview {
+  account: AggregatedGreeks;
+  strategies: Record<string, AggregatedGreeks>;
+  alerts: GreeksAlert[];
+  top_contributors: Record<string, PositionGreeks[]>;
+}
+
+export interface GreeksLimits {
+  delta: number;
+  gamma: number;
+  vega: number;
+  theta: number;
+}
+
+export interface GreeksWebSocketMessage {
+  type: 'greeks_update' | 'greeks_alert' | 'pong';
+  account_id: string;
+  timestamp: string;
+  data?: {
+    account: {
+      dollar_delta: number;
+      gamma_dollar: number;
+      vega_per_1pct: number;
+      theta_per_day: number;
+      coverage_pct: number;
+      staleness_seconds: number;
+    };
+    strategies: Record<string, {
+      dollar_delta: number;
+      gamma_dollar: number;
+      vega_per_1pct: number;
+      theta_per_day: number;
+    }>;
+  };
+  alert?: {
+    alert_type: string;
+    metric: string;
+    level: GreeksAlertLevel;
+    message: string;
+  };
+}
