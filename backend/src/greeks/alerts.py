@@ -27,6 +27,41 @@ from src.greeks.models import (
 )
 
 
+def _format_metric_value(metric: RiskMetric, value: Decimal) -> str:
+    """Format a metric value with appropriate unit suffix.
+
+    V1.5: Added to clarify Theta is per trading day (not calendar day).
+    Avoids user confusion about time decay calculations.
+
+    Args:
+        metric: The RiskMetric type
+        value: The value to format
+
+    Returns:
+        Formatted string with value and unit suffix
+
+    Examples:
+        >>> _format_metric_value(RiskMetric.DELTA, Decimal("5000"))
+        "$5000"
+        >>> _format_metric_value(RiskMetric.THETA, Decimal("-150"))
+        "$-150/trading day"
+        >>> _format_metric_value(RiskMetric.VEGA, Decimal("200"))
+        "$200/1% IV"
+    """
+    # Unit suffixes by metric type
+    unit_map = {
+        RiskMetric.DELTA: "",  # $ per $1 underlying move (implicit)
+        RiskMetric.GAMMA: "",  # $ per ($1 move)^2 (implicit)
+        RiskMetric.VEGA: "/1% IV",
+        RiskMetric.THETA: "/trading day",  # V1.5: Clarify not calendar day
+        RiskMetric.IMPLIED_VOLATILITY: "",
+        RiskMetric.COVERAGE: "%",
+    }
+
+    suffix = unit_map.get(metric, "")
+    return f"${value}{suffix}"
+
+
 @dataclass
 class AlertState:
     """Tracks current alert state for a scope/metric combination.
@@ -301,9 +336,11 @@ class AlertEngine:
             change_pct_display = pct_change * Decimal("100")
             threshold_pct_display = config.rate_change_pct * Decimal("100")
 
+            current_fmt = _format_metric_value(metric, current_value)
+            prev_fmt = _format_metric_value(metric, prev_value)
             message = (
-                f"{metric.value.upper()} changed by {change_pct_display:.1f}% "
-                f"(threshold: {threshold_pct_display:.0f}%)"
+                f"{metric.value.upper()} changed from {prev_fmt} to {current_fmt} "
+                f"({change_pct_display:+.1f}%, threshold: {threshold_pct_display:.0f}%)"
             )
 
             return GreeksAlert(
@@ -416,9 +453,11 @@ class AlertEngine:
                 elif new_level == GreeksLevel.HARD:
                     threshold_value = threshold_config.hard_threshold
 
+                current_fmt = _format_metric_value(metric, current_value)
+                threshold_fmt = _format_metric_value(metric, threshold_value)
                 message = (
                     f"{metric.value.upper()} exceeded {new_level.value.upper()} "
-                    f"threshold: {current_value} > {threshold_value}"
+                    f"threshold: {current_fmt} > {threshold_fmt}"
                 )
 
                 alert = GreeksAlert(

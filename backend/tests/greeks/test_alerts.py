@@ -35,6 +35,42 @@ def _make_aggregated_greeks(
     )
 
 
+class TestFormatMetricValue:
+    """Tests for _format_metric_value helper - V1.5."""
+
+    def test_format_delta_no_suffix(self):
+        """Delta values have no unit suffix."""
+        from src.greeks.alerts import _format_metric_value
+        from src.greeks.models import RiskMetric
+
+        result = _format_metric_value(RiskMetric.DELTA, Decimal("5000"))
+        assert result == "$5000"
+
+    def test_format_theta_trading_day_suffix(self):
+        """Theta values include /trading day suffix to clarify time unit."""
+        from src.greeks.alerts import _format_metric_value
+        from src.greeks.models import RiskMetric
+
+        result = _format_metric_value(RiskMetric.THETA, Decimal("-150"))
+        assert result == "$-150/trading day"
+
+    def test_format_vega_iv_suffix(self):
+        """Vega values include /1% IV suffix."""
+        from src.greeks.alerts import _format_metric_value
+        from src.greeks.models import RiskMetric
+
+        result = _format_metric_value(RiskMetric.VEGA, Decimal("200"))
+        assert result == "$200/1% IV"
+
+    def test_format_gamma_no_suffix(self):
+        """Gamma values have no unit suffix."""
+        from src.greeks.alerts import _format_metric_value
+        from src.greeks.models import RiskMetric
+
+        result = _format_metric_value(RiskMetric.GAMMA, Decimal("100"))
+        assert result == "$100"
+
+
 class TestAlertState:
     """Tests for AlertState dataclass - Task 8."""
 
