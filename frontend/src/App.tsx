@@ -8,6 +8,7 @@ import { AlertsPage } from './pages/AlertsPage';
 import { AuditPage } from './pages/AuditPage';
 import { SystemPage } from './pages/SystemPage';
 import { OptionsExpiringPage } from './pages/OptionsExpiringPage';
+import { GreeksPage } from './pages/GreeksPage';
 
 function Navigation() {
   return (
@@ -32,6 +33,9 @@ function Navigation() {
             </Link>
             <Link to="/options/expiring" className="text-gray-300 hover:text-white">
               Options
+            </Link>
+            <Link to="/greeks" className="text-gray-300 hover:text-white">
+              Greeks
             </Link>
             <Link to="/audit" className="text-gray-300 hover:text-white">
               Audit
@@ -59,6 +63,7 @@ function App() {
             <Route path="/storage" element={<StoragePage />} />
             <Route path="/alerts" element={<AlertsPage />} />
             <Route path="/options/expiring" element={<OptionsExpiringPage />} />
+            <Route path="/greeks" element={<GreeksPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/system" element={<SystemPage />} />
           </Routes>
