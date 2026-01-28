@@ -25,6 +25,7 @@ from src.greeks.alerts import AlertEngine, GreeksAlert
 from src.greeks.calculator import GreeksCalculator, PositionInfo
 from src.greeks.models import AggregatedGreeks, GreeksLimitsConfig
 from src.greeks.repository import GreeksRepository
+from src.greeks.websocket import greeks_ws_manager
 from src.models.position import AssetType, Position, PositionStatus
 
 
@@ -163,6 +164,40 @@ class GreeksMonitor:
         if self._repository is not None:
             for alert in alerts:
                 await self._repository.save_alert(alert)
+
+        # Step 7: Broadcast updates via WebSocket
+        ws_data = {
+            "account": {
+                "dollar_delta": float(account_greeks.dollar_delta),
+                "gamma_dollar": float(account_greeks.gamma_dollar),
+                "vega_per_1pct": float(account_greeks.vega_per_1pct),
+                "theta_per_day": float(account_greeks.theta_per_day),
+                "coverage_pct": float(account_greeks.coverage_pct),
+                "staleness_seconds": account_greeks.staleness_seconds,
+            },
+            "strategies": {
+                sid: {
+                    "dollar_delta": float(sg.dollar_delta),
+                    "gamma_dollar": float(sg.gamma_dollar),
+                    "vega_per_1pct": float(sg.vega_per_1pct),
+                    "theta_per_day": float(sg.theta_per_day),
+                }
+                for sid, sg in strategy_greeks.items()
+            },
+        }
+        await greeks_ws_manager.broadcast_greeks_update(self._account_id, ws_data)
+
+        # Broadcast any new alerts
+        for alert in alerts:
+            await greeks_ws_manager.broadcast_alert(
+                self._account_id,
+                {
+                    "alert_type": alert.alert_type,
+                    "metric": alert.metric.value,
+                    "level": alert.level.value,
+                    "message": alert.message,
+                },
+            )
 
         return MonitorResult(
             account_greeks=account_greeks,
