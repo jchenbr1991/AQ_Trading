@@ -228,6 +228,50 @@ class GreeksAggregator:
 
         return account_total, strategy_dict
 
+    def aggregate_by_underlying(
+        self,
+        positions: list[PositionGreeks],
+        account_id: str,
+    ) -> tuple[AggregatedGreeks, dict[str, AggregatedGreeks]]:
+        """Aggregate positions by underlying symbol (V1.5).
+
+        Useful for analyzing risk concentration by underlying asset.
+
+        Args:
+            positions: List of PositionGreeks to aggregate.
+            account_id: The account identifier.
+
+        Returns:
+            Tuple of (account_total, underlying_dict) where:
+            - account_total: AggregatedGreeks for entire account
+            - underlying_dict: Dict mapping underlying_symbol to AggregatedGreeks
+        """
+        # Group positions by underlying_symbol
+        positions_by_underlying: dict[str, list[PositionGreeks]] = defaultdict(list)
+
+        for pg in positions:
+            positions_by_underlying[pg.underlying_symbol].append(pg)
+
+        # Build underlying-level aggregations
+        # Note: Using "STRATEGY" scope type since AggregatedGreeks doesn't have UNDERLYING
+        # The scope_id will be the underlying symbol
+        underlying_dict: dict[str, AggregatedGreeks] = {}
+        for underlying, underlying_positions in positions_by_underlying.items():
+            underlying_dict[underlying] = self.aggregate(
+                underlying_positions,
+                scope="STRATEGY",  # Reuse STRATEGY scope for underlying breakdown
+                scope_id=underlying,
+            )
+
+        # Build account-level aggregation
+        account_total = self.aggregate(
+            positions,
+            scope="ACCOUNT",
+            scope_id=account_id,
+        )
+
+        return account_total, underlying_dict
+
     def get_top_contributors(
         self,
         positions: list[PositionGreeks],

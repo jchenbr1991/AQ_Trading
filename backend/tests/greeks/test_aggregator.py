@@ -603,6 +603,130 @@ class TestGreeksAggregatorByStrategy:
         assert len(strategy_dict) == 0
 
 
+class TestGreeksAggregatorByUnderlying:
+    """Tests for GreeksAggregator.aggregate_by_underlying() - V1.5."""
+
+    def test_aggregate_by_underlying_multiple_underlyings(self):
+        """aggregate_by_underlying groups positions by underlying_symbol."""
+        from src.greeks.aggregator import GreeksAggregator
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                underlying_symbol="AAPL",
+                dollar_delta=Decimal("5000.00"),
+                gamma_dollar=Decimal("100.00"),
+            ),
+            _make_position_greeks(
+                position_id=2,
+                underlying_symbol="AAPL",
+                dollar_delta=Decimal("3000.00"),
+                gamma_dollar=Decimal("80.00"),
+            ),
+            _make_position_greeks(
+                position_id=3,
+                underlying_symbol="TSLA",
+                dollar_delta=Decimal("-2000.00"),
+                gamma_dollar=Decimal("50.00"),
+            ),
+        ]
+
+        account_total, underlying_dict = agg.aggregate_by_underlying(positions, "acc_001")
+
+        # Check underlying breakdown
+        assert "AAPL" in underlying_dict
+        assert "TSLA" in underlying_dict
+        assert len(underlying_dict) == 2
+
+        # AAPL: 5000 + 3000 = 8000 delta, 100 + 80 = 180 gamma
+        assert underlying_dict["AAPL"].dollar_delta == Decimal("8000.00")
+        assert underlying_dict["AAPL"].gamma_dollar == Decimal("180.00")
+        assert underlying_dict["AAPL"].scope_id == "AAPL"
+        assert underlying_dict["AAPL"].valid_legs_count == 2
+
+        # TSLA: -2000 delta, 50 gamma
+        assert underlying_dict["TSLA"].dollar_delta == Decimal("-2000.00")
+        assert underlying_dict["TSLA"].gamma_dollar == Decimal("50.00")
+        assert underlying_dict["TSLA"].valid_legs_count == 1
+
+    def test_aggregate_by_underlying_returns_correct_account_total(self):
+        """aggregate_by_underlying returns correct account total."""
+        from src.greeks.aggregator import GreeksAggregator
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                underlying_symbol="AAPL",
+                dollar_delta=Decimal("5000.00"),
+                vega_per_1pct=Decimal("200.00"),
+            ),
+            _make_position_greeks(
+                position_id=2,
+                underlying_symbol="TSLA",
+                dollar_delta=Decimal("-2000.00"),
+                vega_per_1pct=Decimal("150.00"),
+            ),
+            _make_position_greeks(
+                position_id=3,
+                underlying_symbol="NVDA",
+                dollar_delta=Decimal("1000.00"),
+                vega_per_1pct=Decimal("100.00"),
+            ),
+        ]
+
+        account_total, underlying_dict = agg.aggregate_by_underlying(positions, "acc_001")
+
+        # Account total: 5000 - 2000 + 1000 = 4000 delta
+        assert account_total.scope == "ACCOUNT"
+        assert account_total.scope_id == "acc_001"
+        assert account_total.dollar_delta == Decimal("4000.00")
+        assert account_total.vega_per_1pct == Decimal("450.00")
+        assert account_total.valid_legs_count == 3
+
+        # Three underlyings
+        assert len(underlying_dict) == 3
+
+    def test_aggregate_by_underlying_single_underlying(self):
+        """aggregate_by_underlying handles single underlying."""
+        from src.greeks.aggregator import GreeksAggregator
+
+        agg = GreeksAggregator()
+        positions = [
+            _make_position_greeks(
+                position_id=1,
+                underlying_symbol="SPY",
+                dollar_delta=Decimal("10000.00"),
+            ),
+            _make_position_greeks(
+                position_id=2,
+                underlying_symbol="SPY",
+                dollar_delta=Decimal("-5000.00"),
+            ),
+        ]
+
+        account_total, underlying_dict = agg.aggregate_by_underlying(positions, "acc_001")
+
+        assert len(underlying_dict) == 1
+        assert "SPY" in underlying_dict
+        assert underlying_dict["SPY"].dollar_delta == Decimal("5000.00")
+        assert underlying_dict["SPY"].valid_legs_count == 2
+
+    def test_aggregate_by_underlying_empty_positions(self):
+        """aggregate_by_underlying handles empty position list."""
+        from src.greeks.aggregator import GreeksAggregator
+
+        agg = GreeksAggregator()
+
+        account_total, underlying_dict = agg.aggregate_by_underlying([], "acc_001")
+
+        assert account_total.scope == "ACCOUNT"
+        assert account_total.scope_id == "acc_001"
+        assert account_total.has_positions is False
+        assert len(underlying_dict) == 0
+
+
 class TestGreeksAggregatorTopContributors:
     """Tests for GreeksAggregator.get_top_contributors() - Task 7 + V1.5."""
 
