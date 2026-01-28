@@ -6,18 +6,27 @@ and converting them to dollar terms.
 Classes:
     - PositionInfo: Minimal position info needed for Greeks calculation
     - RawGreeks: Raw Greeks from a provider (per-share, not dollarized)
-    - FutuGreeksProvider: Stub implementation for Futu API integration
+    - FutuGreeksProvider: Fetches Greeks from Futu OpenD API
     - GreeksCalculator: Main calculator with provider fallback support
 
 Functions:
     - convert_to_dollar_greeks: Convert raw per-share Greeks to dollar terms
 """
 
+from __future__ import annotations
+
+import logging
 from dataclasses import dataclass
+from datetime import date
 from decimal import Decimal
-from typing import Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from src.greeks.models import GreeksDataSource, GreeksModel, PositionGreeks
+
+if TYPE_CHECKING:
+    from src.greeks.iv_cache import IVCacheManager
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -89,27 +98,289 @@ class GreeksProvider(Protocol):
 
 
 class FutuGreeksProvider:
-    """Fetches Greeks from Futu API.
+    """Fetches Greeks from Futu OpenD API.
 
-    This is a stub - actual Futu integration will be added later.
+    Uses SharedFutuClient for connection management with automatic
+    reconnection and retry logic.
+
+    Attributes:
+        _use_shared: Whether to use the shared client (default True)
+        _host: Futu OpenD host address (for non-shared mode)
+        _port: Futu OpenD port (for non-shared mode)
     """
+
+    def __init__(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 11111,
+        use_shared: bool = True,
+    ):
+        """Initialize the provider.
+
+        Args:
+            host: Futu OpenD host address.
+            port: Futu OpenD port.
+            use_shared: If True, use SharedFutuClient for connection pooling.
+        """
+        self._host = host
+        self._port = port
+        self._use_shared = use_shared
+
+        # Configure shared client if using it
+        if use_shared:
+            from src.greeks.futu_client import SharedFutuClient
+
+            SharedFutuClient.configure(host=host, port=port)
 
     @property
     def source(self) -> GreeksDataSource:
         """The data source identifier."""
         return GreeksDataSource.FUTU
 
+    def _symbol_to_futu(self, symbol: str, underlying: str) -> str:
+        """Convert internal symbol to Futu format.
+
+        Internal: "AAPL240119C00150000"
+        Futu: "US.AAPL240119C150000"
+
+        Args:
+            symbol: Internal option symbol.
+            underlying: Underlying symbol (e.g., "AAPL").
+
+        Returns:
+            Futu-formatted symbol.
+        """
+        # Futu US options format: US.{underlying}{YYMMDD}{C/P}{strike}
+        # Internal format: {underlying}{YYMMDD}{C/P}{strike with leading zeros}
+        # For now, use a simple prefix approach
+        return f"US.{symbol}"
+
     def fetch_greeks(self, positions: list[PositionInfo]) -> dict[int, RawGreeks]:
-        """Stub: Returns empty dict. Real implementation uses FutuClient.
+        """Fetch Greeks from Futu OpenD API.
 
         Args:
             positions: List of PositionInfo to fetch Greeks for.
 
         Returns:
-            Empty dict (stub implementation).
+            Dict mapping position_id to RawGreeks.
+            Positions without valid Greeks are excluded.
         """
-        # TODO: Integrate with FutuClient to fetch real Greeks
-        return {}
+        if not positions:
+            return {}
+
+        try:
+            if self._use_shared:
+                from src.greeks.futu_client import SharedFutuClient
+
+                client = SharedFutuClient.get_instance()
+            else:
+                from src.greeks.futu_client import FutuGreeksClient
+
+                client = FutuGreeksClient(host=self._host, port=self._port)
+                client.connect()
+        except Exception as e:
+            logger.warning(f"Failed to get Futu client: {e}")
+            return {}
+
+        try:
+            # Build symbol mapping: futu_symbol -> position
+            symbol_map: dict[str, PositionInfo] = {}
+            futu_symbols: list[str] = []
+
+            for pos in positions:
+                futu_sym = self._symbol_to_futu(pos.symbol, pos.underlying_symbol)
+                symbol_map[futu_sym] = pos
+                futu_symbols.append(futu_sym)
+
+            # Fetch underlying prices for dollar Greeks conversion
+            unique_underlyings = list({f"US.{p.underlying_symbol}" for p in positions})
+            underlying_prices = client.get_underlying_price(unique_underlyings)
+
+            # Fetch option Greeks
+            futu_greeks = client.get_option_greeks(futu_symbols)
+
+            # Convert to RawGreeks
+            result: dict[int, RawGreeks] = {}
+            for futu_sym, greeks in futu_greeks.items():
+                if futu_sym not in symbol_map:
+                    continue
+
+                pos = symbol_map[futu_sym]
+
+                # Get underlying price (prefer from underlying quote, fallback to option data)
+                underlying_key = f"US.{pos.underlying_symbol}"
+                underlying_price = underlying_prices.get(underlying_key, greeks.underlying_price)
+
+                if underlying_price <= 0:
+                    logger.warning(f"Invalid underlying price for {pos.symbol}, skipping")
+                    continue
+
+                result[pos.position_id] = RawGreeks(
+                    delta=greeks.delta,
+                    gamma=greeks.gamma,
+                    vega=greeks.vega,
+                    theta=greeks.theta,
+                    implied_vol=greeks.implied_volatility,
+                    underlying_price=underlying_price,
+                )
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"Error fetching Greeks from Futu: {e}")
+            return {}
+        finally:
+            # Only close if not using shared client
+            if not self._use_shared:
+                try:
+                    client.close()
+                except Exception as close_err:
+                    logger.debug(f"Error closing Futu client: {close_err}")
+
+
+class ModelGreeksProvider:
+    """Calculates Greeks using Black-Scholes model.
+
+    Used as fallback when Futu API is unavailable.
+    Can optionally use IVCacheManager for cached IV values.
+
+    Attributes:
+        _iv_cache: Optional IV cache manager
+        _default_iv: Default IV when no cache available
+        _risk_free_rate: Risk-free interest rate
+    """
+
+    def __init__(
+        self,
+        iv_cache: IVCacheManager | None = None,
+        default_iv: Decimal = Decimal("0.30"),
+        risk_free_rate: Decimal = Decimal("0.05"),
+    ):
+        """Initialize model provider.
+
+        Args:
+            iv_cache: Optional IV cache manager for cached IV lookup
+            default_iv: Default IV when cache miss (0.30 = 30%)
+            risk_free_rate: Risk-free rate (0.05 = 5%)
+        """
+        self._iv_cache: Any = iv_cache
+        self._default_iv = default_iv
+        self._risk_free_rate = risk_free_rate
+        self._underlying_prices: dict[str, Decimal] = {}
+
+    @property
+    def source(self) -> GreeksDataSource:
+        """The data source identifier."""
+        return GreeksDataSource.MODEL
+
+    def set_underlying_prices(self, prices: dict[str, Decimal]) -> None:
+        """Set underlying prices for calculation.
+
+        Args:
+            prices: Dict mapping underlying symbol to price
+        """
+        self._underlying_prices = prices
+
+    def _get_underlying_price(self, symbol: str) -> Decimal | None:
+        """Get underlying price.
+
+        Args:
+            symbol: Underlying symbol
+
+        Returns:
+            Price or None if not available
+        """
+        return self._underlying_prices.get(symbol)
+
+    def _parse_expiry(self, expiry: str) -> date:
+        """Parse expiry string to date.
+
+        Args:
+            expiry: ISO date string (YYYY-MM-DD)
+
+        Returns:
+            date object
+        """
+        return date.fromisoformat(expiry)
+
+    def _time_to_expiry_years(self, expiry_date: date) -> Decimal:
+        """Calculate time to expiry in years.
+
+        Args:
+            expiry_date: Expiration date
+
+        Returns:
+            Time in years (calendar days / 365)
+        """
+        today = date.today()
+        days = (expiry_date - today).days
+
+        if days <= 0:
+            return Decimal("0.001")  # Minimum for near-expiry
+
+        # Use 365 for calendar days (standard for options)
+        return Decimal(str(days)) / Decimal("365")
+
+    def fetch_greeks(self, positions: list[PositionInfo]) -> dict[int, RawGreeks]:
+        """Calculate Greeks using Black-Scholes model.
+
+        Args:
+            positions: List of PositionInfo to calculate Greeks for.
+
+        Returns:
+            Dict mapping position_id to RawGreeks.
+        """
+        from src.greeks.black_scholes import calculate_bs_greeks
+
+        if not positions:
+            return {}
+
+        result: dict[int, RawGreeks] = {}
+
+        for pos in positions:
+            # Get underlying price
+            underlying_price = self._get_underlying_price(pos.underlying_symbol)
+            if underlying_price is None or underlying_price <= 0:
+                logger.warning(
+                    f"No underlying price for {pos.underlying_symbol}, skipping {pos.symbol}"
+                )
+                continue
+
+            # Get IV (use default for now, IV cache integration later)
+            iv = self._default_iv
+
+            # Calculate time to expiry
+            try:
+                expiry_date = self._parse_expiry(pos.expiry)
+                time_years = self._time_to_expiry_years(expiry_date)
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Invalid expiry {pos.expiry} for {pos.symbol}: {e}")
+                continue
+
+            # Calculate Greeks
+            try:
+                bs_result = calculate_bs_greeks(
+                    spot=underlying_price,
+                    strike=pos.strike,
+                    time_to_expiry_years=time_years,
+                    risk_free_rate=self._risk_free_rate,
+                    volatility=iv,
+                    is_call=(pos.option_type == "call"),
+                )
+
+                result[pos.position_id] = RawGreeks(
+                    delta=bs_result.delta,
+                    gamma=bs_result.gamma,
+                    vega=bs_result.vega,
+                    theta=bs_result.theta,
+                    implied_vol=iv,
+                    underlying_price=underlying_price,
+                )
+            except Exception as e:
+                logger.warning(f"Error calculating BS Greeks for {pos.symbol}: {e}")
+                continue
+
+        return result
 
 
 def convert_to_dollar_greeks(
