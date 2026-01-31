@@ -1,0 +1,2 @@
+# This directory stores agent outputs and logs
+# .gitkeep ensures the directory is tracked by git while ignoring contents
