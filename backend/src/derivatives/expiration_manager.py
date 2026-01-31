@@ -168,10 +168,16 @@ class ExpirationManager:
             )
             alerts.append(alert)
 
+            # Use str() for contract_type since DB may return string instead of enum
+            contract_type_str = (
+                position.contract_type.value
+                if hasattr(position.contract_type, "value")
+                else str(position.contract_type)
+            )
             logger.info(
                 "Expiration alert: %s (%s) expires in %d days on %s",
                 position.symbol,
-                position.contract_type.value,
+                contract_type_str,
                 days_to_expiry,
                 position.expiry,
             )

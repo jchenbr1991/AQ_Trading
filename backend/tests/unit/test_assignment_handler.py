@@ -380,8 +380,13 @@ class TestEstimateAssignment:
             put_call=PutCall.CALL,
         )
 
-        with pytest.raises(ValueError, match="Quantity must be non-negative"):
-            handler.estimate_assignment(option, Decimal("160.00"), -1)
+        # Negative quantity is now allowed for short positions
+        # Short call ITM = assigned to SELL shares
+        estimate = handler.estimate_assignment(option, Decimal("160.00"), -1)
+
+        assert estimate.resulting_shares == 100  # abs(-1) * 100
+        assert estimate.direction == AssignmentDirection.SELL  # Short call -> SELL
+        assert estimate.cash_impact == Decimal("15000.00")  # Selling shares at strike
 
     def test_custom_multiplier(self):
         """Should use custom multiplier for share calculation."""

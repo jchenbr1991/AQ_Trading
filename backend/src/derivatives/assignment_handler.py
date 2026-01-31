@@ -167,23 +167,26 @@ class AssignmentHandler:
             AssignmentEstimate with position and cash details
 
         Raises:
-            ValueError: If quantity is negative or option is invalid
+            ValueError: If option is invalid (missing strike or put_call)
         """
-        if quantity < 0:
-            raise ValueError(f"Quantity must be non-negative, got {quantity}")
-
         is_itm = self.calculate_itm_status(option, underlying_price)
 
-        # Determine direction based on option type
+        # Determine direction based on option type and position sign
+        # Long call or short put -> BUY shares
+        # Short call or long put -> SELL shares
+        is_long = quantity >= 0
         if option.put_call == PutCall.CALL:
-            direction = AssignmentDirection.BUY
+            # Long call: BUY shares, Short call: SELL shares
+            direction = AssignmentDirection.BUY if is_long else AssignmentDirection.SELL
         else:
-            direction = AssignmentDirection.SELL
+            # Long put: SELL shares, Short put: BUY shares
+            direction = AssignmentDirection.SELL if is_long else AssignmentDirection.BUY
 
-        # Calculate resulting position
-        if is_itm and quantity > 0:
-            resulting_shares = quantity * self._multiplier
-            # Cash impact: negative for buying (call), positive for selling (put)
+        # Calculate resulting position using absolute quantity
+        abs_quantity = abs(quantity)
+        if is_itm and abs_quantity > 0:
+            resulting_shares = abs_quantity * self._multiplier
+            # Cash impact: negative for buying, positive for selling
             if direction == AssignmentDirection.BUY:
                 cash_impact = -option.strike * resulting_shares
             else:

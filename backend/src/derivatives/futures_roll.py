@@ -325,13 +325,22 @@ class FuturesRollManager:
         symbol = position.symbol
         underlying = position.underlying
 
-        # Try to find and increment the month code
+        # Remove underlying prefix to avoid matching month codes within underlying
+        # e.g., "NGZ24" -> "Z24" (so we don't match "G" in "NG")
+        suffix = symbol
+        if symbol.upper().startswith(underlying.upper()):
+            suffix = symbol[len(underlying) :]
+
+        # Try to find and increment the month code in the suffix only
         for i, code in enumerate(month_codes):
-            if code in symbol:
+            if code in suffix:
                 next_month_idx = (i + 1) % 12
                 next_code = month_codes[next_month_idx]
-                # Simple replacement - may need year rollover logic in production
-                next_symbol = symbol.replace(code, next_code, 1)
+                # Find position of code in original symbol (after underlying)
+                code_pos = len(underlying) + suffix.index(code)
+                # Simple replacement at the correct position
+                # Note: may need year rollover logic in production
+                next_symbol = symbol[:code_pos] + next_code + symbol[code_pos + 1 :]
                 return next_symbol
 
         # Fallback: append "_NEXT" to symbol
