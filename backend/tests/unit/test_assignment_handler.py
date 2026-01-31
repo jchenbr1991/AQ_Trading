@@ -99,6 +99,14 @@ class TestAssignmentHandlerInit:
         handler = AssignmentHandler(session=mock_session, multiplier=10)
         assert handler._multiplier == 10
 
+    def test_invalid_multiplier_raises(self):
+        """AssignmentHandler should raise ValueError for non-positive multiplier."""
+        mock_session = MagicMock()
+        with pytest.raises(ValueError, match="Multiplier must be positive"):
+            AssignmentHandler(session=mock_session, multiplier=0)
+        with pytest.raises(ValueError, match="Multiplier must be positive"):
+            AssignmentHandler(session=mock_session, multiplier=-1)
+
 
 class TestCalculateItmStatus:
     """Tests for calculate_itm_status method."""
