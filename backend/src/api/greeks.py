@@ -647,11 +647,12 @@ async def get_limits(account_id: str) -> dict:
 
 
 # Window to interval mapping for history aggregation
+# interval_seconds: None = raw data, else aggregation bucket size
 HISTORY_WINDOW_CONFIG = {
-    "1h": {"interval": "raw", "interval_display": "30s"},
-    "4h": {"interval": "1 minute", "interval_display": "1m"},
-    "1d": {"interval": "5 minutes", "interval_display": "5m"},
-    "7d": {"interval": "1 hour", "interval_display": "1h"},
+    "1h": {"interval_seconds": None, "interval_display": "30s"},
+    "4h": {"interval_seconds": 60, "interval_display": "1m"},
+    "1d": {"interval_seconds": 300, "interval_display": "5m"},
+    "7d": {"interval_seconds": 3600, "interval_display": "1h"},
 }
 
 
@@ -702,6 +703,7 @@ async def get_history(
 
     config = HISTORY_WINDOW_CONFIG[window]
     interval_display = config["interval_display"]
+    interval_seconds = config["interval_seconds"]
 
     # Calculate time range
     from datetime import timedelta
@@ -710,14 +712,31 @@ async def get_history(
     window_hours = {"1h": 1, "4h": 4, "1d": 24, "7d": 168}
     start_ts = now - timedelta(hours=window_hours[window])
 
-    # Get history from repository
-    # TODO: Implement repository.get_history() for actual data retrieval
-    _ = GreeksRepository(db)  # Will be used when get_history is implemented
+    # Get history from repository with aggregation
+    repository = GreeksRepository(db)
     scope_id = strategy_id if scope == "STRATEGY" else account_id
 
-    # For now, return empty points (repository.get_history to be implemented)
-    # In production, this would query greeks_snapshots with time_bucket
-    points: list[GreeksHistoryPointResponse] = []
+    history_points = await repository.get_history(
+        scope=scope,
+        scope_id=scope_id,
+        start_ts=start_ts,
+        end_ts=now,
+        interval_seconds=interval_seconds,
+    )
+
+    # Convert to response format
+    points = [
+        GreeksHistoryPointResponse(
+            ts=point.ts,
+            dollar_delta=float(point.dollar_delta),
+            gamma_dollar=float(point.gamma_dollar),
+            vega_per_1pct=float(point.vega_per_1pct),
+            theta_per_day=float(point.theta_per_day),
+            coverage_pct=float(point.coverage_pct),
+            point_count=point.point_count,
+        )
+        for point in history_points
+    ]
 
     return GreeksHistoryApiResponse(
         account_id=account_id,

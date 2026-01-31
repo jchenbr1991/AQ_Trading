@@ -388,19 +388,21 @@ class TestHistoryEndpoint:
     @pytest.mark.asyncio
     async def test_history_endpoint_returns_points(self, client):
         """GET /history returns history points."""
+        from src.greeks.v2_models import GreeksHistoryPoint
+
         with patch("src.api.greeks.GreeksRepository") as mock_repo_cls:
             mock_repo = MagicMock()
             mock_repo.get_history = AsyncMock(
                 return_value=[
-                    {
-                        "ts": datetime.now(timezone.utc),
-                        "dollar_delta": 50000.0,
-                        "gamma_dollar": 2000.0,
-                        "vega_per_1pct": 15000.0,
-                        "theta_per_day": -2800.0,
-                        "coverage_pct": 98.5,
-                        "point_count": 2,
-                    }
+                    GreeksHistoryPoint(
+                        ts=datetime.now(timezone.utc),
+                        dollar_delta=Decimal("50000"),
+                        gamma_dollar=Decimal("2000"),
+                        vega_per_1pct=Decimal("15000"),
+                        theta_per_day=Decimal("-2800"),
+                        coverage_pct=Decimal("98.5"),
+                        point_count=2,
+                    )
                 ]
             )
             mock_repo_cls.return_value = mock_repo
@@ -410,7 +412,8 @@ class TestHistoryEndpoint:
             assert response.status_code == 200
             data = response.json()
             assert "points" in data
-            assert len(data["points"]) >= 0
+            assert len(data["points"]) == 1
+            assert data["points"][0]["dollar_delta"] == 50000.0
 
     @pytest.mark.asyncio
     async def test_history_endpoint_window_parameter(self, client):

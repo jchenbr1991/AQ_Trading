@@ -495,3 +495,329 @@ class TestGreeksRepositoryAcknowledgeAlert:
         # Second acknowledgment - should still succeed
         result2 = await repo.acknowledge_alert(alert.alert_id, "user2")
         assert result2 is True
+
+
+class TestGreeksRepositoryGetHistory:
+    """Tests for GreeksRepository.get_history - V2 Feature."""
+
+    @pytest.mark.asyncio
+    async def test_get_history_returns_points_within_time_range(self, db_session):
+        """get_history returns snapshots within the specified time range."""
+        from src.greeks.repository import GreeksRepository
+
+        repo = GreeksRepository(db_session)
+
+        now = datetime.now(timezone.utc)
+
+        # Save snapshots at different times
+        for i in range(5):
+            greeks = _make_aggregated_greeks(
+                scope="ACCOUNT",
+                scope_id="acc_001",
+                dollar_delta=Decimal(f"{10000 + i * 1000}"),
+                as_of_ts=now - timedelta(minutes=i * 10),
+            )
+            await repo.save_snapshot(greeks)
+
+        # Get history for last hour
+        start_ts = now - timedelta(hours=1)
+        points = await repo.get_history(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            start_ts=start_ts,
+            end_ts=now,
+        )
+
+        # All 5 snapshots should be within 1 hour
+        assert len(points) == 5
+
+    @pytest.mark.asyncio
+    async def test_get_history_excludes_points_outside_range(self, db_session):
+        """get_history excludes snapshots outside the time range."""
+        from src.greeks.repository import GreeksRepository
+
+        repo = GreeksRepository(db_session)
+
+        now = datetime.now(timezone.utc)
+
+        # Save snapshot within range
+        greeks_in = _make_aggregated_greeks(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            dollar_delta=Decimal("10000"),
+            as_of_ts=now - timedelta(minutes=30),
+        )
+        await repo.save_snapshot(greeks_in)
+
+        # Save snapshot outside range (2 hours ago)
+        greeks_out = _make_aggregated_greeks(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            dollar_delta=Decimal("20000"),
+            as_of_ts=now - timedelta(hours=2),
+        )
+        await repo.save_snapshot(greeks_out)
+
+        # Get history for last hour only
+        start_ts = now - timedelta(hours=1)
+        points = await repo.get_history(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            start_ts=start_ts,
+            end_ts=now,
+        )
+
+        assert len(points) == 1
+        assert points[0].dollar_delta == Decimal("10000")
+
+    @pytest.mark.asyncio
+    async def test_get_history_returns_empty_list_when_no_data(self, db_session):
+        """get_history returns empty list when no snapshots exist."""
+        from src.greeks.repository import GreeksRepository
+
+        repo = GreeksRepository(db_session)
+
+        now = datetime.now(timezone.utc)
+        start_ts = now - timedelta(hours=1)
+
+        points = await repo.get_history(
+            scope="ACCOUNT",
+            scope_id="nonexistent",
+            start_ts=start_ts,
+            end_ts=now,
+        )
+
+        assert points == []
+
+    @pytest.mark.asyncio
+    async def test_get_history_filters_by_scope(self, db_session):
+        """get_history only returns snapshots for the specified scope."""
+        from src.greeks.repository import GreeksRepository
+
+        repo = GreeksRepository(db_session)
+
+        now = datetime.now(timezone.utc)
+
+        # Save for acc_001
+        greeks1 = _make_aggregated_greeks(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            dollar_delta=Decimal("10000"),
+            as_of_ts=now - timedelta(minutes=5),
+        )
+        await repo.save_snapshot(greeks1)
+
+        # Save for acc_002
+        greeks2 = _make_aggregated_greeks(
+            scope="ACCOUNT",
+            scope_id="acc_002",
+            dollar_delta=Decimal("20000"),
+            as_of_ts=now - timedelta(minutes=5),
+        )
+        await repo.save_snapshot(greeks2)
+
+        start_ts = now - timedelta(hours=1)
+        points = await repo.get_history(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            start_ts=start_ts,
+            end_ts=now,
+        )
+
+        assert len(points) == 1
+        assert points[0].dollar_delta == Decimal("10000")
+
+    @pytest.mark.asyncio
+    async def test_get_history_returns_ordered_by_timestamp(self, db_session):
+        """get_history returns points ordered by timestamp ascending."""
+        from src.greeks.repository import GreeksRepository
+
+        repo = GreeksRepository(db_session)
+
+        now = datetime.now(timezone.utc)
+
+        # Save in reverse order
+        for i in [3, 1, 2]:
+            greeks = _make_aggregated_greeks(
+                scope="ACCOUNT",
+                scope_id="acc_001",
+                dollar_delta=Decimal(f"{i * 10000}"),
+                as_of_ts=now - timedelta(minutes=i * 10),
+            )
+            await repo.save_snapshot(greeks)
+
+        start_ts = now - timedelta(hours=1)
+        points = await repo.get_history(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            start_ts=start_ts,
+            end_ts=now,
+        )
+
+        assert len(points) == 3
+        # Should be in ascending order (oldest first)
+        assert points[0].ts < points[1].ts < points[2].ts
+
+    @pytest.mark.asyncio
+    async def test_get_history_returns_greeks_history_points(self, db_session):
+        """get_history returns GreeksHistoryPoint objects with correct fields."""
+        from src.greeks.repository import GreeksRepository
+        from src.greeks.v2_models import GreeksHistoryPoint
+
+        repo = GreeksRepository(db_session)
+
+        now = datetime.now(timezone.utc)
+
+        greeks = _make_aggregated_greeks(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            dollar_delta=Decimal("50000"),
+            gamma_dollar=Decimal("2500"),
+            vega_per_1pct=Decimal("15000"),
+            theta_per_day=Decimal("-3000"),
+            valid_notional=Decimal("90000"),
+            total_notional=Decimal("100000"),
+            as_of_ts=now - timedelta(minutes=5),
+        )
+        await repo.save_snapshot(greeks)
+
+        start_ts = now - timedelta(hours=1)
+        points = await repo.get_history(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            start_ts=start_ts,
+            end_ts=now,
+        )
+
+        assert len(points) == 1
+        point = points[0]
+        assert isinstance(point, GreeksHistoryPoint)
+        assert point.dollar_delta == Decimal("50000")
+        assert point.gamma_dollar == Decimal("2500")
+        assert point.vega_per_1pct == Decimal("15000")
+        assert point.theta_per_day == Decimal("-3000")
+        assert point.coverage_pct == Decimal("90.00")
+        assert point.point_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_history_aggregates_by_interval(self, db_session):
+        """get_history with interval aggregates points into time buckets."""
+        from src.greeks.repository import GreeksRepository
+
+        repo = GreeksRepository(db_session)
+
+        # Use a fixed base time aligned to minute boundary
+        base_time = datetime(2026, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+
+        # Save 6 snapshots at 10-second intervals within the same 1-minute bucket
+        for i in range(6):
+            greeks = _make_aggregated_greeks(
+                scope="ACCOUNT",
+                scope_id="acc_001",
+                dollar_delta=Decimal(f"{10000 + i * 1000}"),  # 10000, 11000, ..., 15000
+                gamma_dollar=Decimal("2000"),
+                vega_per_1pct=Decimal("15000"),
+                theta_per_day=Decimal("-3000"),
+                valid_notional=Decimal("100000"),
+                total_notional=Decimal("100000"),
+                as_of_ts=base_time + timedelta(seconds=i * 10),  # 10:30:00, 10:30:10, ..., 10:30:50
+            )
+            await repo.save_snapshot(greeks)
+
+        start_ts = base_time - timedelta(hours=1)
+        end_ts = base_time + timedelta(hours=1)
+        # Request with 1-minute interval aggregation
+        points = await repo.get_history(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            start_ts=start_ts,
+            end_ts=end_ts,
+            interval_seconds=60,  # 1 minute
+        )
+
+        # All 6 points should be aggregated into 1 bucket
+        assert len(points) == 1
+        point = points[0]
+        # Average of 10000, 11000, 12000, 13000, 14000, 15000 = 12500
+        assert point.dollar_delta == Decimal("12500")
+        assert point.point_count == 6
+
+    @pytest.mark.asyncio
+    async def test_get_history_aggregates_into_multiple_buckets(self, db_session):
+        """get_history creates multiple buckets when data spans intervals."""
+        from src.greeks.repository import GreeksRepository
+
+        repo = GreeksRepository(db_session)
+
+        # Use fixed base times for predictable bucket boundaries
+        bucket1_time = datetime(2026, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        bucket2_time = datetime(2026, 1, 15, 10, 31, 0, tzinfo=timezone.utc)
+
+        # Save 2 snapshots in bucket 1 (10:30:xx)
+        for i in range(2):
+            greeks = _make_aggregated_greeks(
+                scope="ACCOUNT",
+                scope_id="acc_001",
+                dollar_delta=Decimal(f"{(i + 1) * 10000}"),  # 10000, 20000
+                as_of_ts=bucket1_time + timedelta(seconds=i * 10),
+            )
+            await repo.save_snapshot(greeks)
+
+        # Save 2 snapshots in bucket 2 (10:31:xx)
+        for i in range(2):
+            greeks = _make_aggregated_greeks(
+                scope="ACCOUNT",
+                scope_id="acc_001",
+                dollar_delta=Decimal(f"{(i + 3) * 10000}"),  # 30000, 40000
+                as_of_ts=bucket2_time + timedelta(seconds=i * 10),
+            )
+            await repo.save_snapshot(greeks)
+
+        start_ts = bucket1_time - timedelta(hours=1)
+        end_ts = bucket2_time + timedelta(hours=1)
+        points = await repo.get_history(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            start_ts=start_ts,
+            end_ts=end_ts,
+            interval_seconds=60,
+        )
+
+        # Should have 2 buckets
+        assert len(points) == 2
+        # Each bucket should have 2 points aggregated
+        assert all(p.point_count == 2 for p in points)
+        # First bucket avg: (10000+20000)/2 = 15000
+        assert points[0].dollar_delta == Decimal("15000")
+        # Second bucket avg: (30000+40000)/2 = 35000
+        assert points[1].dollar_delta == Decimal("35000")
+
+    @pytest.mark.asyncio
+    async def test_get_history_no_interval_returns_raw(self, db_session):
+        """get_history without interval returns raw points (point_count=1)."""
+        from src.greeks.repository import GreeksRepository
+
+        repo = GreeksRepository(db_session)
+
+        now = datetime.now(timezone.utc)
+
+        for i in range(3):
+            greeks = _make_aggregated_greeks(
+                scope="ACCOUNT",
+                scope_id="acc_001",
+                dollar_delta=Decimal(f"{10000 + i * 1000}"),
+                as_of_ts=now - timedelta(seconds=i * 10),
+            )
+            await repo.save_snapshot(greeks)
+
+        start_ts = now - timedelta(hours=1)
+        # No interval = raw data
+        points = await repo.get_history(
+            scope="ACCOUNT",
+            scope_id="acc_001",
+            start_ts=start_ts,
+            end_ts=now,
+        )
+
+        assert len(points) == 3
+        assert all(p.point_count == 1 for p in points)
