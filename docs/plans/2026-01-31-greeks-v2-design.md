@@ -77,13 +77,14 @@ class GreeksCheckResult:
 
 @dataclass
 class GreeksCheckDetails:
+    """使用 V1 规范字段命名"""
     asof_ts: datetime
     staleness_seconds: int
-    current: dict[str, Decimal]      # {delta, gamma, vega, theta}
-    impact: dict[str, Decimal]       # 订单影响
+    current: dict[str, Decimal]      # {dollar_delta, gamma_dollar, vega_per_1pct, theta_per_day}
+    impact: dict[str, Decimal]       # 订单影响（同样使用 V1 字段名）
     projected: dict[str, Decimal]    # current + impact
     limits: dict[str, Decimal]       # hard limits
-    breach_dims: list[str]           # ["delta", "gamma"] 超限维度
+    breach_dims: list[str]           # ["dollar_delta", "gamma_dollar"] 超限维度
 ```
 
 ### 2.3 核心逻辑
@@ -118,16 +119,17 @@ class RiskManager:
         # 2. 计算订单 legs 的 Greeks 影响（调用 calculator）
         impact = await self._calculate_order_impact(order)
 
-        # 3. 投影 = 当前 + 影响
+        # 3. 投影 = 当前 + 影响（使用 V1 规范字段名）
+        greeks_fields = ["dollar_delta", "gamma_dollar", "vega_per_1pct", "theta_per_day"]
         projected = {
-            greek: current[greek] + impact[greek]
-            for greek in ["delta", "gamma", "vega", "theta"]
+            field: current[field] + impact[field]
+            for field in greeks_fields
         }
 
         # 4. 检查 HARD 限额（abs 比较）
         breach_dims = [
-            greek for greek, value in projected.items()
-            if abs(value) > self._greeks_config.hard_limits[greek]
+            field for field, value in projected.items()
+            if abs(value) > self._greeks_config.hard_limits[field]
         ]
 
         return GreeksCheckResult(
@@ -198,8 +200,8 @@ class GreeksCheckConfig:
 ```
 GET /api/greeks/accounts/{account_id}/scenario
     ?shocks=1,2       # 可选，默认 1,2 (±1%, ±2%)
-    ?scope=account    # account | strategy
-    ?strategy_id=xxx  # 当 scope=strategy 时必填
+    ?scope=ACCOUNT    # ACCOUNT | STRATEGY（大写，与 V1 一致）
+    ?strategy_id=xxx  # 当 scope=STRATEGY 时必填
 ```
 
 ### 3.2 响应模型
@@ -208,7 +210,7 @@ GET /api/greeks/accounts/{account_id}/scenario
 @dataclass
 class ScenarioShockResponse:
     account_id: str
-    scope: Literal["account", "strategy"]
+    scope: Literal["ACCOUNT", "STRATEGY"]  # 大写，与 V1 一致
     scope_id: str | None
     asof_ts: datetime
     current: CurrentGreeks
@@ -216,30 +218,32 @@ class ScenarioShockResponse:
 
 @dataclass
 class CurrentGreeks:
-    ref_spot: Decimal              # 基准标的价格
-    dollar_delta: Decimal          # dP/dS
-    gamma: Decimal                 # d²P/dS²
-    gamma_pnl_1pct: Decimal        # 1% shock 的 gamma PnL
-    vega_per_1pct: Decimal
-    theta_per_day: Decimal
-    delta_pnl_1pct: Decimal        # = dollar_delta * ref_spot * 0.01
+    """使用 V1 规范字段命名"""
+    dollar_delta: Decimal          # Δ × S × multiplier, 单位: $ / $1 underlying move
+    gamma_dollar: Decimal          # Γ × S² × multiplier, 单位: $ / ($1)²
+    gamma_pnl_1pct: Decimal        # 0.5 × gamma_dollar × 0.0001, 用于情景分析
+    vega_per_1pct: Decimal         # $ / 1% IV change
+    theta_per_day: Decimal         # $ / trading day
 
 @dataclass
 class ScenarioResult:
     shock_pct: Decimal
     direction: Literal["up", "down"]
-    pnl_from_delta: Decimal        # 一阶项（带方向）
-    pnl_from_gamma: Decimal        # 二阶项（不随方向变）
+    # PnL 影响（使用 V1 规范公式）
+    pnl_from_delta: Decimal        # = dollar_delta × shock × sign（一阶项）
+    pnl_from_gamma: Decimal        # = gamma_pnl_1pct × scale（二阶项，不乘 sign）
     pnl_impact: Decimal            # = pnl_from_delta + pnl_from_gamma
-    ref_spot: Decimal
-    delta_spot: Decimal            # = ref_spot * shock_pct% * sign
-    new_delta: Decimal
-    delta_change: Decimal          # = gamma * delta_spot
+    # Delta 变化
+    delta_change: Decimal          # = gamma_dollar × shock × sign
+    new_dollar_delta: Decimal      # = dollar_delta + delta_change
+    # 限额预警
     breach_level: Literal["none", "warn", "crit", "hard"]
     breach_dims: list[str]
 ```
 
 ### 3.3 计算公式
+
+**重要：使用 V1 规范公式，不要重复乘以 S！**
 
 ```python
 def calculate_scenario(
@@ -249,29 +253,41 @@ def calculate_scenario(
     limits: LimitConfig,
 ) -> ScenarioResult:
     sign = Decimal("1") if direction == "up" else Decimal("-1")
-    shock = shock_pct / Decimal("100")
+    shock = shock_pct / Decimal("100")  # 1% → 0.01
 
-    # ΔS = S × shock × sign
-    delta_spot = current.ref_spot * shock * sign
+    # ========== V1 规范公式 ==========
+    # ⚠️ dollar_delta 已含 S，不要再乘 S！
+    # ✗ 错误: dollar_delta × S × shock
+    # ✓ 正确: dollar_delta × shock
 
-    # 一阶项：PnL_delta = dollar_delta × ΔS
-    pnl_from_delta = current.dollar_delta * delta_spot
+    # 一阶项：PnL_delta = dollar_delta × shock × sign
+    pnl_from_delta = current.dollar_delta * shock * sign
 
-    # 二阶项：PnL_gamma = gamma_pnl_1pct × (shock_pct)²（不乘 sign）
-    scale = (shock_pct / Decimal("1")) ** 2
+    # 二阶项：PnL_gamma = gamma_pnl_1pct × scale（不乘 sign，二阶项永远同向）
+    scale = (shock_pct / Decimal("1")) ** 2  # 2% → 4x
     pnl_from_gamma = current.gamma_pnl_1pct * scale
 
     # 总 PnL
     pnl_impact = pnl_from_delta + pnl_from_gamma
 
-    # Delta 变化
-    delta_change = current.gamma * delta_spot
-    new_delta = current.dollar_delta + delta_change
+    # Delta 变化（同样不乘 S）
+    delta_change = current.gamma_dollar * shock * sign
+    new_dollar_delta = current.dollar_delta + delta_change
 
     # 检查限额
-    breach_level, breach_dims = check_breach(new_delta, limits)
+    breach_level, breach_dims = check_breach(new_dollar_delta, limits)
 
-    return ScenarioResult(...)
+    return ScenarioResult(
+        shock_pct=shock_pct,
+        direction=direction,
+        pnl_from_delta=pnl_from_delta,
+        pnl_from_gamma=pnl_from_gamma,
+        pnl_impact=pnl_impact,
+        delta_change=delta_change,
+        new_dollar_delta=new_dollar_delta,
+        breach_level=breach_level,
+        breach_dims=breach_dims,
+    )
 ```
 
 ### 3.4 示例响应
@@ -279,48 +295,71 @@ def calculate_scenario(
 ```json
 {
   "account_id": "ACC001",
-  "scope": "account",
+  "scope": "ACCOUNT",
   "scope_id": null,
   "asof_ts": "2026-01-31T10:30:00Z",
   "current": {
-    "ref_spot": 150.00,
-    "dollar_delta": 500,
-    "gamma": 20,
-    "gamma_pnl_1pct": 225,
+    "dollar_delta": 50000,
+    "gamma_dollar": 2000,
+    "gamma_pnl_1pct": 100,
     "vega_per_1pct": 15000,
-    "theta_per_day": -2800,
-    "delta_pnl_1pct": 750
+    "theta_per_day": -2800
   },
   "scenarios": {
     "+1%": {
       "shock_pct": 1,
       "direction": "up",
-      "pnl_from_delta": 750,
-      "pnl_from_gamma": 225,
-      "pnl_impact": 975,
-      "ref_spot": 150.00,
-      "delta_spot": 1.50,
-      "new_delta": 530,
-      "delta_change": 30,
+      "pnl_from_delta": 500,
+      "pnl_from_gamma": 100,
+      "pnl_impact": 600,
+      "delta_change": 20,
+      "new_dollar_delta": 50020,
       "breach_level": "none",
       "breach_dims": []
     },
     "-1%": {
       "shock_pct": 1,
       "direction": "down",
-      "pnl_from_delta": -750,
-      "pnl_from_gamma": 225,
-      "pnl_impact": -525,
-      "ref_spot": 150.00,
-      "delta_spot": -1.50,
-      "new_delta": 470,
-      "delta_change": -30,
+      "pnl_from_delta": -500,
+      "pnl_from_gamma": 100,
+      "pnl_impact": -400,
+      "delta_change": -20,
+      "new_dollar_delta": 49980,
+      "breach_level": "none",
+      "breach_dims": []
+    },
+    "+2%": {
+      "shock_pct": 2,
+      "direction": "up",
+      "pnl_from_delta": 1000,
+      "pnl_from_gamma": 400,
+      "pnl_impact": 1400,
+      "delta_change": 40,
+      "new_dollar_delta": 50040,
+      "breach_level": "none",
+      "breach_dims": []
+    },
+    "-2%": {
+      "shock_pct": 2,
+      "direction": "down",
+      "pnl_from_delta": -1000,
+      "pnl_from_gamma": 400,
+      "pnl_impact": -600,
+      "delta_change": -40,
+      "new_dollar_delta": 49960,
       "breach_level": "none",
       "breach_dims": []
     }
   }
 }
 ```
+
+**计算验证 (+1% shock):**
+- `pnl_from_delta = 50000 × 0.01 × 1 = 500`
+- `pnl_from_gamma = 100 × 1² = 100`
+- `pnl_impact = 500 + 100 = 600`
+- `delta_change = 2000 × 0.01 × 1 = 20`
+- `new_dollar_delta = 50000 + 20 = 50020`
 
 ---
 
@@ -337,16 +376,17 @@ PUT /api/greeks/accounts/{account_id}/limits
 ```python
 @dataclass
 class GreeksLimitsRequest:
-    account_id: str
+    """account_id 从 path 参数获取，不在 body 中重复"""
     strategy_id: str | None = None  # V2 返回 501
     limits: GreeksLimitSet
 
 @dataclass
 class GreeksLimitSet:
-    delta: ThresholdLevels
-    gamma: ThresholdLevels
-    vega: ThresholdLevels
-    theta: ThresholdLevels
+    """使用 V1 规范字段命名"""
+    dollar_delta: ThresholdLevels
+    gamma_dollar: ThresholdLevels
+    vega_per_1pct: ThresholdLevels
+    theta_per_day: ThresholdLevels
 
 @dataclass
 class ThresholdLevels:
@@ -373,11 +413,12 @@ class GreeksLimitsResponse:
 ```python
 def validate_limits(limits: GreeksLimitSet) -> list[str]:
     errors = []
-    for greek in ["delta", "gamma", "vega", "theta"]:
-        levels = getattr(limits, greek)
+    # 使用 V1 规范字段名
+    for field in ["dollar_delta", "gamma_dollar", "vega_per_1pct", "theta_per_day"]:
+        levels = getattr(limits, field)
         # 所有 Greeks 统一规则：0 < warn < crit < hard
         if not (0 < levels.warn < levels.crit < levels.hard):
-            errors.append(f"{greek}: must satisfy 0 < warn < crit < hard")
+            errors.append(f"{field}: must satisfy 0 < warn < crit < hard")
     return errors
 ```
 
@@ -401,15 +442,14 @@ for greek in ["delta", "gamma", "vega", "theta"]:
 
 ### 4.7 示例
 
-**Request:**
+**Request:** `PUT /api/greeks/accounts/ACC001/limits`
 ```json
 {
-  "account_id": "ACC001",
   "limits": {
-    "delta": {"warn": 100000, "crit": 150000, "hard": 200000},
-    "gamma": {"warn": 5000, "crit": 7500, "hard": 10000},
-    "vega": {"warn": 20000, "crit": 30000, "hard": 40000},
-    "theta": {"warn": 3000, "crit": 4500, "hard": 6000}
+    "dollar_delta": {"warn": 100000, "crit": 150000, "hard": 200000},
+    "gamma_dollar": {"warn": 5000, "crit": 7500, "hard": 10000},
+    "vega_per_1pct": {"warn": 20000, "crit": 30000, "hard": 40000},
+    "theta_per_day": {"warn": 3000, "crit": 4500, "hard": 6000}
   }
 }
 ```
@@ -435,8 +475,8 @@ for greek in ["delta", "gamma", "vega", "theta"]:
 ```
 GET /api/greeks/accounts/{account_id}/history
     ?window=1h|4h|1d|7d
-    ?scope=account
-    ?strategy_id=xxx
+    ?scope=ACCOUNT|STRATEGY    # 使用大写，与 V1 schema 一致
+    ?strategy_id=xxx           # scope=STRATEGY 时必填
 ```
 
 ### 5.2 自动聚合规则
@@ -454,7 +494,7 @@ GET /api/greeks/accounts/{account_id}/history
 @dataclass
 class GreeksHistoryResponse:
     account_id: str
-    scope: Literal["account", "strategy"]
+    scope: Literal["ACCOUNT", "STRATEGY"]  # 大写，与 V1 一致
     scope_id: str | None
     window: str
     interval: str
@@ -464,6 +504,7 @@ class GreeksHistoryResponse:
 
 @dataclass
 class GreeksHistoryPoint:
+    """使用 V1 规范字段命名"""
     ts: datetime
     dollar_delta: Decimal
     gamma_dollar: Decimal
