@@ -1,0 +1,901 @@
+openapi: 3.1.0
+info:
+  title: AQ Trading API
+  description: |
+    REST API for the AQ Trading algorithmic trading system.
+
+    ## Overview
+    This API provides endpoints for:
+    - Portfolio management (accounts, positions, transactions)
+    - Order management (submit, cancel, status)
+    - Strategy control (start, stop, status)
+    - Risk monitoring (limits, Greeks, alerts)
+    - Backtesting (run, results)
+    - Health monitoring (component status)
+
+    ## Authentication
+    Currently no authentication required (single-user system).
+    Future: API key authentication for production deployment.
+  version: 1.0.0
+  contact:
+    name: AQ Trading Team
+
+servers:
+  - url: http://localhost:8000
+    description: Development server
+  - url: http://localhost:8080
+    description: Production server
+
+tags:
+  - name: portfolio
+    description: Account and position management
+  - name: orders
+    description: Order lifecycle management
+  - name: strategies
+    description: Strategy control and monitoring
+  - name: risk
+    description: Risk monitoring and limits
+  - name: greeks
+    description: Options Greeks monitoring
+  - name: backtest
+    description: Backtesting engine
+  - name: health
+    description: System health monitoring
+  - name: storage
+    description: Data storage monitoring
+
+paths:
+  # Portfolio endpoints
+  /api/portfolio/account/{account_id}:
+    get:
+      tags: [portfolio]
+      summary: Get account summary
+      description: Returns cash balance, buying power, total equity, and P&L
+      operationId: getAccountSummary
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Account summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSummary'
+
+  /api/portfolio/positions/{account_id}:
+    get:
+      tags: [portfolio]
+      summary: Get all positions
+      description: Returns list of open positions with current prices and P&L
+      operationId: getPositions
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: strategy_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by strategy
+      responses:
+        '200':
+          description: List of positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Position'
+
+  # Orders endpoints
+  /api/orders:
+    get:
+      tags: [orders]
+      summary: List orders
+      operationId: listOrders
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+        - name: strategy_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+
+    post:
+      tags: [orders]
+      summary: Submit new order
+      operationId: submitOrder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrderRequest'
+      responses:
+        '201':
+          description: Order created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '400':
+          description: Invalid order request
+        '422':
+          description: Risk check failed
+
+  /api/orders/{order_id}:
+    get:
+      tags: [orders]
+      summary: Get order by ID
+      operationId: getOrder
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+        '404':
+          description: Order not found
+
+    delete:
+      tags: [orders]
+      summary: Cancel order
+      operationId: cancelOrder
+      parameters:
+        - name: order_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order cancelled
+        '400':
+          description: Order cannot be cancelled
+        '404':
+          description: Order not found
+
+  # Risk endpoints
+  /api/risk/status/{account_id}:
+    get:
+      tags: [risk]
+      summary: Get risk status
+      description: Current risk metrics and limit utilization
+      operationId: getRiskStatus
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Risk status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskStatus'
+
+  /api/risk/kill-switch:
+    post:
+      tags: [risk]
+      summary: Activate kill switch
+      description: Emergency flatten all positions
+      operationId: activateKillSwitch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_id:
+                  type: string
+                reason:
+                  type: string
+              required:
+                - account_id
+      responses:
+        '200':
+          description: Kill switch activated
+        '500':
+          description: Kill switch failed
+
+  # Greeks endpoints
+  /api/greeks/{account_id}:
+    get:
+      tags: [greeks]
+      summary: Get current Greeks
+      description: Portfolio Greeks aggregation
+      operationId: getGreeks
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: strategy_id
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Greeks snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GreeksSnapshot'
+
+  /api/greeks/{account_id}/scenario:
+    post:
+      tags: [greeks]
+      summary: Run scenario analysis
+      description: Calculate P&L impact of price/vol changes
+      operationId: runScenario
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScenarioRequest'
+      responses:
+        '200':
+          description: Scenario results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioResult'
+
+  /api/greeks/{account_id}/history:
+    get:
+      tags: [greeks]
+      summary: Get Greeks history
+      description: Historical Greeks with time-bucket aggregation
+      operationId: getGreeksHistory
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: bucket
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['1h', '4h', '1d', '7d']
+            default: '1h'
+        - name: start
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: end
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Greeks history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GreeksSnapshot'
+
+  /api/greeks/{account_id}/limits:
+    get:
+      tags: [greeks]
+      summary: Get Greeks limits
+      operationId: getGreeksLimits
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current limits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GreeksLimits'
+
+    put:
+      tags: [greeks]
+      summary: Update Greeks limits
+      operationId: updateGreeksLimits
+      parameters:
+        - name: account_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GreeksLimits'
+      responses:
+        '200':
+          description: Limits updated
+        '400':
+          description: Invalid limits
+
+  # Backtest endpoints
+  /api/backtest:
+    post:
+      tags: [backtest]
+      summary: Run backtest
+      description: Execute strategy against historical data
+      operationId: runBacktest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BacktestRequest'
+      responses:
+        '200':
+          description: Backtest results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BacktestResult'
+        '400':
+          description: Invalid request
+
+  # Health endpoints
+  /api/health:
+    get:
+      tags: [health]
+      summary: Basic health check
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: ['ok']
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /api/health/detailed:
+    get:
+      tags: [health]
+      summary: Detailed health status
+      description: Health of all system components
+      operationId: detailedHealthCheck
+      responses:
+        '200':
+          description: Detailed health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemHealth'
+
+  /api/health/component/{name}:
+    get:
+      tags: [health]
+      summary: Component health
+      operationId: componentHealth
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Component health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComponentHealth'
+        '404':
+          description: Component not found
+
+  # Storage endpoints
+  /api/storage/stats:
+    get:
+      tags: [storage]
+      summary: Get storage statistics
+      operationId: getStorageStats
+      responses:
+        '200':
+          description: Storage statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageStats'
+
+components:
+  schemas:
+    # Core trading schemas
+    AccountSummary:
+      type: object
+      properties:
+        account_id:
+          type: string
+        cash:
+          type: number
+          format: double
+        buying_power:
+          type: number
+          format: double
+        total_equity:
+          type: number
+          format: double
+        unrealized_pnl:
+          type: number
+          format: double
+        day_pnl:
+          type: number
+          format: double
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - account_id
+        - cash
+        - buying_power
+        - total_equity
+        - unrealized_pnl
+        - day_pnl
+        - updated_at
+
+    Position:
+      type: object
+      properties:
+        symbol:
+          type: string
+        asset_type:
+          $ref: '#/components/schemas/AssetType'
+        quantity:
+          type: integer
+        avg_cost:
+          type: number
+          format: double
+        current_price:
+          type: number
+          format: double
+        market_value:
+          type: number
+          format: double
+        unrealized_pnl:
+          type: number
+          format: double
+        strategy_id:
+          type: string
+          nullable: true
+        strike:
+          type: number
+          format: double
+          nullable: true
+        expiry:
+          type: string
+          format: date
+          nullable: true
+        put_call:
+          $ref: '#/components/schemas/PutCall'
+      required:
+        - symbol
+        - asset_type
+        - quantity
+        - avg_cost
+        - current_price
+        - market_value
+        - unrealized_pnl
+
+    AssetType:
+      type: string
+      enum: [stock, option, future]
+
+    PutCall:
+      type: string
+      enum: [put, call]
+      nullable: true
+
+    # Order schemas
+    Order:
+      type: object
+      properties:
+        order_id:
+          type: string
+        broker_order_id:
+          type: string
+          nullable: true
+        account_id:
+          type: string
+        strategy_id:
+          type: string
+        symbol:
+          type: string
+        side:
+          $ref: '#/components/schemas/OrderSide'
+        quantity:
+          type: integer
+        order_type:
+          $ref: '#/components/schemas/OrderType'
+        limit_price:
+          type: number
+          format: double
+          nullable: true
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        filled_qty:
+          type: integer
+        avg_fill_price:
+          type: number
+          format: double
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - order_id
+        - account_id
+        - strategy_id
+        - symbol
+        - side
+        - quantity
+        - order_type
+        - status
+        - filled_qty
+        - created_at
+        - updated_at
+
+    OrderRequest:
+      type: object
+      properties:
+        account_id:
+          type: string
+        strategy_id:
+          type: string
+        symbol:
+          type: string
+        side:
+          $ref: '#/components/schemas/OrderSide'
+        quantity:
+          type: integer
+          minimum: 1
+        order_type:
+          $ref: '#/components/schemas/OrderType'
+        limit_price:
+          type: number
+          format: double
+          nullable: true
+      required:
+        - account_id
+        - strategy_id
+        - symbol
+        - side
+        - quantity
+        - order_type
+
+    OrderSide:
+      type: string
+      enum: [buy, sell]
+
+    OrderType:
+      type: string
+      enum: [market, limit]
+
+    OrderStatus:
+      type: string
+      enum: [pending, submitted, partial, cancel_req, filled, cancelled, rejected, expired]
+
+    # Risk schemas
+    RiskStatus:
+      type: object
+      properties:
+        account_id:
+          type: string
+        daily_loss:
+          type: number
+          format: double
+        daily_loss_limit:
+          type: number
+          format: double
+        total_exposure:
+          type: number
+          format: double
+        max_exposure:
+          type: number
+          format: double
+        position_count:
+          type: integer
+        max_positions:
+          type: integer
+        kill_switch_active:
+          type: boolean
+        last_updated:
+          type: string
+          format: date-time
+
+    # Greeks schemas
+    GreeksSnapshot:
+      type: object
+      properties:
+        scope:
+          type: string
+          enum: [ACCOUNT, STRATEGY]
+        scope_id:
+          type: string
+        dollar_delta:
+          type: number
+          format: double
+        gamma_dollar:
+          type: number
+          format: double
+        gamma_pnl_1pct:
+          type: number
+          format: double
+        vega_per_1pct:
+          type: number
+          format: double
+        theta_per_day:
+          type: number
+          format: double
+        coverage_pct:
+          type: number
+          format: double
+        as_of_ts:
+          type: string
+          format: date-time
+      required:
+        - scope
+        - scope_id
+        - dollar_delta
+        - gamma_dollar
+        - gamma_pnl_1pct
+        - vega_per_1pct
+        - theta_per_day
+        - coverage_pct
+        - as_of_ts
+
+    GreeksLimits:
+      type: object
+      properties:
+        max_delta:
+          type: number
+          format: double
+        max_gamma:
+          type: number
+          format: double
+        max_vega:
+          type: number
+          format: double
+        max_theta:
+          type: number
+          format: double
+      required:
+        - max_delta
+        - max_gamma
+        - max_vega
+        - max_theta
+
+    ScenarioRequest:
+      type: object
+      properties:
+        price_shock_pct:
+          type: number
+          format: double
+          description: Price change percentage (e.g., 1.0 for +1%)
+        vol_shock_pct:
+          type: number
+          format: double
+          description: Volatility change percentage
+
+    ScenarioResult:
+      type: object
+      properties:
+        price_shock_pct:
+          type: number
+          format: double
+        vol_shock_pct:
+          type: number
+          format: double
+        pnl_impact:
+          type: number
+          format: double
+        new_delta:
+          type: number
+          format: double
+        new_gamma:
+          type: number
+          format: double
+
+    # Backtest schemas
+    BacktestRequest:
+      type: object
+      properties:
+        strategy_name:
+          type: string
+        symbol:
+          type: string
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        initial_capital:
+          type: number
+          format: double
+        benchmark_symbol:
+          type: string
+          nullable: true
+      required:
+        - strategy_name
+        - symbol
+        - start_date
+        - end_date
+        - initial_capital
+
+    BacktestResult:
+      type: object
+      properties:
+        strategy_name:
+          type: string
+        total_return:
+          type: number
+          format: double
+        sharpe_ratio:
+          type: number
+          format: double
+        max_drawdown:
+          type: number
+          format: double
+        win_rate:
+          type: number
+          format: double
+        total_trades:
+          type: integer
+        benchmark_comparison:
+          $ref: '#/components/schemas/BenchmarkComparison'
+        equity_curve:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              equity:
+                type: number
+                format: double
+
+    BenchmarkComparison:
+      type: object
+      properties:
+        benchmark_symbol:
+          type: string
+        benchmark_return:
+          type: number
+          format: double
+        alpha:
+          type: number
+          format: double
+        beta:
+          type: number
+          format: double
+        information_ratio:
+          type: number
+          format: double
+        up_capture:
+          type: number
+          format: double
+        down_capture:
+          type: number
+          format: double
+
+    # Health schemas
+    SystemHealth:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, critical]
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/ComponentHealth'
+        last_checked:
+          type: string
+          format: date-time
+
+    ComponentHealth:
+      type: object
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        latency_ms:
+          type: number
+          format: double
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        last_checked:
+          type: string
+          format: date-time
+
+    # Storage schemas
+    StorageStats:
+      type: object
+      properties:
+        total_size_mb:
+          type: number
+          format: double
+        tables:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              row_count:
+                type: integer
+              size_mb:
+                type: number
+                format: double
+              is_compressed:
+                type: boolean
