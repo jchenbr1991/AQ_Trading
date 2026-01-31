@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import yaml
 
 if TYPE_CHECKING:
+    from src.greeks.v2_models import GreeksCheckResult
     from src.strategies.signals import Signal
 
 
@@ -18,6 +19,7 @@ class RiskResult:
     rejection_reason: str | None = None
     checks_passed: list[str] = field(default_factory=list)
     checks_failed: list[str] = field(default_factory=list)
+    greeks_check_result: "GreeksCheckResult | None" = None
 
 
 @dataclass

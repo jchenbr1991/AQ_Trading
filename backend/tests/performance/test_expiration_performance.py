@@ -4,7 +4,7 @@ Target: 1000 option positions check < 10 seconds (per Design Doc).
 """
 
 import time
-from datetime import date, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock
 from zoneinfo import ZoneInfo
@@ -12,6 +12,9 @@ from zoneinfo import ZoneInfo
 import pytest
 from src.models.position import AssetType, PutCall
 from src.options.checker import ExpirationChecker
+
+# Use market timezone for consistency with ExpirationChecker
+MARKET_TZ = ZoneInfo("America/New_York")
 
 
 def create_mock_option_position(
@@ -29,11 +32,13 @@ def create_mock_option_position(
     Returns:
         MagicMock configured as an option position
     """
+    # Use market timezone for consistency with checker
+    market_today = datetime.now(MARKET_TZ).date()
     pos = MagicMock()
     pos.id = position_id
     pos.symbol = f"{symbol_prefix}{position_id:04d}C150"
     pos.asset_type = AssetType.OPTION
-    pos.expiry = date.today() + timedelta(days=days_to_expiry)
+    pos.expiry = market_today + timedelta(days=days_to_expiry)
     pos.strike = Decimal("150.00")
     pos.put_call = PutCall.CALL if position_id % 2 == 0 else PutCall.PUT
     pos.quantity = 10

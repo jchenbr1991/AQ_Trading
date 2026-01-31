@@ -1,8 +1,13 @@
 from decimal import Decimal
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
+from src.greeks.v2_models import OrderIntent, OrderLeg
 from src.risk.models import RiskConfig, RiskResult
 from src.strategies.signals import Signal
+
+if TYPE_CHECKING:
+    from src.greeks.greeks_gate import GreeksGate
+    from src.greeks.v2_models import GreeksCheckResult
 
 
 class PortfolioProtocol(Protocol):
@@ -16,14 +21,21 @@ class PortfolioProtocol(Protocol):
 class RiskManager:
     """Validates trading signals against risk limits."""
 
-    def __init__(self, config: RiskConfig, portfolio: PortfolioProtocol):
+    def __init__(
+        self,
+        config: RiskConfig,
+        portfolio: PortfolioProtocol,
+        greeks_gate: "GreeksGate | None" = None,
+    ):
         self._config = config
         self._portfolio = portfolio
+        self._greeks_gate = greeks_gate
         self._killed = False
         self._kill_reason: str | None = None
         self._paused_strategies: set[str] = set()
         self._daily_pnl: Decimal = Decimal("0")
         self._peak_equity: Decimal = Decimal("0")
+        self._last_greeks_check: GreeksCheckResult | None = None
 
     # Emergency controls
     def activate_kill_switch(self, reason: str) -> None:
@@ -159,8 +171,46 @@ class RiskManager:
 
         return True
 
+    async def _check_greeks_limits(self, signal: Signal) -> bool:
+        """Check Greeks limits via GreeksGate.
+
+        V2 Feature: Pre-order Greeks Check
+
+        Args:
+            signal: The trading signal to check.
+
+        Returns:
+            True if within limits or no gate configured, False if breach.
+        """
+        # Skip if no Greeks gate configured
+        if self._greeks_gate is None:
+            return True
+
+        # Convert signal to OrderIntent
+        order = OrderIntent(
+            account_id=self._config.account_id,
+            strategy_id=signal.strategy_id,
+            legs=[
+                OrderLeg(
+                    symbol=signal.symbol,
+                    side=signal.action,
+                    quantity=signal.quantity,
+                    contract_type="call",  # TODO: Infer from symbol
+                )
+            ],
+        )
+
+        # Check via gate
+        result = await self._greeks_gate.check_order(order)
+        self._last_greeks_check = result
+
+        return result.ok
+
     async def evaluate(self, signal: Signal) -> RiskResult:
         """Run all risk checks on a signal."""
+        # Reset Greeks check result
+        self._last_greeks_check = None
+
         # Kill switch check
         if self._killed:
             return RiskResult(
@@ -215,6 +265,16 @@ class RiskManager:
                 checks_failed=["loss_limits"],
             )
 
+        # Greeks limits check (V2)
+        if not await self._check_greeks_limits(signal):
+            return RiskResult(
+                approved=False,
+                signal=signal,
+                rejection_reason="greeks_limits",
+                checks_failed=["greeks_limits"],
+                greeks_check_result=self._last_greeks_check,
+            )
+
         return RiskResult(
             approved=True,
             signal=signal,
@@ -225,7 +285,9 @@ class RiskManager:
                 "position_limits",
                 "portfolio_limits",
                 "loss_limits",
+                "greeks_limits",
             ],
+            greeks_check_result=self._last_greeks_check,
         )
 
     async def _get_current_price(self, symbol: str) -> Decimal:

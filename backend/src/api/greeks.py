@@ -3,24 +3,35 @@
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.websockets import WebSocketDisconnect
 
 from src.db.database import get_session
 from src.greeks.aggregator import GreeksAggregator
 from src.greeks.calculator import GreeksCalculator
+from src.greeks.limits_store import NotImplementedError, get_limits_store
 from src.greeks.models import AggregatedGreeks, PositionGreeks, RiskMetric
 from src.greeks.monitor import load_positions_from_db
 from src.greeks.repository import GreeksRepository
+from src.greeks.scenario import get_scenario_shocks
+from src.greeks.v2_models import CurrentGreeks, GreeksLimitSet, ThresholdLevels
 from src.greeks.websocket import greeks_ws_manager
 from src.schemas.greeks import (
     AggregatedGreeksResponse,
     AlertAcknowledgeRequest,
+    CurrentGreeksResponse,
     GreeksAlertResponse,
+    GreeksHistoryApiResponse,
+    GreeksHistoryPointResponse,
+    GreeksLimitsApiRequest,
+    GreeksLimitsApiResponse,
     GreeksOverviewResponse,
     PositionGreeksResponse,
+    ScenarioResultResponse,
+    ScenarioShockApiResponse,
 )
 
 router = APIRouter(prefix="/api/greeks", tags=["greeks"])
@@ -373,3 +384,348 @@ async def greeks_websocket(
             await websocket.send_json({"type": "pong", "received": data})
     except WebSocketDisconnect:
         await greeks_ws_manager.disconnect(account_id, websocket)
+
+
+# =============================================================================
+# V2 Endpoints
+# =============================================================================
+
+
+@router.get("/accounts/{account_id}/scenario", response_model=ScenarioShockApiResponse)
+async def get_scenario_shock(
+    account_id: str,
+    shocks: str | None = Query(None, description="Comma-separated shock percentages (e.g., '1,2')"),
+    scope: Literal["ACCOUNT", "STRATEGY"] = Query("ACCOUNT", description="Scope for scenario"),
+    strategy_id: str | None = Query(None, description="Strategy ID (required if scope=STRATEGY)"),
+    db: AsyncSession = Depends(get_session),
+) -> ScenarioShockApiResponse:
+    """Get scenario shock analysis for Greeks.
+
+    V2 Feature: Scenario Shock API
+
+    Returns PnL and delta projections for ±X% underlying price shocks.
+    Default shocks are ±1% and ±2%.
+
+    Args:
+        account_id: Account identifier.
+        shocks: Comma-separated shock percentages (default: "1,2").
+        scope: ACCOUNT or STRATEGY.
+        strategy_id: Required if scope=STRATEGY.
+        db: Database session.
+
+    Returns:
+        ScenarioShockApiResponse with current Greeks and scenario results.
+
+    Raises:
+        HTTPException: 400 if scope=STRATEGY and strategy_id not provided.
+        HTTPException: 404 if no positions found.
+    """
+    # Validate scope/strategy_id
+    if scope == "STRATEGY" and not strategy_id:
+        raise HTTPException(
+            status_code=400,
+            detail="strategy_id is required when scope=STRATEGY",
+        )
+
+    # Load positions
+    positions = await load_positions_from_db(db, account_id)
+    if not positions:
+        raise HTTPException(status_code=404, detail="No positions found")
+
+    # Calculate Greeks
+    calculator = GreeksCalculator()
+    aggregator = GreeksAggregator()
+
+    position_greeks = calculator.calculate(positions)
+
+    if scope == "STRATEGY":
+        account_greeks, strategy_greeks = aggregator.aggregate_by_strategy(
+            position_greeks, account_id
+        )
+        if strategy_id not in strategy_greeks:
+            raise HTTPException(status_code=404, detail=f"Strategy {strategy_id} not found")
+        greeks = strategy_greeks[strategy_id]
+        scope_id = strategy_id
+    else:
+        greeks = aggregator.aggregate(position_greeks, scope="ACCOUNT", scope_id=account_id)
+        scope_id = None
+
+    # Parse shock percentages
+    shock_pcts: list[Decimal] = []
+    if shocks:
+        for s in shocks.split(","):
+            try:
+                shock_pcts.append(Decimal(s.strip()))
+            except (ValueError, ArithmeticError):
+                continue  # Skip invalid shock values
+    if not shock_pcts:
+        shock_pcts = [Decimal("1"), Decimal("2")]
+
+    # Convert to CurrentGreeks
+    current = CurrentGreeks(
+        dollar_delta=greeks.dollar_delta,
+        gamma_dollar=greeks.gamma_dollar,
+        gamma_pnl_1pct=greeks.gamma_pnl_1pct,
+        vega_per_1pct=greeks.vega_per_1pct,
+        theta_per_day=greeks.theta_per_day,
+    )
+
+    # Get account limits from store for breach detection
+    limits_store = get_limits_store()
+    account_limits = await limits_store.get_limits(account_id)
+    limits = {
+        "dollar_delta": account_limits.dollar_delta.hard,
+        "gamma_dollar": account_limits.gamma_dollar.hard,
+        "vega_per_1pct": account_limits.vega_per_1pct.hard,
+        "theta_per_day": account_limits.theta_per_day.hard,
+    }
+
+    # Get scenario results
+    scenarios = get_scenario_shocks(current=current, limits=limits, shock_pcts=shock_pcts)
+
+    # Convert to response
+    scenario_responses = {
+        key: ScenarioResultResponse(
+            shock_pct=float(result.shock_pct),
+            direction=result.direction,
+            pnl_from_delta=float(result.pnl_from_delta),
+            pnl_from_gamma=float(result.pnl_from_gamma),
+            pnl_impact=float(result.pnl_impact),
+            delta_change=float(result.delta_change),
+            new_dollar_delta=float(result.new_dollar_delta),
+            breach_level=result.breach_level,
+            breach_dims=result.breach_dims,
+        )
+        for key, result in scenarios.items()
+    }
+
+    return ScenarioShockApiResponse(
+        account_id=account_id,
+        scope=scope,
+        scope_id=scope_id,
+        asof_ts=greeks.as_of_ts,
+        current=CurrentGreeksResponse(
+            dollar_delta=float(current.dollar_delta),
+            gamma_dollar=float(current.gamma_dollar),
+            gamma_pnl_1pct=float(current.gamma_pnl_1pct),
+            vega_per_1pct=float(current.vega_per_1pct),
+            theta_per_day=float(current.theta_per_day),
+        ),
+        scenarios=scenario_responses,
+    )
+
+
+def _request_to_limit_set(request: GreeksLimitsApiRequest) -> GreeksLimitSet:
+    """Convert API request to GreeksLimitSet."""
+    return GreeksLimitSet(
+        dollar_delta=ThresholdLevels(
+            warn=Decimal(str(request.limits.dollar_delta.warn)),
+            crit=Decimal(str(request.limits.dollar_delta.crit)),
+            hard=Decimal(str(request.limits.dollar_delta.hard)),
+        ),
+        gamma_dollar=ThresholdLevels(
+            warn=Decimal(str(request.limits.gamma_dollar.warn)),
+            crit=Decimal(str(request.limits.gamma_dollar.crit)),
+            hard=Decimal(str(request.limits.gamma_dollar.hard)),
+        ),
+        vega_per_1pct=ThresholdLevels(
+            warn=Decimal(str(request.limits.vega_per_1pct.warn)),
+            crit=Decimal(str(request.limits.vega_per_1pct.crit)),
+            hard=Decimal(str(request.limits.vega_per_1pct.hard)),
+        ),
+        theta_per_day=ThresholdLevels(
+            warn=Decimal(str(request.limits.theta_per_day.warn)),
+            crit=Decimal(str(request.limits.theta_per_day.crit)),
+            hard=Decimal(str(request.limits.theta_per_day.hard)),
+        ),
+    )
+
+
+def _limit_set_to_response(limits: GreeksLimitSet) -> dict:
+    """Convert GreeksLimitSet to response dict."""
+    return {
+        "dollar_delta": {
+            "warn": float(limits.dollar_delta.warn),
+            "crit": float(limits.dollar_delta.crit),
+            "hard": float(limits.dollar_delta.hard),
+        },
+        "gamma_dollar": {
+            "warn": float(limits.gamma_dollar.warn),
+            "crit": float(limits.gamma_dollar.crit),
+            "hard": float(limits.gamma_dollar.hard),
+        },
+        "vega_per_1pct": {
+            "warn": float(limits.vega_per_1pct.warn),
+            "crit": float(limits.vega_per_1pct.crit),
+            "hard": float(limits.vega_per_1pct.hard),
+        },
+        "theta_per_day": {
+            "warn": float(limits.theta_per_day.warn),
+            "crit": float(limits.theta_per_day.crit),
+            "hard": float(limits.theta_per_day.hard),
+        },
+    }
+
+
+@router.put("/accounts/{account_id}/limits", response_model=GreeksLimitsApiResponse)
+async def put_limits(
+    account_id: str,
+    request: GreeksLimitsApiRequest,
+    x_user_id: str | None = Header(None, alias="X-User-ID"),
+) -> GreeksLimitsApiResponse:
+    """Update Greeks limits for an account.
+
+    V2 Feature: PUT /limits
+
+    Args:
+        account_id: Account identifier.
+        request: New limits configuration.
+        x_user_id: User ID from header.
+
+    Returns:
+        GreeksLimitsApiResponse with applied limits.
+
+    Raises:
+        HTTPException: 400 if limits validation fails.
+        HTTPException: 501 if strategy_id provided.
+    """
+    # Get user from header
+    user_id = x_user_id or "unknown"
+
+    # Check for strategy_id (not implemented)
+    if request.strategy_id:
+        raise HTTPException(
+            status_code=501,
+            detail="Strategy-level limits not implemented in V2",
+        )
+
+    # Convert request to domain model
+    limit_set = _request_to_limit_set(request)
+
+    # Store limits
+    store = get_limits_store()
+    try:
+        result = await store.set_limits(
+            account_id=account_id,
+            limits=limit_set,
+            updated_by=user_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except NotImplementedError as e:
+        raise HTTPException(status_code=501, detail=str(e)) from e
+
+    return GreeksLimitsApiResponse(
+        account_id=result.account_id,
+        strategy_id=result.strategy_id,
+        limits=_limit_set_to_response(result.limits),
+        updated_at=result.updated_at,
+        updated_by=result.updated_by,
+        effective_scope=result.effective_scope,
+    )
+
+
+@router.get("/accounts/{account_id}/limits")
+async def get_limits(account_id: str) -> dict:
+    """Get current Greeks limits for an account.
+
+    V2 Feature: GET /limits
+
+    Args:
+        account_id: Account identifier.
+
+    Returns:
+        Current limits configuration.
+    """
+    store = get_limits_store()
+    limits = await store.get_limits(account_id)
+
+    return {
+        "account_id": account_id,
+        "limits": _limit_set_to_response(limits),
+    }
+
+
+# Window to interval mapping for history aggregation
+HISTORY_WINDOW_CONFIG = {
+    "1h": {"interval": "raw", "interval_display": "30s"},
+    "4h": {"interval": "1 minute", "interval_display": "1m"},
+    "1d": {"interval": "5 minutes", "interval_display": "5m"},
+    "7d": {"interval": "1 hour", "interval_display": "1h"},
+}
+
+
+@router.get("/accounts/{account_id}/history", response_model=GreeksHistoryApiResponse)
+async def get_history(
+    account_id: str,
+    window: str = Query(..., description="Time window: 1h, 4h, 1d, 7d"),
+    scope: Literal["ACCOUNT", "STRATEGY"] = Query("ACCOUNT"),
+    strategy_id: str | None = Query(None),
+    db: AsyncSession = Depends(get_session),
+) -> GreeksHistoryApiResponse:
+    """Get historical Greeks data.
+
+    V2 Feature: GET /history
+
+    Returns time-bucketed historical Greeks with automatic aggregation:
+    - 1h: raw 30s data (~120 points)
+    - 4h: 1min aggregation (~240 points)
+    - 1d: 5min aggregation (~288 points)
+    - 7d: 1h aggregation (~168 points)
+
+    Args:
+        account_id: Account identifier.
+        window: Time window (1h, 4h, 1d, 7d).
+        scope: ACCOUNT or STRATEGY.
+        strategy_id: Required if scope=STRATEGY.
+        db: Database session.
+
+    Returns:
+        GreeksHistoryApiResponse with aggregated history points.
+
+    Raises:
+        HTTPException: 400 if invalid window or missing strategy_id.
+    """
+    # Validate window
+    if window not in HISTORY_WINDOW_CONFIG:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid window '{window}'. Valid: 1h, 4h, 1d, 7d",
+        )
+
+    # Validate scope/strategy_id
+    if scope == "STRATEGY" and not strategy_id:
+        raise HTTPException(
+            status_code=400,
+            detail="strategy_id is required when scope=STRATEGY",
+        )
+
+    config = HISTORY_WINDOW_CONFIG[window]
+    interval_display = config["interval_display"]
+
+    # Calculate time range
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc)
+    window_hours = {"1h": 1, "4h": 4, "1d": 24, "7d": 168}
+    start_ts = now - timedelta(hours=window_hours[window])
+
+    # Get history from repository
+    # TODO: Implement repository.get_history() for actual data retrieval
+    _ = GreeksRepository(db)  # Will be used when get_history is implemented
+    scope_id = strategy_id if scope == "STRATEGY" else account_id
+
+    # For now, return empty points (repository.get_history to be implemented)
+    # In production, this would query greeks_snapshots with time_bucket
+    points: list[GreeksHistoryPointResponse] = []
+
+    return GreeksHistoryApiResponse(
+        account_id=account_id,
+        scope=scope,
+        scope_id=scope_id if scope == "STRATEGY" else None,
+        window=window,
+        interval=interval_display,
+        start_ts=start_ts,
+        end_ts=now,
+        points=points,
+    )
