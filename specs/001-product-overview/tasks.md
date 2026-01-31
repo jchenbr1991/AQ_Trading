@@ -130,45 +130,53 @@
   - Portfolio risk assessment
   - Dynamic risk bias adjustment
   - VIX-based scaling
+- [ ] T023 [P] [US6] Create Ops agent prompt in `agents/prompts/ops.py`
+  - Reconciliation analysis (local vs broker positions)
+  - Discrepancy investigation and fix suggestions
+  - System health monitoring
 
 #### Agent Tools
 
-- [ ] T023 [P] [US6] Implement backtest tool in `agents/tools/backtest.py`
+- [ ] T024 [P] [US6] Implement backtest tool in `agents/tools/backtest.py`
   - Run backtest with specified parameters
   - Return performance metrics
-- [ ] T024 [P] [US6] Implement market_data tool in `agents/tools/market_data.py`
+- [ ] T025 [P] [US6] Implement market_data tool in `agents/tools/market_data.py`
   - Query historical and live market data
   - VIX and volatility metrics
-- [ ] T025 [P] [US6] Implement portfolio tool in `agents/tools/portfolio.py`
+- [ ] T026 [P] [US6] Implement portfolio tool in `agents/tools/portfolio.py`
   - Read-only portfolio and position access
   - Greeks exposure data
-- [ ] T026 [P] [US6] Implement redis_writer tool in `agents/tools/redis_writer.py`
+- [ ] T027 [P] [US6] Implement redis_writer tool in `agents/tools/redis_writer.py`
   - Write to allowed Redis keys only (risk_bias, sentiment)
   - Enforce key prefix restrictions
+- [ ] T028 [P] [US6] Implement reconciliation tool in `agents/tools/reconciliation.py`
+  - Query broker positions via existing reconciliation service
+  - Compare local vs broker positions
+  - Return discrepancy analysis for Ops agent
 
 #### Overfitting Prevention
 
-- [ ] T027 [US6] Implement WalkForwardValidator in `agents/validation/walk_forward.py`
+- [ ] T029 [US6] Implement WalkForwardValidator in `agents/validation/walk_forward.py`
   - 70% train / 15% validation / 15% test split
   - Performance degradation check (<20% drop)
   - Parameter stability tests (±10%, ±20%)
 
 #### Agent API and Integration
 
-- [ ] T028 [P] [US6] Create agent API routes in `backend/src/api/routes/agents.py`
+- [ ] T030 [P] [US6] Create agent API routes in `backend/src/api/routes/agents.py`
   - POST /api/agents/invoke - Invoke agent task
   - GET /api/agents/results - List agent results
   - GET /api/agents/results/{id} - Get specific result
-- [ ] T029 [US6] Integrate risk_bias from Redis into RiskManager in `backend/src/core/risk_manager.py`
+- [ ] T031 [US6] Integrate risk_bias from Redis into RiskManager in `backend/src/core/risk_manager.py`
   - Read redis:risk_bias at signal validation
   - Apply bias multiplier to position limits
   - **Graceful degradation**: Fallback to default bias=1.0 if Redis unavailable
   - Continue trading if agent subsystem fails (FR-021)
-- [ ] T030 [P] [US6] Add Agents page component in `frontend/src/pages/AgentsPage.tsx`
+- [ ] T032 [P] [US6] Add Agents page component in `frontend/src/pages/AgentsPage.tsx`
   - Agent invocation interface
   - Results history table
   - Permission matrix display
-- [ ] T031 [US6] Generate TypeScript types for agents API in `frontend/src/api/generated/`
+- [ ] T033 [US6] Generate TypeScript types for agents API in `frontend/src/api/generated/`
 
 **Checkpoint**: User Story 6 complete - AI agent system functional
 
@@ -178,11 +186,11 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T032 [P] [US4/US6] Update OpenAPI spec with derivatives and agents endpoints in `backend/scripts/generate_openapi.py`
-- [ ] T033 [P] [US4/US6] Regenerate frontend types via `frontend/scripts/generate-types.sh`
-- [ ] T034 [P] [US4] Add integration tests for derivatives in `backend/tests/integration/test_derivatives.py`
-- [ ] T035 [P] [US6] Add integration tests for agents in `backend/tests/integration/test_agents.py`
-- [ ] T036 [US4/US6] Run quickstart.md validation - verify setup still works
+- [ ] T034 [P] [US4/US6] Update OpenAPI spec with derivatives and agents endpoints in `backend/scripts/generate_openapi.py`
+- [ ] T035 [P] [US4/US6] Regenerate frontend types via `frontend/scripts/generate-types.sh`
+- [ ] T036 [P] [US4] Add integration tests for derivatives in `backend/tests/integration/test_derivatives.py`
+- [ ] T037 [P] [US6] Add integration tests for agents in `backend/tests/integration/test_agents.py`
+- [ ] T038 [US4/US6] Run quickstart.md validation - verify setup still works
 
 ---
 
@@ -213,9 +221,9 @@
 
 - T001, T002, T003 can run in parallel (Setup)
 - T004/T006 and T005/T007 can run in parallel (Foundational)
-- T020, T021, T022 can run in parallel (Agent prompts)
-- T023, T024, T025, T026 can run in parallel (Agent tools)
-- T034, T035 can run in parallel (Tests)
+- T020, T021, T022, T023 can run in parallel (Agent prompts)
+- T024, T025, T026, T027, T028 can run in parallel (Agent tools)
+- T036, T037 can run in parallel (Tests)
 - US4 and US6 can be worked on in parallel by different team members
 
 ---
@@ -248,3 +256,4 @@
 - Agent architecture: sidecar subprocess - NEVER in trading hot path
 - Redis integration: agents write to Redis, trading reads (microseconds)
 - Commit after each task or logical group
+- **TDD Compliance**: Unit tests written alongside each implementation task (per project standard). Phase 5 tests (T035, T036) are integration tests that verify complete features.
