@@ -4,7 +4,7 @@
 # This module contains:
 # - ExpirationManager: Handle options expiration workflows
 # - AssignmentHandler: Process option assignments and exercises
-# - FuturesRollManager: Manage futures contract rollovers (TODO)
+# - FuturesRollManager: Manage futures contract rollovers
 
 from src.derivatives.assignment_handler import (
     AssignmentDirection,
@@ -12,6 +12,12 @@ from src.derivatives.assignment_handler import (
     AssignmentHandler,
 )
 from src.derivatives.expiration_manager import ExpirationAlert, ExpirationManager
+from src.derivatives.futures_roll import (
+    FuturesRollManager,
+    RollConfig,
+    RollPlan,
+    RollStrategy,
+)
 
 __all__ = [
     "AssignmentDirection",
@@ -19,4 +25,8 @@ __all__ = [
     "AssignmentHandler",
     "ExpirationAlert",
     "ExpirationManager",
+    "FuturesRollManager",
+    "RollConfig",
+    "RollPlan",
+    "RollStrategy",
 ]
