@@ -26,7 +26,9 @@
       "Bash(alembic *)",
       "Bash(mkdir *)",
       "Bash(pre-commit *)",
-      "Bash(ruff *)"
+      "Bash(ruff *)",
+      "Bash(codex exec *)",
+      "Bash(gemini -p *)"
     ],
     "deny": [
       "Bash(rm -rf *)",

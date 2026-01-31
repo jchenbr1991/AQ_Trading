@@ -109,7 +109,10 @@ class TestExpirationChecker:
         """Should skip already expired positions."""
         from src.options.checker import ExpirationChecker
 
-        mock_position.expiry = date.today() - timedelta(days=1)  # Yesterday
+        # Use market timezone for consistency with checker
+        market_tz = ZoneInfo("America/New_York")
+        market_today = datetime.now(market_tz).date()
+        mock_position.expiry = market_today - timedelta(days=1)  # Yesterday in market tz
         mock_portfolio.get_positions.return_value = [mock_position]
 
         checker = ExpirationChecker(
