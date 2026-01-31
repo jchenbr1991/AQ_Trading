@@ -2,13 +2,16 @@
 
 import asyncio
 import logging
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
 from src.db.database import async_session
+
+if TYPE_CHECKING:
+    from src.alerts.service import AlertService
 
 logger = logging.getLogger(__name__)
 
@@ -140,10 +143,31 @@ async def _run_outbox_cleanup() -> None:
         logger.exception(f"Outbox cleanup failed: {e}")
 
 
+async def _run_expiration_check(alert_service: "AlertService | None" = None) -> None:
+    """Scheduled job: check for expiring derivative positions.
+
+    Runs daily before market open to warn about positions nearing expiry.
+    Per SC-011: User receives expiration warning at least 5 days before expiry.
+    """
+    from src.workers.expiration_worker import ExpirationWorker
+
+    try:
+        worker = ExpirationWorker(
+            session_factory=async_session,
+            alert_service=alert_service,
+        )
+        alerts = await worker.run_check()
+        if alerts:
+            logger.info(f"Expiration check found {len(alerts)} expiring positions")
+    except Exception as e:
+        logger.exception(f"Expiration check failed: {e}")
+
+
 async def init_workers(
     order_manager: OrderManager,
     market_data: MarketData,
     broker_api: BrokerAPI,
+    alert_service: "AlertService | None" = None,
 ) -> None:
     """Initialize all workers and scheduled jobs.
 
@@ -151,15 +175,14 @@ async def init_workers(
         order_manager: OrderManager instance for order submission
         market_data: MarketData instance for quotes
         broker_api: BrokerAPI instance for order queries
+        alert_service: Optional AlertService for expiration alerts
     """
     global _scheduler, _outbox_worker_task
 
     logger.info("Initializing close position workers...")
 
     # Start outbox worker background task
-    _outbox_worker_task = asyncio.create_task(
-        _run_outbox_worker(order_manager, market_data)
-    )
+    _outbox_worker_task = asyncio.create_task(_run_outbox_worker(order_manager, market_data))
 
     # Initialize scheduler
     _scheduler = AsyncIOScheduler()
@@ -202,6 +225,15 @@ async def init_workers(
         CronTrigger(hour=3, minute=0),
         id="outbox_cleanup",
         name="Clean up old outbox events",
+    )
+
+    # Expiration check: daily at 6 AM (before US market open)
+    # Per SC-011: User receives expiration warning at least 5 days before expiry
+    _scheduler.add_job(
+        lambda: asyncio.create_task(_run_expiration_check(alert_service)),
+        CronTrigger(hour=6, minute=0),
+        id="expiration_check",
+        name="Check for expiring derivative positions",
     )
 
     _scheduler.start()

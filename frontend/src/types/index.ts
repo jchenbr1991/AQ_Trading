@@ -540,3 +540,29 @@ export interface GreeksWebSocketMessage {
     message: string;
   };
 }
+
+// Derivatives types
+export type ContractType = 'option' | 'future';
+
+export interface ExpirationAlertPosition {
+  symbol: string;
+  underlying: string;
+  expiry: string;
+  days_to_expiry: number;
+  contract_type: ContractType;
+  put_call: PutCall | null;
+  strike: number | null;
+}
+
+export interface ExpiringPositionsResponse {
+  positions: ExpirationAlertPosition[];
+  total: number;
+  warning_days: number;
+}
+
+export interface RollPlanResponse {
+  symbol: string;
+  strategy: string;
+  close_action: string;
+  open_action: string | null;
+}
