@@ -173,10 +173,10 @@ class GreeksCheckConfig:
     max_staleness_seconds: int = 60
     fail_mode: Literal["closed", "open"] = "closed"
     hard_limits: dict[str, Decimal] = field(default_factory=lambda: {
-        "delta": Decimal("200000"),
-        "gamma": Decimal("10000"),
-        "vega": Decimal("40000"),
-        "theta": Decimal("6000"),
+        "dollar_delta": Decimal("200000"),
+        "gamma_dollar": Decimal("10000"),
+        "vega_per_1pct": Decimal("40000"),
+        "theta_per_day": Decimal("6000"),
     })
 ```
 
@@ -427,9 +427,9 @@ def validate_limits(limits: GreeksLimitSet) -> list[str]:
 所有 Greeks（包括 theta）使用 **ABS 评估**：
 
 ```python
-# 评估时
-for greek in ["delta", "gamma", "vega", "theta"]:
-    if abs(current_value) > limits[greek].hard:
+# 评估时（使用 V1 规范字段名）
+for field in ["dollar_delta", "gamma_dollar", "vega_per_1pct", "theta_per_day"]:
+    if abs(current_value) > limits[field].hard:
         # 触发 HARD 告警
 ```
 
@@ -542,7 +542,7 @@ query = f"""
 ```json
 {
   "account_id": "ACC001",
-  "scope": "account",
+  "scope": "ACCOUNT",
   "scope_id": null,
   "window": "4h",
   "interval": "1m",
