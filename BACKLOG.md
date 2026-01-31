@@ -140,7 +140,32 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
-**Phase 2 Exit Criteria Met:** Can backtest strategies with benchmark comparison, analyze trade execution quality, trust system health, monitor storage.
+---
+
+### Slice 2.6: Greeks Monitoring [COMPLETED]
+
+**Goal:** Real-time Greeks monitoring, alerts, scenario analysis, and pre-order limit checks.
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Greeks Calculator | Done | Delta, gamma, vega, theta calculation |
+| Greeks Aggregator | Done | Account/strategy level aggregation |
+| Threshold Alerts | Done | Warn/crit/hard level alerts |
+| ROC Alerts | Done | Rate-of-change detection |
+| Greeks Repository | Done | Snapshot persistence, history queries |
+| WebSocket Updates | Done | Real-time Greeks push |
+| Greeks API V1 | Done | `/api/greeks` endpoints |
+| V2: Scenario Shock API | Done | ±1%/±2% PnL projections |
+| V2: PUT /limits | Done | Dynamic limit configuration |
+| V2: GET /history | Done | Time-bucket aggregation (1h/4h/1d/7d) |
+| V2: Pre-order Gate | Done | RiskManager Greeks limit integration |
+| V2 Tests | Done | 371 tests pass |
+
+**Plan:** `docs/plans/2026-01-31-greeks-v2-design.md` | **PR:** #26, #27
+
+---
+
+**Phase 2 Exit Criteria Met:** Can backtest strategies with benchmark comparison, analyze trade execution quality, trust system health, monitor storage, track portfolio Greeks.
 
 ---
 
@@ -154,7 +179,7 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 | Expiration Alerts | Pending | Warning before expiration |
 | Assignment Handling | Pending | ITM option exercise |
 | Futures Roll-over | Pending | Automatic contract rolling |
-| Greeks Monitoring | Pending | Portfolio delta/theta/vega |
+| Greeks Monitoring | Done | See Slice 2.6 |
 
 ---
 
