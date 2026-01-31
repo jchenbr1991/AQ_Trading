@@ -405,7 +405,7 @@ class GreeksLimitsResponse:
     limits: GreeksLimitSet
     updated_at: datetime
     updated_by: str
-    effective_scope: Literal["account", "strategy"]
+    effective_scope: Literal["ACCOUNT", "STRATEGY"]  # 大写
 ```
 
 ### 4.4 验证规则
@@ -462,7 +462,7 @@ for field in ["dollar_delta", "gamma_dollar", "vega_per_1pct", "theta_per_day"]:
   "limits": {...},
   "updated_at": "2026-01-31T10:30:00Z",
   "updated_by": "user_123",
-  "effective_scope": "account"
+  "effective_scope": "ACCOUNT"
 }
 ```
 
