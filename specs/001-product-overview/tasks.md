@@ -17,9 +17,9 @@
 
 **Purpose**: Create directory structure for Phase 3 features
 
-- [ ] T001 [US6] Create agents/ directory structure: `agents/{prompts,tools,outputs}/`
-- [ ] T002 [P] [US4] Create derivatives/ module directory: `backend/src/derivatives/`
-- [ ] T003 [P] [US4/US6] Add Phase 3 dependencies to `backend/pyproject.toml` (if needed)
+- [x] T001 [US6] Create agents/ directory structure: `agents/{prompts,tools,outputs}/`
+- [x] T002 [P] [US4] Create derivatives/ module directory: `backend/src/derivatives/`
+- [x] T003 [P] [US4/US6] Add Phase 3 dependencies to `backend/pyproject.toml` (if needed)
 
 ---
 
@@ -29,11 +29,11 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 [US4] Create DerivativeContract model in `backend/src/models/derivative_contract.py`
-- [ ] T005 [P] [US6] Create AgentResult model in `backend/src/models/agent_result.py`
-- [ ] T006 [US4] Create database migration for derivative_contracts table in `backend/alembic/versions/`
-- [ ] T007 [P] [US6] Create database migration for agent_results table in `backend/alembic/versions/`
-- [ ] T008 [US6] Add Redis keys schema for agent outputs in `backend/src/db/redis_keys.py`
+- [x] T004 [US4] Create DerivativeContract model in `backend/src/models/derivative_contract.py`
+- [x] T005 [P] [US6] Create AgentResult model in `backend/src/models/agent_result.py`
+- [x] T006 [US4] Create database migration for derivative_contracts table in `backend/alembic/versions/`
+- [x] T007 [P] [US6] Create database migration for agent_results table in `backend/alembic/versions/`
+- [x] T008 [US6] Add Redis keys schema for agent outputs in `backend/src/db/redis_keys.py`
 
 **Checkpoint**: Foundation ready - user story implementation can now begin
 
@@ -53,33 +53,33 @@
 
 ### Implementation for User Story 4
 
-- [ ] T009 [US4] Implement ExpirationManager service in `backend/src/derivatives/expiration_manager.py`
+- [x] T009 [US4] Implement ExpirationManager service in `backend/src/derivatives/expiration_manager.py`
   - Daily expiration check (configurable warning_days=5)
   - Query derivative positions by expiry date
   - Emit expiration alerts
-- [ ] T010 [US4] Implement AssignmentHandler in `backend/src/derivatives/assignment_handler.py`
+- [x] T010 [US4] Implement AssignmentHandler in `backend/src/derivatives/assignment_handler.py`
   - Calculate ITM/OTM status on expiry day
   - Estimate resulting stock position from options exercise
   - Pre-create placeholder positions
-- [ ] T011 [US4] Implement FuturesRollManager in `backend/src/derivatives/futures_roll.py`
+- [x] T011 [US4] Implement FuturesRollManager in `backend/src/derivatives/futures_roll.py`
   - Support calendar_spread and close_open strategies
   - Configurable per-underlying roll strategy
   - days_before_expiry configuration
-- [ ] T012 [P] [US4] Create expiration API routes in `backend/src/api/routes/derivatives.py`
+- [x] T012 [P] [US4] Create expiration API routes in `backend/src/api/routes/derivatives.py`
   - GET /api/derivatives/expiring - List expiring positions
   - GET /api/derivatives/expiring/{days} - Positions expiring within N days
   - POST /api/derivatives/roll/{symbol} - Trigger manual roll
-- [ ] T013 [P] [US4] Add expiration worker to `backend/src/workers/expiration_worker.py`
+- [x] T013 [P] [US4] Add expiration worker to `backend/src/workers/expiration_worker.py`
   - Schedule daily check before market open
   - Integrate with existing alerting system
-- [ ] T014 [US4] Add derivatives config to `backend/config/derivatives.yaml`
+- [x] T014 [US4] Add derivatives config to `backend/config/derivatives.yaml`
   - warning_days: 5
   - futures_roll strategies per underlying
-- [ ] T015 [P] [US4] Add Derivatives page component in `frontend/src/pages/DerivativesPage.tsx`
+- [x] T015 [P] [US4] Add Derivatives page component in `frontend/src/pages/DerivativesPage.tsx`
   - Display expiring positions table
   - Show assignment estimates for ITM options
   - Roll action buttons
-- [ ] T016 [US4] Generate TypeScript types for derivatives API in `frontend/src/api/generated/`
+- [x] T016 [US4] Generate TypeScript types for derivatives API in `frontend/src/api/generated/`
 
 **Checkpoint**: User Story 4 complete - derivative lifecycle management functional
 
