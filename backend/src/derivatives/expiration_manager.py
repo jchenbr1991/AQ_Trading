@@ -81,9 +81,19 @@ class ExpirationManager:
             session: SQLAlchemy async session for database access
             warning_days: Number of days before expiry to start warning
                          (default: 5, per SC-011)
+
+        Raises:
+            ValueError: If warning_days is negative
         """
+        if warning_days < 0:
+            raise ValueError(f"warning_days must be non-negative, got {warning_days}")
         self._session = session
         self._warning_days = warning_days
+
+    @property
+    def warning_days(self) -> int:
+        """Get the configured warning days threshold."""
+        return self._warning_days
 
     async def get_expiring_positions(self, days: int | None = None) -> list[DerivativeContract]:
         """Query derivative positions expiring within N days.
@@ -93,8 +103,13 @@ class ExpirationManager:
 
         Returns:
             List of DerivativeContract objects expiring within the window
+
+        Raises:
+            ValueError: If days is negative
         """
         lookup_days = days if days is not None else self._warning_days
+        if lookup_days < 0:
+            raise ValueError(f"days must be non-negative, got {lookup_days}")
         today = date.today()
         cutoff_date = today + timedelta(days=lookup_days)
 
