@@ -15,9 +15,13 @@ Design Principles:
 - Parameter changes require stability checks across regimes
 """
 
+import logging
 from typing import Any
 
 from agents.base import AgentRole, BaseAgent, Tool
+from agents.llm import CLIExecutor, LLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 class ResearcherAgent(BaseAgent):
@@ -165,11 +169,26 @@ All code modifications to live strategies require human review.
                 - candidate_file: Path to generated candidate strategy (if applicable)
                 - report: Structured optimization report (if applicable)
         """
-        # Placeholder implementation - actual LLM calls will be added later
-        return {
-            "success": False,
-            "result": None,
-            "error": "Not implemented - LLM integration pending",
-            "task": task,
-            "context_keys": list(context.keys()),
-        }
+        logger.info("ResearcherAgent executing task: %s", task[:50])
+
+        try:
+            # Use CLI executor (codex by default) for LLM integration
+            executor = CLIExecutor(provider=LLMProvider.CODEX)
+            result = await executor.execute(
+                system_prompt=self.SYSTEM_PROMPT,
+                task=task,
+                context=context,
+            )
+
+            logger.info("ResearcherAgent task completed: success=%s", result.get("success"))
+            return result
+
+        except Exception as e:
+            logger.error("ResearcherAgent execution failed: %s", e)
+            return {
+                "success": False,
+                "result": None,
+                "error": f"Agent execution failed: {str(e)}",
+                "task": task,
+                "context_keys": list(context.keys()),
+            }

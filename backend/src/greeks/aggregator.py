@@ -39,6 +39,7 @@ class ContributorInfo:
     contribution_abs: Decimal
     contribution_signed: Decimal
 
+
 # High-risk thresholds for missing positions
 GAMMA_HIGH_RISK_THRESHOLD: Decimal = Decimal("1000")
 VEGA_HIGH_RISK_THRESHOLD: Decimal = Decimal("2000")

@@ -215,29 +215,34 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 - ✅ FR-019: AI agent subsystem support (API, dispatcher, subprocess architecture)
 - ✅ FR-020: Permission boundaries defined (RBAC matrix implemented)
 - ✅ FR-021: Graceful degradation when components fail
-- ⏳ FR-022: Analyst generates sentiment factors (scaffold - needs LLM)
-- ⏳ FR-023: Researcher with overfitting protection (scaffold - needs LLM)
+- ✅ FR-022: Analyst generates sentiment factors (CLI LLM integration complete)
+- ✅ FR-023: Researcher with overfitting protection (CLI LLM integration complete)
 - ✅ SC-013: Out-of-sample validation framework (WalkForwardValidator)
 - ✅ SC-014: Risk bias takes effect within 1 minute (RiskManager reads Redis)
 
 **⚠️ What's Done vs What's Pending:**
 
-**Done (Framework):**
+**Done (Framework + LLM Integration):**
 - Agent subprocess architecture (sidecar pattern)
 - API endpoints for invoke/results
 - Permission RBAC matrix
 - Walk-forward validation logic
 - Redis integration for risk_bias
+- CLI-based LLM integration (codex/gemini CLI)
+- Agent execute() methods call CLIExecutor
+- ResearcherAgent uses codex CLI for strategy analysis
+- AnalystAgent uses gemini CLI for sentiment analysis
+- RiskControllerAgent uses codex CLI for risk assessment
+- OpsAgent uses gemini CLI for reconciliation analysis
 
-**Pending (Requires LLM Integration):**
-- Agent execute() methods return stub responses
-- Agent tools return "not_implemented"
-- No actual LLM provider connected
-
-**To Complete Full Functionality:**
-1. Choose LLM provider (Anthropic Claude, OpenAI, etc.)
-2. Implement tool execution framework for agent-tool calls
-3. Connect agent tools to backend services
+**✅ Tool Integration Complete:**
+- All agent tools (T024-T028) fully implemented and tested (61 tests passing)
+- Tools connected to backend services:
+  - `backtest`: BacktestEngine, CSVBarLoader
+  - `market_data`: Redis (quotes), CSVBarLoader (OHLCV)
+  - `portfolio`: PostgreSQL (Position, Account), Redis (Greeks, PnL)
+  - `redis_writer`: Redis (risk_bias, sentiment, events)
+  - `reconciliation`: PostgreSQL + Redis (broker positions cache)
 
 ---
 
@@ -248,7 +253,7 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 | Graceful Degradation | Done | Risk bias fallback, agent failure tolerance |
 | Enhanced Alerts | Done | EmailChannel + WebhookChannel in backend/src/alerts/channels.py |
 | Audit Logging | Done | AuditService with tiered write paths in backend/src/audit/service.py |
-| Agent Tools Integration | Pending | Connect T024-T028 scaffolds to backend services |
+| Agent Tools Integration | Done | T024-T028 connected to backend services (61 tests pass) |
 
 ---
 

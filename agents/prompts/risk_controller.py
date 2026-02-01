@@ -14,9 +14,13 @@ Design Principles:
 - Conservative defaults when uncertain
 """
 
+import logging
 from typing import Any
 
 from agents.base import AgentRole, BaseAgent, Tool
+from agents.llm import CLIExecutor, LLMProvider
+
+logger = logging.getLogger(__name__)
 
 
 class RiskControllerAgent(BaseAgent):
@@ -58,62 +62,52 @@ When you output `{"bias": 0.5}`, all position limits are halved instantly.
 
 ## Risk Assessment Factors
 
-### 1. VIX-Based Scaling
-| VIX Level | Suggested Bias |
-|-----------|----------------|
-| < 15      | 1.0 (calm)     |
-| 15-20     | 0.9            |
-| 20-25     | 0.7            |
-| 25-30     | 0.5            |
-| 30-40     | 0.3            |
-| > 40      | 0.1 (crisis)   |
+The system provides pre-calculated risk scaling from the volatility module.
+Your role is to:
+1. Review the system-calculated risk scaling (provided in context)
+2. Consider qualitative factors the system may not capture
+3. Provide reasoning for any adjustments
 
-### 2. Recent Drawdown
-| Drawdown (5d) | Adjustment |
-|---------------|------------|
-| < -2%         | -0.1       |
-| < -5%         | -0.2       |
-| < -10%        | -0.3       |
+### System-Calculated Components (from volatility module)
+- **VIX regime**: Provided as "low", "normal", "elevated", "high", or "extreme"
+- **VIX scaling**: Numeric scaling factor (0.1 to 1.0)
+- **Drawdown scaling**: Based on recent portfolio drawdown
+- **Combined scaling**: Minimum of VIX and drawdown factors
 
-### 3. Macro Calendar Events
-| Event Type | Days Before | Adjustment |
-|------------|-------------|------------|
-| FOMC       | 1           | -0.2       |
-| NFP        | 1           | -0.1       |
-| CPI        | 1           | -0.1       |
-| Quad Witch | 1           | -0.1       |
-
-### 4. Current Exposure
-| Exposure Level | Consideration |
-|----------------|---------------|
-| > 80%          | Reduce bias   |
-| 50-80%         | Normal        |
-| < 50%          | Can increase  |
+### Qualitative Factors to Consider
+- Upcoming macro calendar events (FOMC, NFP, CPI, Quad Witch)
+- Market sentiment and news
+- Current portfolio exposure level
+- Sector-specific risks
 
 ## Decision Framework
 
-1. Start with VIX-based baseline
-2. Apply drawdown adjustment
-3. Apply macro calendar adjustment
-4. Consider current exposure
-5. Apply floor of 0.1 (never fully zero unless emergency)
+1. Review the system-calculated risk scaling (provided in context)
+2. Consider qualitative factors not captured by the system
+3. If you believe adjustment is needed, explain your reasoning
+4. Never set bias below 0.1 unless in emergency (halt trading)
 
 ## Output Format
 
 ```json
 {
   "bias": 0.7,
+  "system_calculated": {
+    "vix_regime": "elevated",
+    "vix_scaling": 0.5,
+    "drawdown_scaling": 0.9,
+    "combined_scaling": 0.5
+  },
   "reasoning": {
-    "vix_component": "VIX at 22 -> baseline 0.8",
-    "drawdown_component": "5d drawdown -3% -> -0.1 adjustment",
-    "calendar_component": "FOMC in 2 days -> -0.1 adjustment (reduced)",
-    "exposure_component": "Current exposure 65% -> no adjustment"
+    "system_basis": "Using system-calculated 0.5 as baseline",
+    "qualitative_adjustment": "+0.2 because FOMC is resolved",
+    "final_bias": "0.7 (system 0.5 + adjustment 0.2)"
   },
   "effective_limits": {
     "max_position_pct": "was 5%, now 3.5%",
     "max_exposure_pct": "was 80%, now 56%"
   },
-  "recommended_duration": "24h until FOMC resolution",
+  "recommended_duration": "24h",
   "auto_review_at": "ISO timestamp"
 }
 ```
@@ -181,11 +175,26 @@ Output: `{"bias": 0.1, "emergency": true, "reason": "..."}`
                 - reasoning: Detailed reasoning for the bias
                 - emergency: True if emergency conditions detected
         """
-        # Placeholder implementation - actual LLM calls will be added later
-        return {
-            "success": False,
-            "result": None,
-            "error": "Not implemented - LLM integration pending",
-            "task": task,
-            "context_keys": list(context.keys()),
-        }
+        logger.info("RiskControllerAgent executing task: %s", task[:50])
+
+        try:
+            # Use CLI executor (codex by default for risk analysis)
+            executor = CLIExecutor(provider=LLMProvider.CODEX)
+            result = await executor.execute(
+                system_prompt=self.SYSTEM_PROMPT,
+                task=task,
+                context=context,
+            )
+
+            logger.info("RiskControllerAgent task completed: success=%s", result.get("success"))
+            return result
+
+        except Exception as e:
+            logger.error("RiskControllerAgent execution failed: %s", e)
+            return {
+                "success": False,
+                "result": None,
+                "error": f"Agent execution failed: {str(e)}",
+                "task": task,
+                "context_keys": list(context.keys()),
+            }
