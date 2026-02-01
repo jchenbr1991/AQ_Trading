@@ -10,6 +10,7 @@ import { SystemPage } from './pages/SystemPage';
 import { OptionsExpiringPage } from './pages/OptionsExpiringPage';
 import { GreeksPage } from './pages/GreeksPage';
 import { DerivativesPage } from './pages/DerivativesPage';
+import { AgentsPage } from './pages/AgentsPage';
 
 function Navigation() {
   return (
@@ -47,6 +48,9 @@ function Navigation() {
             <Link to="/system" className="text-gray-300 hover:text-white">
               System
             </Link>
+            <Link to="/agents" className="text-gray-300 hover:text-white">
+              Agents
+            </Link>
           </div>
         </div>
       </div>
@@ -71,6 +75,7 @@ function App() {
             <Route path="/greeks" element={<GreeksPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/system" element={<SystemPage />} />
+            <Route path="/agents" element={<AgentsPage />} />
           </Routes>
         </div>
       </BrowserRouter>

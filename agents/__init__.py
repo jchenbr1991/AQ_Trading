@@ -21,7 +21,13 @@ from agents.base import (
     PermissionError,
     Tool,
 )
-from agents.dispatcher import AgentDispatcher
+
+# AgentDispatcher requires backend models which may not be available
+# in all contexts (e.g., standalone agent testing)
+try:
+    from agents.dispatcher import AgentDispatcher
+except ImportError:
+    AgentDispatcher = None  # type: ignore
 
 __all__ = [
     "AgentDispatcher",
