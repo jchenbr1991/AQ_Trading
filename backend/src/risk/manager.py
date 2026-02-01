@@ -1,6 +1,8 @@
+import logging
 from decimal import Decimal
 from typing import TYPE_CHECKING, Protocol
 
+from src.db.redis_keys import AgentKeys
 from src.greeks.v2_models import OrderIntent, OrderLeg
 from src.risk.models import RiskConfig, RiskResult
 from src.strategies.signals import Signal
@@ -8,6 +10,8 @@ from src.strategies.signals import Signal
 if TYPE_CHECKING:
     from src.greeks.greeks_gate import GreeksGate
     from src.greeks.v2_models import GreeksCheckResult
+
+logger = logging.getLogger(__name__)
 
 
 class PortfolioProtocol(Protocol):
@@ -18,18 +22,29 @@ class PortfolioProtocol(Protocol):
     async def get_position(self, account_id: str, symbol: str, strategy_id: str): ...
 
 
+class RedisClientProtocol(Protocol):
+    """Protocol for Redis client dependency."""
+
+    async def get(self, key: str) -> str | None: ...
+
+
 class RiskManager:
     """Validates trading signals against risk limits."""
+
+    # Default risk bias when Redis is unavailable or key is missing
+    DEFAULT_RISK_BIAS = 1.0
 
     def __init__(
         self,
         config: RiskConfig,
         portfolio: PortfolioProtocol,
         greeks_gate: "GreeksGate | None" = None,
+        redis: "RedisClientProtocol | None" = None,
     ):
         self._config = config
         self._portfolio = portfolio
         self._greeks_gate = greeks_gate
+        self._redis = redis
         self._killed = False
         self._kill_reason: str | None = None
         self._paused_strategies: set[str] = set()
@@ -74,6 +89,42 @@ class RiskManager:
         """Reset daily statistics. Called at start of trading day."""
         self._daily_pnl = Decimal("0")
 
+    async def get_risk_bias(self) -> float:
+        """Get the current risk bias from Redis.
+
+        Risk bias is a multiplier applied to position limits. A value of 1.0 means
+        no adjustment, <1.0 reduces limits, >1.0 increases limits.
+
+        Implements graceful degradation per FR-021:
+        - If Redis is unavailable, returns default bias (1.0)
+        - If key is missing, returns default bias (1.0)
+        - Trading continues normally when agent subsystem fails
+
+        Returns:
+            Risk bias multiplier (float). Default is 1.0 if unavailable.
+        """
+        if self._redis is None:
+            logger.debug("Redis not configured, using default risk bias")
+            return self.DEFAULT_RISK_BIAS
+
+        try:
+            value = await self._redis.get(AgentKeys.RISK_BIAS)
+            if value is None:
+                logger.debug("Risk bias key not found in Redis, using default")
+                return self.DEFAULT_RISK_BIAS
+            bias = float(value)
+            logger.debug(f"Retrieved risk bias from Redis: {bias}")
+            return bias
+        except (ConnectionError, TimeoutError) as e:
+            logger.warning(f"Redis unavailable for risk bias, using default: {e}")
+            return self.DEFAULT_RISK_BIAS
+        except (ValueError, TypeError) as e:
+            logger.warning(f"Invalid risk bias value in Redis, using default: {e}")
+            return self.DEFAULT_RISK_BIAS
+        except Exception as e:
+            logger.warning(f"Unexpected error reading risk bias, using default: {e}")
+            return self.DEFAULT_RISK_BIAS
+
     def _check_symbol_allowed(self, signal: Signal) -> bool:
         """Check if symbol is allowed to trade."""
         # Blocked list takes precedence
@@ -87,28 +138,43 @@ class RiskManager:
         return True
 
     async def _check_position_limits(self, signal: Signal) -> bool:
-        """Check position-level limits."""
+        """Check position-level limits.
+
+        Risk bias from Redis is applied to position limits:
+        - effective_max_position_value = max_position_value * risk_bias
+        - effective_max_quantity = max_quantity_per_order * risk_bias
+
+        This allows the RiskController agent to dynamically adjust risk limits
+        based on market conditions (SC-014).
+        """
         # Sells always pass position limits
         if signal.action == "sell":
             return True
 
-        # Check max quantity per order
-        if signal.quantity > self._config.max_quantity_per_order:
+        # Get risk bias for limit adjustments
+        risk_bias = await self.get_risk_bias()
+        bias_decimal = Decimal(str(risk_bias))
+
+        # Apply bias to quantity limit
+        effective_max_quantity = int(self._config.max_quantity_per_order * risk_bias)
+        if signal.quantity > effective_max_quantity:
             return False
 
         # Get current price
         price = await self._get_current_price(signal.symbol)
         position_value = Decimal(str(signal.quantity)) * price
 
-        # Check max position value
-        if position_value > self._config.max_position_value:
+        # Apply bias to max position value
+        effective_max_position_value = self._config.max_position_value * bias_decimal
+        if position_value > effective_max_position_value:
             return False
 
-        # Check max position as % of portfolio
+        # Check max position as % of portfolio (also apply bias)
         account = await self._portfolio.get_account(self._config.account_id)
         position_pct = (position_value / account.total_equity) * 100
+        effective_max_position_pct = self._config.max_position_pct * bias_decimal
 
-        if position_pct > self._config.max_position_pct:
+        if position_pct > effective_max_position_pct:
             return False
 
         return True
