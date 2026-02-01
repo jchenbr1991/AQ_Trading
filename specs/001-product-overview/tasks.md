@@ -186,11 +186,11 @@
 
 **Purpose**: Improvements that affect multiple user stories
 
-- [ ] T034 [P] [US4/US6] Update OpenAPI spec with derivatives and agents endpoints in `backend/scripts/generate_openapi.py`
-- [ ] T035 [P] [US4/US6] Regenerate frontend types via `frontend/scripts/generate-types.sh`
-- [ ] T036 [P] [US4] Add integration tests for derivatives in `backend/tests/integration/test_derivatives.py`
-- [ ] T037 [P] [US6] Add integration tests for agents in `backend/tests/integration/test_agents.py`
-- [ ] T038 [US4/US6] Run quickstart.md validation - verify setup still works
+- [x] T034 [P] [US4/US6] Update OpenAPI spec with derivatives and agents endpoints in `backend/scripts/generate_openapi.py`
+- [x] T035 [P] [US4/US6] Regenerate frontend types via `frontend/scripts/generate-types.sh`
+- [x] T036 [P] [US4] Add integration tests for derivatives in `backend/tests/integration/test_derivatives.py`
+- [x] T037 [P] [US6] Add integration tests for agents in `backend/tests/integration/test_agents.py`
+- [x] T038 [US4/US6] Run quickstart.md validation - verify setup still works (2362 tests pass)
 
 ---
 

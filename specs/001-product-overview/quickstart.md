@@ -251,6 +251,7 @@ aq_trading/
 │   │   ├── broker/        # Broker integration
 │   │   ├── core/          # Core business logic
 │   │   ├── db/            # Database layer
+│   │   ├── derivatives/   # Options/futures lifecycle (Phase 3)
 │   │   ├── greeks/        # Greeks calculations
 │   │   ├── health/        # Health monitoring
 │   │   ├── models/        # Pydantic models
@@ -259,6 +260,14 @@ aq_trading/
 │   │   ├── services/      # Business services
 │   │   └── strategies/    # Strategy framework
 │   └── tests/             # pytest tests
+│
+├── agents/                # AI Agent sidecar system (Phase 3)
+│   ├── dispatcher.py      # Agent subprocess manager
+│   ├── runner.py          # Subprocess entry point
+│   ├── permissions.py     # RBAC validation
+│   ├── prompts/           # Agent role implementations
+│   ├── tools/             # Agent tool scaffolds
+│   └── validation/        # Walk-forward validator
 │
 ├── frontend/              # React TypeScript frontend
 │   ├── src/

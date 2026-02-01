@@ -1,901 +1,3957 @@
 openapi: 3.1.0
 info:
-  title: AQ Trading API
-  description: |
-    REST API for the AQ Trading algorithmic trading system.
-
-    ## Overview
-    This API provides endpoints for:
-    - Portfolio management (accounts, positions, transactions)
-    - Order management (submit, cancel, status)
-    - Strategy control (start, stop, status)
-    - Risk monitoring (limits, Greeks, alerts)
-    - Backtesting (run, results)
-    - Health monitoring (component status)
-
-    ## Authentication
-    Currently no authentication required (single-user system).
-    Future: API key authentication for production deployment.
-  version: 1.0.0
-  contact:
-    name: AQ Trading Team
-
-servers:
-  - url: http://localhost:8000
-    description: Development server
-  - url: http://localhost:8080
-    description: Production server
-
-tags:
-  - name: portfolio
-    description: Account and position management
-  - name: orders
-    description: Order lifecycle management
-  - name: strategies
-    description: Strategy control and monitoring
-  - name: risk
-    description: Risk monitoring and limits
-  - name: greeks
-    description: Options Greeks monitoring
-  - name: backtest
-    description: Backtesting engine
-  - name: health
-    description: System health monitoring
-  - name: storage
-    description: Data storage monitoring
-
+  title: AQ Trading
+  version: 0.1.0
 paths:
-  # Portfolio endpoints
+  /api/portfolio/accounts/{account_id}:
+    get:
+      tags:
+      - portfolio
+      summary: Get Account
+      operationId: get_account_api_portfolio_accounts__account_id__get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/portfolio/accounts/{account_id}/positions:
+    get:
+      tags:
+      - portfolio
+      summary: Get Positions
+      operationId: get_positions_api_portfolio_accounts__account_id__positions_get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strategy Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PositionRead'
+                title: Response Get Positions Api Portfolio Accounts  Account Id  Positions
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/portfolio/accounts/{account_id}/positions/{symbol}:
+    get:
+      tags:
+      - portfolio
+      summary: Get Position
+      operationId: get_position_api_portfolio_accounts__account_id__positions__symbol__get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: symbol
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Symbol
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strategy Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PositionRead'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/portfolio/accounts/{account_id}/pnl:
+    get:
+      tags:
+      - portfolio
+      summary: Get Pnl
+      operationId: get_pnl_api_portfolio_accounts__account_id__pnl_get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strategy Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/portfolio/accounts/{account_id}/exposure/{symbol}:
+    get:
+      tags:
+      - portfolio
+      summary: Get Exposure
+      operationId: get_exposure_api_portfolio_accounts__account_id__exposure__symbol__get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: symbol
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Symbol
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/portfolio/account/{account_id}:
     get:
-      tags: [portfolio]
-      summary: Get account summary
-      description: Returns cash balance, buying power, total equity, and P&L
-      operationId: getAccountSummary
+      tags:
+      - portfolio
+      summary: Get Account Summary
+      description: "Get account summary for a given account.\n\nReturns cash balance,\
+        \ buying power, total equity, and P&L information.\n\nTODO: Wire to real PortfolioManager\
+        \ when database integration is complete.\n\nArgs:\n    account_id: The account\
+        \ identifier\n\nReturns:\n    Account summary with financial metrics"
+      operationId: get_account_summary_api_portfolio_account__account_id__get
       parameters:
-        - name: account_id
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
       responses:
         '200':
-          description: Account summary
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AccountSummary'
-
+                $ref: '#/components/schemas/AccountSummaryResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/portfolio/positions/{account_id}:
     get:
-      tags: [portfolio]
-      summary: Get all positions
-      description: Returns list of open positions with current prices and P&L
-      operationId: getPositions
+      tags:
+      - portfolio
+      summary: Get Positions
+      description: "Get all positions for a given account.\n\nReturns list of open\
+        \ positions with current prices and P&L.\n\nTODO: Wire to real PortfolioManager\
+        \ when database integration is complete.\n\nArgs:\n    account_id: The account\
+        \ identifier\n\nReturns:\n    List of positions"
+      operationId: get_positions_api_portfolio_positions__account_id__get
       parameters:
-        - name: account_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: strategy_id
-          in: query
-          required: false
-          schema:
-            type: string
-          description: Filter by strategy
-      responses:
-        '200':
-          description: List of positions
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Position'
-
-  # Orders endpoints
-  /api/orders:
-    get:
-      tags: [orders]
-      summary: List orders
-      operationId: listOrders
-      parameters:
-        - name: account_id
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: status
-          in: query
-          required: false
-          schema:
-            $ref: '#/components/schemas/OrderStatus'
-        - name: strategy_id
-          in: query
-          required: false
-          schema:
-            type: string
-      responses:
-        '200':
-          description: List of orders
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Order'
-
-    post:
-      tags: [orders]
-      summary: Submit new order
-      operationId: submitOrder
-      requestBody:
+      - name: account_id
+        in: path
         required: true
+        schema:
+          type: string
+          title: Account Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PositionResponse'
+                title: Response Get Positions Api Portfolio Positions  Account Id  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/risk/state:
+    get:
+      tags:
+      - risk
+      summary: Get State
+      description: "Get the current trading state.\n\nReturns:\n    Current trading\
+        \ state with metadata"
+      operationId: get_state_api_risk_state_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateResponse'
+  /api/risk/halt:
+    post:
+      tags:
+      - risk
+      summary: Halt
+      description: "Halt trading - emergency stop.\n\nRequires a reason. Resume is\
+        \ not allowed until enable_resume is called.\n\nArgs:\n    request: HaltRequest\
+        \ with reason\n\nReturns:\n    Action result with new state"
+      operationId: halt_api_risk_halt_post
+      requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/OrderRequest'
+              $ref: '#/components/schemas/HaltRequest'
+        required: true
       responses:
-        '201':
-          description: Order created
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Order'
-        '400':
-          description: Invalid order request
+                $ref: '#/components/schemas/ActionResponse'
         '422':
-          description: Risk check failed
-
-  /api/orders/{order_id}:
-    get:
-      tags: [orders]
-      summary: Get order by ID
-      operationId: getOrder
-      parameters:
-        - name: order_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Order details
+          description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Order'
-        '404':
-          description: Order not found
-
-    delete:
-      tags: [orders]
-      summary: Cancel order
-      operationId: cancelOrder
-      parameters:
-        - name: order_id
-          in: path
-          required: true
-          schema:
-            type: string
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/risk/pause:
+    post:
+      tags:
+      - risk
+      summary: Pause
+      description: "Pause trading - temporary stop.\n\nOptionally accepts a reason.\
+        \ Close operations are still allowed.\n\nArgs:\n    request: Optional PauseRequest\
+        \ with reason\n\nReturns:\n    Action result with new state"
+      operationId: pause_api_risk_pause_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              anyOf:
+              - $ref: '#/components/schemas/PauseRequest'
+              - type: 'null'
+              title: Request
       responses:
         '200':
-          description: Order cancelled
-        '400':
-          description: Order cannot be cancelled
-        '404':
-          description: Order not found
-
-  # Risk endpoints
-  /api/risk/status/{account_id}:
-    get:
-      tags: [risk]
-      summary: Get risk status
-      description: Current risk metrics and limit utilization
-      operationId: getRiskStatus
-      parameters:
-        - name: account_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Risk status
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/RiskStatus'
-
+                $ref: '#/components/schemas/ActionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/risk/resume:
+    post:
+      tags:
+      - risk
+      summary: Resume
+      description: "Resume trading to RUNNING state.\n\nOnly succeeds if can_resume\
+        \ is True. Returns 400 error if cannot resume.\n\nReturns:\n    Action result\
+        \ with new state\n\nRaises:\n    HTTPException: 400 if cannot resume (HALTED\
+        \ without enable_resume)"
+      operationId: resume_api_risk_resume_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionResponse'
+  /api/risk/enable-resume:
+    post:
+      tags:
+      - risk
+      summary: Enable Resume
+      description: "Enable resume for HALTED state.\n\nOnly affects HALTED state.\
+        \ Has no effect on other states.\n\nReturns:\n    Action result with current\
+        \ state"
+      operationId: enable_resume_api_risk_enable_resume_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionResponse'
   /api/risk/kill-switch:
     post:
-      tags: [risk]
-      summary: Activate kill switch
-      description: Emergency flatten all positions
-      operationId: activateKillSwitch
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                account_id:
-                  type: string
-                reason:
-                  type: string
-              required:
-                - account_id
+      tags:
+      - risk
+      summary: Kill Switch
+      description: "Emergency kill switch - compound action.\n\nPerforms the following\
+        \ actions:\n1. HALTs trading (sets state to HALTED, can_resume=False)\n2.\
+        \ Cancels all orders (TODO: wire to OrderManager - Phase 1: mocked)\n3. Flattens\
+        \ all positions (TODO: wire to OrderManager - Phase 1: mocked)\n\nReturns:\n\
+        \    Kill switch result with actions executed and any errors"
+      operationId: kill_switch_api_risk_kill_switch_post
       responses:
         '200':
-          description: Kill switch activated
-        '500':
-          description: Kill switch failed
-
-  # Greeks endpoints
-  /api/greeks/{account_id}:
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KillSwitchResult'
+  /api/reconciliation/recent:
     get:
-      tags: [greeks]
-      summary: Get current Greeks
-      description: Portfolio Greeks aggregation
-      operationId: getGreeks
-      parameters:
-        - name: account_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: strategy_id
-          in: query
-          required: false
-          schema:
-            type: string
+      tags:
+      - reconciliation
+      summary: Get Recent Alerts
+      description: "Get the last 10 reconciliation alerts.\n\nReturns:\n    List of\
+        \ recent alerts, newest first"
+      operationId: get_recent_alerts_api_reconciliation_recent_get
       responses:
         '200':
-          description: Greeks snapshot
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/GreeksSnapshot'
-
-  /api/greeks/{account_id}/scenario:
-    post:
-      tags: [greeks]
-      summary: Run scenario analysis
-      description: Calculate P&L impact of price/vol changes
-      operationId: runScenario
-      parameters:
-        - name: account_id
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ScenarioRequest'
-      responses:
-        '200':
-          description: Scenario results
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ScenarioResult'
-
-  /api/greeks/{account_id}/history:
-    get:
-      tags: [greeks]
-      summary: Get Greeks history
-      description: Historical Greeks with time-bucket aggregation
-      operationId: getGreeksHistory
-      parameters:
-        - name: account_id
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: bucket
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: ['1h', '4h', '1d', '7d']
-            default: '1h'
-        - name: start
-          in: query
-          required: false
-          schema:
-            type: string
-            format: date-time
-        - name: end
-          in: query
-          required: false
-          schema:
-            type: string
-            format: date-time
-      responses:
-        '200':
-          description: Greeks history
-          content:
-            application/json:
-              schema:
-                type: array
                 items:
-                  $ref: '#/components/schemas/GreeksSnapshot'
-
-  /api/greeks/{account_id}/limits:
-    get:
-      tags: [greeks]
-      summary: Get Greeks limits
-      operationId: getGreeksLimits
-      parameters:
-        - name: account_id
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Current limits
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GreeksLimits'
-
-    put:
-      tags: [greeks]
-      summary: Update Greeks limits
-      operationId: updateGreeksLimits
-      parameters:
-        - name: account_id
-          in: path
-          required: true
-          schema:
-            type: string
+                  $ref: '#/components/schemas/ReconciliationAlert'
+                type: array
+                title: Response Get Recent Alerts Api Reconciliation Recent Get
+  /api/orders/close:
+    post:
+      tags:
+      - orders
+      summary: Close Position
+      description: "Close a single position.\n\nSubmits an order to close (sell) a\
+        \ position. For Phase 1, order submission\nis mocked and returns a fake order_id.\n\
+        \nArgs:\n    request: ClosePositionRequest with symbol, quantity, order_type,\
+        \ etc.\n\nReturns:\n    ClosePositionResponse with success status and order_id\n\
+        \nRaises:\n    HTTPException: 400 if trading is HALTED"
+      operationId: close_position_api_orders_close_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/GreeksLimits'
+              $ref: '#/components/schemas/ClosePositionRequest'
+        required: true
       responses:
         '200':
-          description: Limits updated
-        '400':
-          description: Invalid limits
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClosePositionResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/health/detailed:
+    get:
+      tags:
+      - health
+      summary: Get Detailed Health
+      description: 'Get detailed health status of all components.
 
-  # Backtest endpoints
+
+        Returns 200 if healthy, 503 if degraded or down.'
+      operationId: get_detailed_health_api_health_detailed_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemHealthResponse'
+  /api/health/component/{component_name}:
+    get:
+      tags:
+      - health
+      summary: Get Component Health
+      description: Get health status for a specific component.
+      operationId: get_component_health_api_health_component__component_name__get
+      parameters:
+      - name: component_name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Component Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComponentHealthResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /api/backtest:
     post:
-      tags: [backtest]
-      summary: Run backtest
-      description: Execute strategy against historical data
-      operationId: runBacktest
+      tags:
+      - backtest
+      summary: Run Backtest
+      description: "Run a backtest with given configuration.\n\nArgs:\n    request:\
+        \ Backtest configuration including strategy, symbol, and date range.\n\nReturns:\n\
+        \    BacktestResponse with status and results or error.\n\nRaises:\n    HTTPException:\
+        \ 400 if strategy is not allowed or insufficient data."
+      operationId: run_backtest_api_backtest_post
       requestBody:
-        required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/BacktestRequest'
+        required: true
       responses:
         '200':
-          description: Backtest results
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/BacktestResult'
-        '400':
-          description: Invalid request
-
-  # Health endpoints
-  /api/health:
+                $ref: '#/components/schemas/BacktestResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/storage:
     get:
-      tags: [health]
-      summary: Basic health check
-      operationId: healthCheck
+      tags:
+      - storage
+      summary: Get Storage Stats
+      description: Get comprehensive storage statistics.
+      operationId: get_storage_stats_api_storage_get
       responses:
         '200':
-          description: Service is healthy
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StorageStatsResponse'
+  /api/storage/tables:
+    get:
+      tags:
+      - storage
+      summary: Get Table Stats
+      description: Get statistics for each table.
+      operationId: get_table_stats_api_storage_tables_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/TableStatsResponse'
+                type: array
+                title: Response Get Table Stats Api Storage Tables Get
+  /api/alerts:
+    get:
+      tags:
+      - alerts
+      summary: List Alerts
+      description: "List alerts with optional filtering and pagination.\n\nArgs:\n\
+        \    severity: Filter by severity level (1=SEV1/Critical, 2=SEV2/Warning,\
+        \ 3=SEV3/Info)\n    type: Filter by alert type (e.g., \"order_rejected\",\
+        \ \"component_unhealthy\")\n    offset: Number of records to skip (default\
+        \ 0)\n    limit: Maximum number of records to return (default 50, max 100)\n\
+        \    db: Database session\n\nReturns:\n    Paginated list of alerts with total\
+        \ count"
+      operationId: list_alerts_api_alerts_get
+      parameters:
+      - name: severity
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 3
+            minimum: 1
+          - type: 'null'
+          title: Severity
+      - name: type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Type
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/alerts/stats:
+    get:
+      tags:
+      - alerts
+      summary: Get Alert Stats
+      description: "Get alert statistics for the last 24 hours.\n\nReturns:\n    Statistics\
+        \ including total count, breakdown by severity and type,\n    and delivery\
+        \ success rate"
+      operationId: get_alert_stats_api_alerts_stats_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertStatsResponse'
+  /api/alerts/{alert_id}/deliveries:
+    get:
+      tags:
+      - alerts
+      summary: Get Alert Deliveries
+      description: "Get delivery attempts for a specific alert.\n\nArgs:\n    alert_id:\
+        \ The UUID of the alert\n    db: Database session\n\nReturns:\n    List of\
+        \ delivery attempts for the alert\n\nRaises:\n    HTTPException: 404 if alert\
+        \ not found"
+      operationId: get_alert_deliveries_api_alerts__alert_id__deliveries_get
+      parameters:
+      - name: alert_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Alert Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeliveryResponse'
+                title: Response Get Alert Deliveries Api Alerts  Alert Id  Deliveries
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/audit/stats:
+    get:
+      tags:
+      - audit
+      summary: Get Audit Stats
+      description: "Get audit log statistics.\n\nReturns:\n    Statistics including\
+        \ total count, breakdown by event type, actor, and resource type"
+      operationId: get_audit_stats_api_audit_stats_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditStatsResponse'
+  /api/audit/integrity/{chain_key}:
+    get:
+      tags:
+      - audit
+      summary: Verify Chain Integrity
+      description: "Verify the integrity of an audit chain.\n\nArgs:\n    chain_key:\
+        \ The chain key to verify\n    limit: Maximum number of events to verify (default\
+        \ 100, max 1000)\n    db: Database session\n\nReturns:\n    Chain integrity\
+        \ verification result including validity and any errors found"
+      operationId: verify_chain_integrity_api_audit_integrity__chain_key__get
+      parameters:
+      - name: chain_key
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Chain Key
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 100
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChainIntegrityResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/audit/{event_id}:
+    get:
+      tags:
+      - audit
+      summary: Get Audit Event
+      description: "Get a single audit event by UUID.\n\nArgs:\n    event_id: The\
+        \ UUID of the audit event\n    db: Database session\n\nReturns:\n    The audit\
+        \ event details\n\nRaises:\n    HTTPException: 404 if audit event not found"
+      operationId: get_audit_event_api_audit__event_id__get
+      parameters:
+      - name: event_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          title: Event Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/audit:
+    get:
+      tags:
+      - audit
+      summary: List Audit Logs
+      description: "List audit logs with optional filtering and pagination.\n\nArgs:\n\
+        \    event_type: Filter by event type (e.g., \"order_placed\", \"config_updated\"\
+        )\n    resource_type: Filter by resource type (e.g., \"order\", \"config\"\
+        )\n    resource_id: Filter by specific resource ID\n    actor_id: Filter by\
+        \ actor ID\n    start_time: Filter events after this time (inclusive)\n  \
+        \  end_time: Filter events before this time (inclusive)\n    offset: Number\
+        \ of records to skip (default 0)\n    limit: Maximum number of records to\
+        \ return (default 50, max 100)\n    db: Database session\n\nReturns:\n   \
+        \ Paginated list of audit logs with total count"
+      operationId: list_audit_logs_api_audit_get
+      parameters:
+      - name: event_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Event Type
+      - name: resource_type
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resource Type
+      - name: resource_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resource Id
+      - name: actor_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Actor Id
+      - name: start_time
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Start Time
+      - name: end_time
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: End Time
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 100
+          minimum: 1
+          default: 50
+          title: Limit
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/degradation/status:
+    get:
+      tags:
+      - degradation
+      summary: Get Status
+      description: "Get current system degradation status.\n\nReturns the current\
+        \ system mode, recovery stage (if recovering),\nand whether a force override\
+        \ is active.\n\nReturns:\n    SystemStatusResponse with mode, stage, and override\
+        \ status\n\nRaises:\n    HTTPException: 503 if degradation service is not\
+        \ initialized"
+      operationId: get_status_api_degradation_status_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemStatusResponse'
+  /api/degradation/force:
+    post:
+      tags:
+      - degradation
+      summary: Force Override
+      description: "Force the system into a specific mode.\n\nThis is for manual intervention\
+        \ when the system needs human control.\nThe override is temporary and will\
+        \ expire after the specified TTL.\n\nArgs:\n    request: ForceOverrideRequest\
+        \ with mode, TTL, operator ID, and reason\n\nReturns:\n    ForceOverrideResponse\
+        \ confirming the operation\n\nRaises:\n    HTTPException: 503 if degradation\
+        \ service is not initialized"
+      operationId: force_override_api_degradation_force_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForceOverrideRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ForceOverrideResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/degradation/permissions:
+    get:
+      tags:
+      - degradation
+      summary: Get Permissions
+      description: "Get current trading permissions for all action types.\n\nReturns\
+        \ permissions for each trading action (open, send, amend,\ncancel, reduce_only,\
+        \ query) based on the current system mode\nand recovery stage.\n\nReturns:\n\
+        \    TradingPermissionsResponse with mode, stage, and permission details\n\
+        \nRaises:\n    HTTPException: 503 if degradation service is not initialized"
+      operationId: get_permissions_api_degradation_permissions_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TradingPermissionsResponse'
+  /api/options/expiring:
+    get:
+      tags:
+      - options
+      summary: Get Expiring Alerts
+      description: "Get expiring option alerts for an account.\n\nReturns alerts at\
+        \ alert-level granularity (same position may have multiple alerts).\n\nArgs:\n\
+        \    account_id: Account to fetch alerts for\n    status: Filter by status\
+        \ (pending, acknowledged, all)\n    sort_by: Sort order (dte, severity, expiry)\n\
+        \    db: Database session\n\nReturns:\n    List of expiring alerts with position\
+        \ details"
+      operationId: get_expiring_alerts_api_options_expiring_get
+      parameters:
+      - name: account_id
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Account ID to fetch alerts for
+          title: Account Id
+        description: Account ID to fetch alerts for
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(pending|acknowledged|all)$
+          description: Filter by alert status
+          default: pending
+          title: Status
+        description: Filter by alert status
+      - name: sort_by
+        in: query
+        required: false
+        schema:
+          type: string
+          pattern: ^(dte|severity|expiry)$
+          description: Sort order
+          default: dte
+          title: Sort By
+        description: Sort order
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpiringAlertsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/options/{position_id}/close:
+    post:
+      tags:
+      - options
+      summary: Close Position
+      description: "Close an option position (Phase 1 - idempotent).\n\nCreates a\
+        \ CloseRequest and OutboxEvent atomically. The outbox worker\nwill process\
+        \ the event and submit the actual close order.\n\nArgs:\n    position_id:\
+        \ ID of the position to close\n    response: FastAPI response object for setting\
+        \ status code\n    request: Close request with optional reason\n    idempotency_key:\
+        \ Idempotency key header for deduplication\n    db: Database session\n\nReturns:\n\
+        \    ClosePositionResponseV2 with close request details\n\nRaises:\n    400:\
+        \ Missing idempotency key or position has zero quantity\n    404: Position\
+        \ not found\n    409: Position already closing with different idempotency\
+        \ key"
+      operationId: close_position_api_options__position_id__close_post
+      parameters:
+      - name: position_id
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Position Id
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Idempotency-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClosePositionRequestV2'
+              default: {}
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClosePositionResponseV2'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/options/alerts/{alert_id}/acknowledge:
+    post:
+      tags:
+      - options
+      summary: Acknowledge Alert
+      description: "Acknowledge an expiring alert.\n\nMarks the alert as acknowledged\
+        \ so it doesn't appear in pending list.\n\nArgs:\n    alert_id: ID of the\
+        \ alert to acknowledge\n    db: Database session\n\nReturns:\n    Acknowledgment\
+        \ response\n\nRaises:\n    404: Alert not found"
+      operationId: acknowledge_alert_api_options_alerts__alert_id__acknowledge_post
+      parameters:
+      - name: alert_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Alert Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcknowledgeAlertResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/options/check-expirations:
+    post:
+      tags:
+      - options
+      summary: Trigger Manual Check
+      description: "Manually trigger expiration check (internal/testing use).\n\n\
+        Runs the ExpirationChecker for the specified account and returns statistics.\n\
+        \nArgs:\n    account_id: Account to check expirations for\n    db: Database\
+        \ session\n\nReturns:\n    Check statistics including positions checked and\
+        \ alerts created"
+      operationId: trigger_manual_check_api_options_check_expirations_post
+      parameters:
+      - name: account_id
+        in: query
+        required: true
+        schema:
+          type: string
+          description: Account ID to check
+          title: Account Id
+        description: Account ID to check
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManualCheckResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/greeks/accounts/{account_id}:
+    get:
+      tags:
+      - greeks
+      summary: Get Greeks Overview
+      description: "Get full Greeks overview for an account.\n\nReturns account-level\
+        \ Greeks, per-strategy breakdown, alerts, and top contributors.\n\nArgs:\n\
+        \    account_id: The account identifier.\n    db: Database session.\n\nReturns:\n\
+        \    GreeksOverviewResponse with full Greeks data."
+      operationId: get_greeks_overview_api_greeks_accounts__account_id__get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GreeksOverviewResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/greeks/accounts/{account_id}/current:
+    get:
+      tags:
+      - greeks
+      summary: Get Current Greeks
+      description: "Get current aggregated Greeks for an account.\n\nArgs:\n    account_id:\
+        \ The account identifier.\n    db: Database session.\n\nReturns:\n    AggregatedGreeksResponse\
+        \ with current Greeks data."
+      operationId: get_current_greeks_api_greeks_accounts__account_id__current_get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AggregatedGreeksResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/greeks/accounts/{account_id}/alerts:
+    get:
+      tags:
+      - greeks
+      summary: Get Greeks Alerts
+      description: "Get Greeks alerts for an account.\n\nArgs:\n    account_id: The\
+        \ account identifier.\n    acknowledged: Optional filter - True for acknowledged\
+        \ only, False for unacknowledged only.\n    db: Database session.\n\nReturns:\n\
+        \    List of GreeksAlertResponse for the account."
+      operationId: get_greeks_alerts_api_greeks_accounts__account_id__alerts_get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: acknowledged
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Acknowledged
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/GreeksAlertResponse'
+                title: Response Get Greeks Alerts Api Greeks Accounts  Account Id  Alerts
+                  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/greeks/alerts/{alert_id}/acknowledge:
+    post:
+      tags:
+      - greeks
+      summary: Acknowledge Alert
+      description: "Acknowledge a Greeks alert.\n\nArgs:\n    alert_id: The UUID string\
+        \ of the alert to acknowledge.\n    request: Request body with acknowledged_by\
+        \ field.\n    db: Database session.\n\nReturns:\n    GreeksAlertResponse with\
+        \ updated acknowledgment fields.\n\nRaises:\n    HTTPException: 404 if alert\
+        \ not found."
+      operationId: acknowledge_alert_api_greeks_alerts__alert_id__acknowledge_post
+      parameters:
+      - name: alert_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Alert Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertAcknowledgeRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GreeksAlertResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/greeks/accounts/{account_id}/scenario:
+    get:
+      tags:
+      - greeks
+      summary: Get Scenario Shock
+      description: "Get scenario shock analysis for Greeks.\n\nV2 Feature: Scenario\
+        \ Shock API\n\nReturns PnL and delta projections for \xB1X% underlying price\
+        \ shocks.\nDefault shocks are \xB11% and \xB12%.\n\nArgs:\n    account_id:\
+        \ Account identifier.\n    shocks: Comma-separated shock percentages (default:\
+        \ \"1,2\").\n    scope: ACCOUNT or STRATEGY.\n    strategy_id: Required if\
+        \ scope=STRATEGY.\n    db: Database session.\n\nReturns:\n    ScenarioShockApiResponse\
+        \ with current Greeks and scenario results.\n\nRaises:\n    HTTPException:\
+        \ 400 if scope=STRATEGY and strategy_id not provided.\n    HTTPException:\
+        \ 404 if no positions found."
+      operationId: get_scenario_shock_api_greeks_accounts__account_id__scenario_get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: shocks
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Comma-separated shock percentages (e.g., '1,2')
+          title: Shocks
+        description: Comma-separated shock percentages (e.g., '1,2')
+      - name: scope
+        in: query
+        required: false
+        schema:
+          enum:
+          - ACCOUNT
+          - STRATEGY
+          type: string
+          description: Scope for scenario
+          default: ACCOUNT
+          title: Scope
+        description: Scope for scenario
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Strategy ID (required if scope=STRATEGY)
+          title: Strategy Id
+        description: Strategy ID (required if scope=STRATEGY)
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScenarioShockApiResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/greeks/accounts/{account_id}/limits:
+    put:
+      tags:
+      - greeks
+      summary: Put Limits
+      description: "Update Greeks limits for an account.\n\nV2 Feature: PUT /limits\n\
+        \nArgs:\n    account_id: Account identifier.\n    request: New limits configuration.\n\
+        \    x_user_id: User ID from header.\n\nReturns:\n    GreeksLimitsApiResponse\
+        \ with applied limits.\n\nRaises:\n    HTTPException: 400 if limits validation\
+        \ fails.\n    HTTPException: 501 if strategy_id provided."
+      operationId: put_limits_api_greeks_accounts__account_id__limits_put
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: X-User-ID
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-User-Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GreeksLimitsApiRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GreeksLimitsApiResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - greeks
+      summary: Get Limits
+      description: "Get current Greeks limits for an account.\n\nV2 Feature: GET /limits\n\
+        \nArgs:\n    account_id: Account identifier.\n\nReturns:\n    Current limits\
+        \ configuration."
+      operationId: get_limits_api_greeks_accounts__account_id__limits_get
+      parameters:
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      responses:
+        '200':
+          description: Successful Response
           content:
             application/json:
               schema:
                 type: object
-                properties:
-                  status:
-                    type: string
-                    enum: ['ok']
-                  timestamp:
-                    type: string
-                    format: date-time
-
-  /api/health/detailed:
-    get:
-      tags: [health]
-      summary: Detailed health status
-      description: Health of all system components
-      operationId: detailedHealthCheck
-      responses:
-        '200':
-          description: Detailed health status
+                additionalProperties: true
+                title: Response Get Limits Api Greeks Accounts  Account Id  Limits
+                  Get
+        '422':
+          description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SystemHealth'
-
-  /api/health/component/{name}:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/greeks/accounts/{account_id}/history:
     get:
-      tags: [health]
-      summary: Component health
-      operationId: componentHealth
+      tags:
+      - greeks
+      summary: Get History
+      description: "Get historical Greeks data.\n\nV2 Feature: GET /history\n\nReturns\
+        \ time-bucketed historical Greeks with automatic aggregation:\n- 1h: raw 30s\
+        \ data (~120 points)\n- 4h: 1min aggregation (~240 points)\n- 1d: 5min aggregation\
+        \ (~288 points)\n- 7d: 1h aggregation (~168 points)\n\nArgs:\n    account_id:\
+        \ Account identifier.\n    window: Time window (1h, 4h, 1d, 7d).\n    scope:\
+        \ ACCOUNT or STRATEGY.\n    strategy_id: Required if scope=STRATEGY.\n   \
+        \ db: Database session.\n\nReturns:\n    GreeksHistoryApiResponse with aggregated\
+        \ history points.\n\nRaises:\n    HTTPException: 400 if invalid window or\
+        \ missing strategy_id."
+      operationId: get_history_api_greeks_accounts__account_id__history_get
       parameters:
-        - name: name
-          in: path
-          required: true
-          schema:
-            type: string
+      - name: account_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Account Id
+      - name: window
+        in: query
+        required: true
+        schema:
+          type: string
+          description: 'Time window: 1h, 4h, 1d, 7d'
+          title: Window
+        description: 'Time window: 1h, 4h, 1d, 7d'
+      - name: scope
+        in: query
+        required: false
+        schema:
+          enum:
+          - ACCOUNT
+          - STRATEGY
+          type: string
+          default: ACCOUNT
+          title: Scope
+      - name: strategy_id
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strategy Id
       responses:
         '200':
-          description: Component health status
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/ComponentHealth'
-        '404':
-          description: Component not found
-
-  # Storage endpoints
-  /api/storage/stats:
+                $ref: '#/components/schemas/GreeksHistoryApiResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/derivatives/expiring:
     get:
-      tags: [storage]
-      summary: Get storage statistics
-      operationId: getStorageStats
+      tags:
+      - derivatives
+      summary: Get Expiring Positions
+      description: "List derivative positions expiring within the default warning\
+        \ window.\n\nReturns positions expiring within DEFAULT_WARNING_DAYS (5 days\
+        \ per SC-011).\n\nReturns:\n    ExpiringPositionsResponse containing list\
+        \ of expiring positions\n\nExample:\n    GET /api/derivatives/expiring\n \
+        \   Returns positions expiring within 5 days"
+      operationId: get_expiring_positions_api_derivatives_expiring_get
       responses:
         '200':
-          description: Storage statistics
+          description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StorageStats'
-
+                $ref: '#/components/schemas/ExpiringPositionsResponse'
+  /api/derivatives/expiring/{days}:
+    get:
+      tags:
+      - derivatives
+      summary: Get Expiring Positions Within Days
+      description: "List derivative positions expiring within N days.\n\nArgs:\n \
+        \   days: Number of days to look ahead (0-365)\n\nReturns:\n    ExpiringPositionsResponse\
+        \ containing list of expiring positions\n\nExample:\n    GET /api/derivatives/expiring/7\n\
+        \    Returns positions expiring within 7 days"
+      operationId: get_expiring_positions_within_days_api_derivatives_expiring__days__get
+      parameters:
+      - name: days
+        in: path
+        required: true
+        schema:
+          type: integer
+          maximum: 365
+          minimum: 0
+          description: Number of days to look ahead
+          title: Days
+        description: Number of days to look ahead
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpiringPositionsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/derivatives/roll/{symbol}:
+    post:
+      tags:
+      - derivatives
+      summary: Generate Roll Plan
+      description: "Generate a roll plan for a futures position.\n\nThis endpoint\
+        \ generates instructions for rolling a futures position\nbut does NOT execute\
+        \ any trades. Use the returned plan to manually\nor programmatically execute\
+        \ the roll.\n\nArgs:\n    symbol: The futures contract symbol to roll (e.g.,\
+        \ ESH24)\n\nReturns:\n    RollPlanResponse containing the roll instructions\n\
+        \nRaises:\n    404: If the futures contract is not found\n    400: If the\
+        \ contract is not a futures contract\n\nExample:\n    POST /api/derivatives/roll/ESH24\n\
+        \    Returns roll plan with close and open instructions"
+      operationId: generate_roll_plan_api_derivatives_roll__symbol__post
+      parameters:
+      - name: symbol
+        in: path
+        required: true
+        schema:
+          type: string
+          description: The futures contract symbol to roll
+          title: Symbol
+        description: The futures contract symbol to roll
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RollPlanResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/agents/invoke:
+    post:
+      tags:
+      - agents
+      summary: Invoke Agent
+      description: "Invoke an agent task.\n\nThis endpoint dispatches a task to the\
+        \ specified agent role.\nThe agent runs as a subprocess and returns results\
+        \ asynchronously.\n\nArgs:\n    request: The agent invocation request containing\
+        \ role, task, and context\n\nReturns:\n    AgentResultResponse with the execution\
+        \ result\n\nExample:\n    POST /api/agents/invoke\n    {\n        \"role\"\
+        : \"researcher\",\n        \"task\": \"analyze market trends for AAPL\",\n\
+        \        \"context\": {\"symbol\": \"AAPL\", \"timeframe\": \"1D\"}\n    }"
+      operationId: invoke_agent_api_agents_invoke_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentInvokeRequest'
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/agents/results:
+    get:
+      tags:
+      - agents
+      summary: List Agent Results
+      description: "List agent results with pagination.\n\nArgs:\n    limit: Maximum\
+        \ number of results to return (default 50, max 1000)\n    offset: Number of\
+        \ results to skip for pagination\n\nReturns:\n    AgentResultsListResponse\
+        \ containing results and total count\n\nExample:\n    GET /api/agents/results?limit=10&offset=0\n\
+        \    Returns first 10 agent results"
+      operationId: list_agent_results_api_agents_results_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 0
+          description: Maximum results to return
+          default: 50
+          title: Limit
+        description: Maximum results to return
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          description: Number of results to skip
+          default: 0
+          title: Offset
+        description: Number of results to skip
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResultsListResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/agents/results/{result_id}:
+    get:
+      tags:
+      - agents
+      summary: Get Agent Result
+      description: "Get a specific agent result by ID.\n\nArgs:\n    result_id: The\
+        \ UUID of the agent result\n\nReturns:\n    AgentResultResponse with the result\
+        \ details\n\nRaises:\n    404: If the result is not found\n\nExample:\n  \
+        \  GET /api/agents/results/550e8400-e29b-41d4-a716-446655440000"
+      operationId: get_agent_result_api_agents_results__result_id__get
+      parameters:
+      - name: result_id
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          description: The agent result UUID
+          title: Result Id
+        description: The agent result UUID
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /health:
+    get:
+      summary: Health
+      operationId: health_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
 components:
   schemas:
-    # Core trading schemas
-    AccountSummary:
-      type: object
+    AccountRead:
       properties:
         account_id:
           type: string
+          title: Account Id
+        broker:
+          type: string
+          title: Broker
+          default: futu
+        currency:
+          type: string
+          title: Currency
+          default: USD
+        id:
+          type: integer
+          title: Id
         cash:
-          type: number
-          format: double
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Cash
         buying_power:
-          type: number
-          format: double
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Buying Power
+        margin_used:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Margin Used
         total_equity:
-          type: number
-          format: double
-        unrealized_pnl:
-          type: number
-          format: double
-        day_pnl:
-          type: number
-          format: double
-        updated_at:
           type: string
-          format: date-time
-      required:
-        - account_id
-        - cash
-        - buying_power
-        - total_equity
-        - unrealized_pnl
-        - day_pnl
-        - updated_at
-
-    Position:
-      type: object
-      properties:
-        symbol:
-          type: string
-        asset_type:
-          $ref: '#/components/schemas/AssetType'
-        quantity:
-          type: integer
-        avg_cost:
-          type: number
-          format: double
-        current_price:
-          type: number
-          format: double
-        market_value:
-          type: number
-          format: double
-        unrealized_pnl:
-          type: number
-          format: double
-        strategy_id:
-          type: string
-          nullable: true
-        strike:
-          type: number
-          format: double
-          nullable: true
-        expiry:
-          type: string
-          format: date
-          nullable: true
-        put_call:
-          $ref: '#/components/schemas/PutCall'
-      required:
-        - symbol
-        - asset_type
-        - quantity
-        - avg_cost
-        - current_price
-        - market_value
-        - unrealized_pnl
-
-    AssetType:
-      type: string
-      enum: [stock, option, future]
-
-    PutCall:
-      type: string
-      enum: [put, call]
-      nullable: true
-
-    # Order schemas
-    Order:
-      type: object
-      properties:
-        order_id:
-          type: string
-        broker_order_id:
-          type: string
-          nullable: true
-        account_id:
-          type: string
-        strategy_id:
-          type: string
-        symbol:
-          type: string
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        quantity:
-          type: integer
-        order_type:
-          $ref: '#/components/schemas/OrderType'
-        limit_price:
-          type: number
-          format: double
-          nullable: true
-        status:
-          $ref: '#/components/schemas/OrderStatus'
-        filled_qty:
-          type: integer
-        avg_fill_price:
-          type: number
-          format: double
-          nullable: true
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Total Equity
         created_at:
           type: string
           format: date-time
+          title: Created At
         updated_at:
           type: string
           format: date-time
-      required:
-        - order_id
-        - account_id
-        - strategy_id
-        - symbol
-        - side
-        - quantity
-        - order_type
-        - status
-        - filled_qty
-        - created_at
-        - updated_at
-
-    OrderRequest:
+          title: Updated At
+        synced_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Synced At
       type: object
+      required:
+      - account_id
+      - id
+      - cash
+      - buying_power
+      - margin_used
+      - total_equity
+      - created_at
+      - updated_at
+      - synced_at
+      title: AccountRead
+    AccountSummaryResponse:
       properties:
         account_id:
           type: string
-        strategy_id:
-          type: string
-        symbol:
-          type: string
-        side:
-          $ref: '#/components/schemas/OrderSide'
-        quantity:
-          type: integer
-          minimum: 1
-        order_type:
-          $ref: '#/components/schemas/OrderType'
-        limit_price:
+          title: Account Id
+        cash:
           type: number
-          format: double
-          nullable: true
-      required:
-        - account_id
-        - strategy_id
-        - symbol
-        - side
-        - quantity
-        - order_type
-
-    OrderSide:
-      type: string
-      enum: [buy, sell]
-
-    OrderType:
-      type: string
-      enum: [market, limit]
-
-    OrderStatus:
-      type: string
-      enum: [pending, submitted, partial, cancel_req, filled, cancelled, rejected, expired]
-
-    # Risk schemas
-    RiskStatus:
-      type: object
-      properties:
-        account_id:
-          type: string
-        daily_loss:
+          title: Cash
+        buying_power:
           type: number
-          format: double
-        daily_loss_limit:
+          title: Buying Power
+        total_equity:
           type: number
-          format: double
-        total_exposure:
+          title: Total Equity
+        unrealized_pnl:
           type: number
-          format: double
-        max_exposure:
+          title: Unrealized Pnl
+        day_pnl:
           type: number
-          format: double
-        position_count:
-          type: integer
-        max_positions:
-          type: integer
-        kill_switch_active:
-          type: boolean
-        last_updated:
+          title: Day Pnl
+        updated_at:
           type: string
           format: date-time
-
-    # Greeks schemas
-    GreeksSnapshot:
+          title: Updated At
       type: object
+      required:
+      - account_id
+      - cash
+      - buying_power
+      - total_equity
+      - unrealized_pnl
+      - day_pnl
+      - updated_at
+      title: AccountSummaryResponse
+      description: Account summary response schema.
+    AcknowledgeAlertResponse:
+      properties:
+        success:
+          type: boolean
+          title: Success
+        message:
+          type: string
+          title: Message
+        acknowledged_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Acknowledged At
+      type: object
+      required:
+      - success
+      - message
+      title: AcknowledgeAlertResponse
+      description: Response for POST /api/options/alerts/{alert_id}/acknowledge.
+    ActionResponse:
+      properties:
+        success:
+          type: boolean
+          title: Success
+        state:
+          type: string
+          title: State
+      type: object
+      required:
+      - success
+      - state
+      title: ActionResponse
+      description: Response for action endpoints (halt, pause, resume, enable-resume).
+    AgentInvokeRequest:
+      properties:
+        role:
+          $ref: '#/components/schemas/AgentRole'
+          description: The agent role to invoke
+        task:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Task
+          description: Task description
+        context:
+          additionalProperties: true
+          type: object
+          title: Context
+          description: Context data for the agent
+      type: object
+      required:
+      - role
+      - task
+      - context
+      title: AgentInvokeRequest
+      description: "Request schema for invoking an agent task.\n\nAttributes:\n  \
+        \  role: The agent role to invoke (researcher, analyst, risk_controller, ops)\n\
+        \    task: Description of the task for the agent to perform\n    context:\
+        \ Additional context data for the agent"
+    AgentResultResponse:
+      properties:
+        id:
+          type: string
+          format: uuid
+          title: Id
+        role:
+          $ref: '#/components/schemas/AgentRole'
+        task:
+          type: string
+          title: Task
+        context:
+          additionalProperties: true
+          type: object
+          title: Context
+        result:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Result
+        success:
+          type: boolean
+          title: Success
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        completed_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Completed At
+        duration_ms:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Duration Ms
+      type: object
+      required:
+      - id
+      - role
+      - task
+      - context
+      - result
+      - success
+      - error
+      - started_at
+      - completed_at
+      - duration_ms
+      title: AgentResultResponse
+      description: "Response schema for an agent result.\n\nAttributes:\n    id: Unique\
+        \ identifier for the result\n    role: The agent role that executed the task\n\
+        \    task: The task that was executed\n    context: Context data provided\
+        \ to the agent\n    result: The result data (if successful)\n    success:\
+        \ Whether the task completed successfully\n    error: Error message (if failed)\n\
+        \    started_at: When the agent started execution\n    completed_at: When\
+        \ the agent completed execution\n    duration_ms: Execution duration in milliseconds"
+    AgentResultsListResponse:
+      properties:
+        results:
+          items:
+            $ref: '#/components/schemas/AgentResultResponse'
+          type: array
+          title: Results
+        total:
+          type: integer
+          title: Total
+      type: object
+      required:
+      - results
+      - total
+      title: AgentResultsListResponse
+      description: "Response schema for listing agent results.\n\nAttributes:\n  \
+        \  results: List of agent results\n    total: Total number of results (for\
+        \ pagination)"
+    AgentRole:
+      type: string
+      enum:
+      - researcher
+      - analyst
+      - risk_controller
+      - ops
+      title: AgentRole
+    AggregatedGreeksResponse:
       properties:
         scope:
           type: string
-          enum: [ACCOUNT, STRATEGY]
+          enum:
+          - ACCOUNT
+          - STRATEGY
+          title: Scope
         scope_id:
           type: string
+          title: Scope Id
+        strategy_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strategy Id
         dollar_delta:
           type: number
-          format: double
+          title: Dollar Delta
         gamma_dollar:
           type: number
-          format: double
+          title: Gamma Dollar
         gamma_pnl_1pct:
           type: number
-          format: double
+          title: Gamma Pnl 1Pct
         vega_per_1pct:
           type: number
-          format: double
+          title: Vega Per 1Pct
         theta_per_day:
           type: number
-          format: double
+          title: Theta Per Day
         coverage_pct:
           type: number
-          format: double
+          title: Coverage Pct
+        is_coverage_sufficient:
+          type: boolean
+          title: Is Coverage Sufficient
+        has_high_risk_missing_legs:
+          type: boolean
+          title: Has High Risk Missing Legs
+        valid_legs_count:
+          type: integer
+          title: Valid Legs Count
+        total_legs_count:
+          type: integer
+          title: Total Legs Count
+        staleness_seconds:
+          type: integer
+          title: Staleness Seconds
         as_of_ts:
           type: string
           format: date-time
+          title: As Of Ts
+      type: object
       required:
-        - scope
-        - scope_id
-        - dollar_delta
-        - gamma_dollar
-        - gamma_pnl_1pct
-        - vega_per_1pct
-        - theta_per_day
-        - coverage_pct
-        - as_of_ts
-
-    GreeksLimits:
-      type: object
+      - scope
+      - scope_id
+      - strategy_id
+      - dollar_delta
+      - gamma_dollar
+      - gamma_pnl_1pct
+      - vega_per_1pct
+      - theta_per_day
+      - coverage_pct
+      - is_coverage_sufficient
+      - has_high_risk_missing_legs
+      - valid_legs_count
+      - total_legs_count
+      - staleness_seconds
+      - as_of_ts
+      title: AggregatedGreeksResponse
+      description: Response schema for aggregated Greeks.
+    AlertAcknowledgeRequest:
       properties:
-        max_delta:
-          type: number
-          format: double
-        max_gamma:
-          type: number
-          format: double
-        max_vega:
-          type: number
-          format: double
-        max_theta:
-          type: number
-          format: double
-      required:
-        - max_delta
-        - max_gamma
-        - max_vega
-        - max_theta
-
-    ScenarioRequest:
-      type: object
-      properties:
-        price_shock_pct:
-          type: number
-          format: double
-          description: Price change percentage (e.g., 1.0 for +1%)
-        vol_shock_pct:
-          type: number
-          format: double
-          description: Volatility change percentage
-
-    ScenarioResult:
-      type: object
-      properties:
-        price_shock_pct:
-          type: number
-          format: double
-        vol_shock_pct:
-          type: number
-          format: double
-        pnl_impact:
-          type: number
-          format: double
-        new_delta:
-          type: number
-          format: double
-        new_gamma:
-          type: number
-          format: double
-
-    # Backtest schemas
-    BacktestRequest:
-      type: object
-      properties:
-        strategy_name:
+        acknowledged_by:
           type: string
+          title: Acknowledged By
+      type: object
+      required:
+      - acknowledged_by
+      title: AlertAcknowledgeRequest
+      description: Request to acknowledge an alert.
+    AlertListResponse:
+      properties:
+        alerts:
+          items:
+            $ref: '#/components/schemas/AlertResponse'
+          type: array
+          title: Alerts
+        total:
+          type: integer
+          title: Total
+        offset:
+          type: integer
+          title: Offset
+        limit:
+          type: integer
+          title: Limit
+      type: object
+      required:
+      - alerts
+      - total
+      - offset
+      - limit
+      title: AlertListResponse
+      description: Response model for paginated alert list.
+    AlertResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        type:
+          type: string
+          title: Type
+        severity:
+          type: integer
+          title: Severity
+        summary:
+          type: string
+          title: Summary
+        fingerprint:
+          type: string
+          title: Fingerprint
+        suppressed_count:
+          type: integer
+          title: Suppressed Count
+        event_timestamp:
+          type: string
+          format: date-time
+          title: Event Timestamp
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        entity_account_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Entity Account Id
+        entity_symbol:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Entity Symbol
+      type: object
+      required:
+      - id
+      - type
+      - severity
+      - summary
+      - fingerprint
+      - suppressed_count
+      - event_timestamp
+      - created_at
+      - entity_account_id
+      - entity_symbol
+      title: AlertResponse
+      description: Response model for a single alert.
+    AlertStatsResponse:
+      properties:
+        total_24h:
+          type: integer
+          title: Total 24H
+        by_severity:
+          additionalProperties:
+            type: integer
+          type: object
+          title: By Severity
+        by_type:
+          additionalProperties:
+            type: integer
+          type: object
+          title: By Type
+        delivery_success_rate:
+          type: number
+          title: Delivery Success Rate
+      type: object
+      required:
+      - total_24h
+      - by_severity
+      - by_type
+      - delivery_success_rate
+      title: AlertStatsResponse
+      description: Response model for alert statistics.
+    AlertSummary:
+      properties:
+        critical_count:
+          type: integer
+          title: Critical Count
+        warning_count:
+          type: integer
+          title: Warning Count
+        info_count:
+          type: integer
+          title: Info Count
+      type: object
+      required:
+      - critical_count
+      - warning_count
+      - info_count
+      title: AlertSummary
+      description: Summary counts by severity.
+    AssetType:
+      type: string
+      enum:
+      - stock
+      - option
+      - future
+      title: AssetType
+    AuditLogListResponse:
+      properties:
+        logs:
+          items:
+            $ref: '#/components/schemas/AuditLogResponse'
+          type: array
+          title: Logs
+        total:
+          type: integer
+          title: Total
+        offset:
+          type: integer
+          title: Offset
+        limit:
+          type: integer
+          title: Limit
+      type: object
+      required:
+      - logs
+      - total
+      - offset
+      - limit
+      title: AuditLogListResponse
+      description: Response model for paginated audit log list.
+    AuditLogResponse:
+      properties:
+        event_id:
+          type: string
+          title: Event Id
+        sequence_id:
+          type: integer
+          title: Sequence Id
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+        event_type:
+          type: string
+          title: Event Type
+        severity:
+          type: string
+          title: Severity
+        actor_id:
+          type: string
+          title: Actor Id
+        actor_type:
+          type: string
+          title: Actor Type
+        resource_type:
+          type: string
+          title: Resource Type
+        resource_id:
+          type: string
+          title: Resource Id
+        request_id:
+          type: string
+          title: Request Id
+        source:
+          type: string
+          title: Source
+        environment:
+          type: string
+          title: Environment
+        service:
+          type: string
+          title: Service
+        version:
+          type: string
+          title: Version
+        correlation_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Correlation Id
+        value_mode:
+          type: string
+          title: Value Mode
+        old_value:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Old Value
+        new_value:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: New Value
+        metadata:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Metadata
+        checksum:
+          type: string
+          title: Checksum
+        prev_checksum:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Prev Checksum
+        chain_key:
+          type: string
+          title: Chain Key
+      type: object
+      required:
+      - event_id
+      - sequence_id
+      - timestamp
+      - event_type
+      - severity
+      - actor_id
+      - actor_type
+      - resource_type
+      - resource_id
+      - request_id
+      - source
+      - environment
+      - service
+      - version
+      - correlation_id
+      - value_mode
+      - old_value
+      - new_value
+      - metadata
+      - checksum
+      - prev_checksum
+      - chain_key
+      title: AuditLogResponse
+      description: Response model for a single audit log.
+    AuditStatsResponse:
+      properties:
+        total:
+          type: integer
+          title: Total
+        by_event_type:
+          additionalProperties:
+            type: integer
+          type: object
+          title: By Event Type
+        by_actor:
+          additionalProperties:
+            type: integer
+          type: object
+          title: By Actor
+        by_resource_type:
+          additionalProperties:
+            type: integer
+          type: object
+          title: By Resource Type
+      type: object
+      required:
+      - total
+      - by_event_type
+      - by_actor
+      - by_resource_type
+      title: AuditStatsResponse
+      description: Response model for audit statistics.
+    BacktestRequest:
+      properties:
+        strategy_class:
+          type: string
+          title: Strategy Class
+        strategy_params:
+          additionalProperties: true
+          type: object
+          title: Strategy Params
         symbol:
           type: string
+          title: Symbol
         start_date:
           type: string
           format: date
+          title: Start Date
         end_date:
           type: string
           format: date
+          title: End Date
         initial_capital:
-          type: number
-          format: double
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Initial Capital
+          default: '100000'
+        slippage_bps:
+          type: integer
+          title: Slippage Bps
+          default: 5
+        commission_per_share:
+          anyOf:
+          - type: number
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Commission Per Share
+          default: '0.005'
         benchmark_symbol:
-          type: string
-          nullable: true
-      required:
-        - strategy_name
-        - symbol
-        - start_date
-        - end_date
-        - initial_capital
-
-    BacktestResult:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Benchmark Symbol
       type: object
+      required:
+      - strategy_class
+      - strategy_params
+      - symbol
+      - start_date
+      - end_date
+      title: BacktestRequest
+      description: Request body for running a backtest.
+    BacktestResponse:
       properties:
-        strategy_name:
+        backtest_id:
           type: string
+          title: Backtest Id
+        status:
+          type: string
+          title: Status
+        result:
+          anyOf:
+          - $ref: '#/components/schemas/BacktestResultSchema'
+          - type: 'null'
+        benchmark:
+          anyOf:
+          - $ref: '#/components/schemas/BenchmarkComparisonResponse'
+          - type: 'null'
+        traces:
+          items:
+            $ref: '#/components/schemas/SignalTraceResponse'
+          type: array
+          title: Traces
+          default: []
+        error:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      type: object
+      required:
+      - backtest_id
+      - status
+      title: BacktestResponse
+      description: Response body for backtest endpoint.
+    BacktestResultSchema:
+      properties:
+        final_equity:
+          type: string
+          title: Final Equity
+        final_cash:
+          type: string
+          title: Final Cash
+        final_position_qty:
+          type: integer
+          title: Final Position Qty
         total_return:
-          type: number
-          format: double
+          type: string
+          title: Total Return
+        annualized_return:
+          type: string
+          title: Annualized Return
         sharpe_ratio:
-          type: number
-          format: double
+          type: string
+          title: Sharpe Ratio
         max_drawdown:
-          type: number
-          format: double
+          type: string
+          title: Max Drawdown
         win_rate:
-          type: number
-          format: double
+          type: string
+          title: Win Rate
         total_trades:
           type: integer
-        benchmark_comparison:
-          $ref: '#/components/schemas/BenchmarkComparison'
-        equity_curve:
-          type: array
-          items:
-            type: object
-            properties:
-              date:
-                type: string
-                format: date
-              equity:
-                type: number
-                format: double
-
-    BenchmarkComparison:
+          title: Total Trades
+        avg_trade_pnl:
+          type: string
+          title: Avg Trade Pnl
+        warm_up_required_bars:
+          type: integer
+          title: Warm Up Required Bars
+        warm_up_bars_used:
+          type: integer
+          title: Warm Up Bars Used
       type: object
+      required:
+      - final_equity
+      - final_cash
+      - final_position_qty
+      - total_return
+      - annualized_return
+      - sharpe_ratio
+      - max_drawdown
+      - win_rate
+      - total_trades
+      - avg_trade_pnl
+      - warm_up_required_bars
+      - warm_up_bars_used
+      title: BacktestResultSchema
+      description: Schema for backtest result metrics.
+    BarSnapshotResponse:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        timestamp:
+          type: string
+          title: Timestamp
+        open:
+          type: string
+          title: Open
+        high:
+          type: string
+          title: High
+        low:
+          type: string
+          title: Low
+        close:
+          type: string
+          title: Close
+        volume:
+          type: integer
+          title: Volume
+      type: object
+      required:
+      - symbol
+      - timestamp
+      - open
+      - high
+      - low
+      - close
+      - volume
+      title: BarSnapshotResponse
+      description: Schema for bar snapshot data.
+    BenchmarkComparisonResponse:
       properties:
         benchmark_symbol:
           type: string
-        benchmark_return:
-          type: number
-          format: double
+          title: Benchmark Symbol
+        benchmark_total_return:
+          type: string
+          title: Benchmark Total Return
         alpha:
-          type: number
-          format: double
+          type: string
+          title: Alpha
         beta:
-          type: number
-          format: double
+          type: string
+          title: Beta
+        tracking_error:
+          type: string
+          title: Tracking Error
         information_ratio:
-          type: number
-          format: double
+          type: string
+          title: Information Ratio
+        sortino_ratio:
+          type: string
+          title: Sortino Ratio
         up_capture:
-          type: number
-          format: double
+          type: string
+          title: Up Capture
         down_capture:
-          type: number
-          format: double
-
-    # Health schemas
-    SystemHealth:
-      type: object
-      properties:
-        status:
           type: string
-          enum: [healthy, degraded, critical]
-        components:
-          type: array
+          title: Down Capture
+      type: object
+      required:
+      - benchmark_symbol
+      - benchmark_total_return
+      - alpha
+      - beta
+      - tracking_error
+      - information_ratio
+      - sortino_ratio
+      - up_capture
+      - down_capture
+      title: BenchmarkComparisonResponse
+      description: Schema for benchmark comparison metrics.
+    ChainIntegrityResponse:
+      properties:
+        chain_key:
+          type: string
+          title: Chain Key
+        is_valid:
+          type: boolean
+          title: Is Valid
+        errors:
           items:
-            $ref: '#/components/schemas/ComponentHealth'
-        last_checked:
-          type: string
-          format: date-time
-
-    ComponentHealth:
+            type: string
+          type: array
+          title: Errors
+        events_verified:
+          type: integer
+          title: Events Verified
       type: object
+      required:
+      - chain_key
+      - is_valid
+      - errors
+      - events_verified
+      title: ChainIntegrityResponse
+      description: Response model for chain integrity verification result.
+    ClosePositionRequest:
       properties:
-        name:
+        symbol:
           type: string
-        status:
+          title: Symbol
+        quantity:
+          anyOf:
+          - type: integer
+          - type: string
+            const: all
+          title: Quantity
+        order_type:
           type: string
-          enum: [healthy, degraded, unhealthy]
-        latency_ms:
-          type: number
-          format: double
-          nullable: true
+          enum:
+          - market
+          - limit
+          title: Order Type
+        time_in_force:
+          type: string
+          enum:
+          - GTC
+          - DAY
+          - IOC
+          title: Time In Force
+        limit_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Limit Price
+      type: object
+      required:
+      - symbol
+      - quantity
+      - order_type
+      - time_in_force
+      title: ClosePositionRequest
+      description: Request body for close position endpoint.
+    ClosePositionRequestV2:
+      properties:
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+      type: object
+      title: ClosePositionRequestV2
+      description: 'Request to close a position (Phase 1).
+
+
+        No body required - idempotency key is in header.
+
+        Reason field is optional for tracking.'
+    ClosePositionResponse:
+      properties:
+        success:
+          type: boolean
+          title: Success
+        order_id:
+          type: string
+          title: Order Id
         message:
           type: string
-          nullable: true
-        last_checked:
+          title: Message
+      type: object
+      required:
+      - success
+      - order_id
+      - message
+      title: ClosePositionResponse
+      description: Response for close position endpoint.
+    ClosePositionResponseV2:
+      properties:
+        close_request_id:
+          type: string
+          title: Close Request Id
+        position_id:
+          type: integer
+          title: Position Id
+        position_status:
+          type: string
+          title: Position Status
+        close_request_status:
+          type: string
+          title: Close Request Status
+        target_qty:
+          type: integer
+          title: Target Qty
+        filled_qty:
+          type: integer
+          title: Filled Qty
+          default: 0
+        orders:
+          items:
+            type: string
+          type: array
+          title: Orders
+          default: []
+        poll_url:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Poll Url
+        poll_interval_ms:
+          type: integer
+          title: Poll Interval Ms
+          default: 1000
+      type: object
+      required:
+      - close_request_id
+      - position_id
+      - position_status
+      - close_request_status
+      - target_qty
+      title: ClosePositionResponseV2
+      description: 'Response from close position endpoint (Phase 1).
+
+
+        Returns CloseRequest details for client polling.'
+    ComponentHealthResponse:
+      properties:
+        component:
+          type: string
+          title: Component
+        status:
+          type: string
+          title: Status
+        latency_ms:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Latency Ms
+        last_check:
           type: string
           format: date-time
-
-    # Storage schemas
-    StorageStats:
+          title: Last Check
+        message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Message
       type: object
+      required:
+      - component
+      - status
+      - latency_ms
+      - last_check
+      - message
+      title: ComponentHealthResponse
+      description: Response for single component health.
+    ContractType:
+      type: string
+      enum:
+      - option
+      - future
+      title: ContractType
+    CurrentGreeksResponse:
       properties:
-        total_size_mb:
+        dollar_delta:
           type: number
-          format: double
-        tables:
-          type: array
+          title: Dollar Delta
+        gamma_dollar:
+          type: number
+          title: Gamma Dollar
+        gamma_pnl_1pct:
+          type: number
+          title: Gamma Pnl 1Pct
+        vega_per_1pct:
+          type: number
+          title: Vega Per 1Pct
+        theta_per_day:
+          type: number
+          title: Theta Per Day
+      type: object
+      required:
+      - dollar_delta
+      - gamma_dollar
+      - gamma_pnl_1pct
+      - vega_per_1pct
+      - theta_per_day
+      title: CurrentGreeksResponse
+      description: Current Greeks snapshot for scenario response.
+    DeliveryResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        channel:
+          type: string
+          title: Channel
+        destination_key:
+          type: string
+          title: Destination Key
+        attempt_number:
+          type: integer
+          title: Attempt Number
+        status:
+          type: string
+          title: Status
+        response_code:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Response Code
+        error_message:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error Message
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        sent_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Sent At
+      type: object
+      required:
+      - id
+      - channel
+      - destination_key
+      - attempt_number
+      - status
+      - response_code
+      - error_message
+      - created_at
+      - sent_at
+      title: DeliveryResponse
+      description: Response model for a delivery attempt.
+    ExpirationAlertResponse:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        underlying:
+          type: string
+          title: Underlying
+        expiry:
+          type: string
+          format: date
+          title: Expiry
+        days_to_expiry:
+          type: integer
+          title: Days To Expiry
+        contract_type:
+          $ref: '#/components/schemas/ContractType'
+        put_call:
+          anyOf:
+          - $ref: '#/components/schemas/PutCall'
+          - type: 'null'
+        strike:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Strike
+      type: object
+      required:
+      - symbol
+      - underlying
+      - expiry
+      - days_to_expiry
+      - contract_type
+      - put_call
+      - strike
+      title: ExpirationAlertResponse
+      description: "Response schema for a derivative expiration alert.\n\nAttributes:\n\
+        \    symbol: The derivative contract symbol (e.g., AAPL240119C00150000)\n\
+        \    underlying: The underlying asset symbol (e.g., AAPL)\n    expiry: The\
+        \ expiration date\n    days_to_expiry: Number of days until expiration\n \
+        \   contract_type: Type of contract (option or future)\n    put_call: For\
+        \ options, whether it's a put or call (None for futures)\n    strike: For\
+        \ options, the strike price (None for futures)"
+    ExpiringAlertRow:
+      properties:
+        alert_id:
+          type: string
+          title: Alert Id
+        severity:
+          type: string
+          enum:
+          - critical
+          - warning
+          - info
+          title: Severity
+        threshold_days:
+          type: integer
+          title: Threshold Days
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        acknowledged:
+          type: boolean
+          title: Acknowledged
+        acknowledged_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Acknowledged At
+        position_id:
+          type: integer
+          title: Position Id
+        symbol:
+          type: string
+          title: Symbol
+        strike:
+          type: number
+          title: Strike
+        put_call:
+          type: string
+          enum:
+          - put
+          - call
+          title: Put Call
+        expiry_date:
+          type: string
+          title: Expiry Date
+        quantity:
+          type: integer
+          title: Quantity
+        days_to_expiry:
+          type: integer
+          title: Days To Expiry
+        current_price:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Current Price
+        market_value:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Market Value
+        unrealized_pnl:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Unrealized Pnl
+        is_closable:
+          type: boolean
+          title: Is Closable
+      type: object
+      required:
+      - alert_id
+      - severity
+      - threshold_days
+      - created_at
+      - acknowledged
+      - position_id
+      - symbol
+      - strike
+      - put_call
+      - expiry_date
+      - quantity
+      - days_to_expiry
+      - is_closable
+      title: ExpiringAlertRow
+      description: 'Single expiring alert with position details.
+
+
+        This is the primary row type for the expiring alerts list.
+
+        Note: Same position may have multiple alerts (one per threshold).'
+    ExpiringAlertsResponse:
+      properties:
+        alerts:
           items:
-            type: object
-            properties:
-              name:
-                type: string
-              row_count:
-                type: integer
-              size_mb:
-                type: number
-                format: double
-              is_compressed:
-                type: boolean
+            $ref: '#/components/schemas/ExpiringAlertRow'
+          type: array
+          title: Alerts
+        total:
+          type: integer
+          title: Total
+        summary:
+          $ref: '#/components/schemas/AlertSummary'
+      type: object
+      required:
+      - alerts
+      - total
+      - summary
+      title: ExpiringAlertsResponse
+      description: Response for GET /api/options/expiring.
+    ExpiringPositionsResponse:
+      properties:
+        positions:
+          items:
+            $ref: '#/components/schemas/ExpirationAlertResponse'
+          type: array
+          title: Positions
+        total:
+          type: integer
+          title: Total
+        warning_days:
+          type: integer
+          title: Warning Days
+      type: object
+      required:
+      - positions
+      - total
+      - warning_days
+      title: ExpiringPositionsResponse
+      description: "Response schema for listing expiring positions.\n\nAttributes:\n\
+        \    positions: List of positions expiring within the requested window\n \
+        \   total: Total number of expiring positions\n    warning_days: The days\
+        \ window used for the query"
+    ForceOverrideRequest:
+      properties:
+        mode:
+          $ref: '#/components/schemas/SystemModeEnum'
+        ttl_seconds:
+          type: integer
+          exclusiveMinimum: 0.0
+          title: Ttl Seconds
+          description: TTL must be positive
+        operator_id:
+          type: string
+          minLength: 1
+          title: Operator Id
+          description: Operator ID required
+        reason:
+          type: string
+          minLength: 1
+          title: Reason
+          description: Reason required
+      type: object
+      required:
+      - mode
+      - ttl_seconds
+      - operator_id
+      - reason
+      title: ForceOverrideRequest
+      description: Request model for forcing system mode.
+    ForceOverrideResponse:
+      properties:
+        success:
+          type: boolean
+          title: Success
+        mode:
+          type: string
+          title: Mode
+        ttl_seconds:
+          type: integer
+          title: Ttl Seconds
+        operator_id:
+          type: string
+          title: Operator Id
+      type: object
+      required:
+      - success
+      - mode
+      - ttl_seconds
+      - operator_id
+      title: ForceOverrideResponse
+      description: Response model for force override operation.
+    GreeksAlertResponse:
+      properties:
+        alert_id:
+          type: string
+          title: Alert Id
+        alert_type:
+          type: string
+          title: Alert Type
+        scope:
+          type: string
+          title: Scope
+        scope_id:
+          type: string
+          title: Scope Id
+        metric:
+          type: string
+          title: Metric
+        level:
+          type: string
+          title: Level
+        current_value:
+          type: number
+          title: Current Value
+        threshold_value:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Threshold Value
+        message:
+          type: string
+          title: Message
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        acknowledged_at:
+          anyOf:
+          - type: string
+            format: date-time
+          - type: 'null'
+          title: Acknowledged At
+        acknowledged_by:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Acknowledged By
+      type: object
+      required:
+      - alert_id
+      - alert_type
+      - scope
+      - scope_id
+      - metric
+      - level
+      - current_value
+      - threshold_value
+      - message
+      - created_at
+      - acknowledged_at
+      - acknowledged_by
+      title: GreeksAlertResponse
+      description: Response schema for a Greeks alert.
+    GreeksHistoryApiResponse:
+      properties:
+        account_id:
+          type: string
+          title: Account Id
+        scope:
+          type: string
+          enum:
+          - ACCOUNT
+          - STRATEGY
+          title: Scope
+        scope_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scope Id
+        window:
+          type: string
+          title: Window
+        interval:
+          type: string
+          title: Interval
+        start_ts:
+          type: string
+          format: date-time
+          title: Start Ts
+        end_ts:
+          type: string
+          format: date-time
+          title: End Ts
+        points:
+          items:
+            $ref: '#/components/schemas/GreeksHistoryPointResponse'
+          type: array
+          title: Points
+      type: object
+      required:
+      - account_id
+      - scope
+      - scope_id
+      - window
+      - interval
+      - start_ts
+      - end_ts
+      - points
+      title: GreeksHistoryApiResponse
+      description: Response for GET /history endpoint.
+    GreeksHistoryPointResponse:
+      properties:
+        ts:
+          type: string
+          format: date-time
+          title: Ts
+        dollar_delta:
+          type: number
+          title: Dollar Delta
+        gamma_dollar:
+          type: number
+          title: Gamma Dollar
+        vega_per_1pct:
+          type: number
+          title: Vega Per 1Pct
+        theta_per_day:
+          type: number
+          title: Theta Per Day
+        coverage_pct:
+          type: number
+          title: Coverage Pct
+        point_count:
+          type: integer
+          title: Point Count
+          default: 1
+      type: object
+      required:
+      - ts
+      - dollar_delta
+      - gamma_dollar
+      - vega_per_1pct
+      - theta_per_day
+      - coverage_pct
+      title: GreeksHistoryPointResponse
+      description: Single point in Greeks history.
+    GreeksLimitSetRequest:
+      properties:
+        dollar_delta:
+          $ref: '#/components/schemas/ThresholdLevelsRequest'
+        gamma_dollar:
+          $ref: '#/components/schemas/ThresholdLevelsRequest'
+        vega_per_1pct:
+          $ref: '#/components/schemas/ThresholdLevelsRequest'
+        theta_per_day:
+          $ref: '#/components/schemas/ThresholdLevelsRequest'
+      type: object
+      required:
+      - dollar_delta
+      - gamma_dollar
+      - vega_per_1pct
+      - theta_per_day
+      title: GreeksLimitSetRequest
+      description: Limit set for PUT /limits request.
+    GreeksLimitsApiRequest:
+      properties:
+        strategy_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strategy Id
+        limits:
+          $ref: '#/components/schemas/GreeksLimitSetRequest'
+      type: object
+      required:
+      - limits
+      title: GreeksLimitsApiRequest
+      description: Request body for PUT /limits.
+    GreeksLimitsApiResponse:
+      properties:
+        account_id:
+          type: string
+          title: Account Id
+        strategy_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strategy Id
+        limits:
+          $ref: '#/components/schemas/GreeksLimitSetRequest'
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        updated_by:
+          type: string
+          title: Updated By
+        effective_scope:
+          type: string
+          enum:
+          - ACCOUNT
+          - STRATEGY
+          title: Effective Scope
+      type: object
+      required:
+      - account_id
+      - strategy_id
+      - limits
+      - updated_at
+      - updated_by
+      - effective_scope
+      title: GreeksLimitsApiResponse
+      description: Response for PUT /limits endpoint.
+    GreeksOverviewResponse:
+      properties:
+        account:
+          $ref: '#/components/schemas/AggregatedGreeksResponse'
+        strategies:
+          additionalProperties:
+            $ref: '#/components/schemas/AggregatedGreeksResponse'
+          type: object
+          title: Strategies
+        alerts:
+          items:
+            $ref: '#/components/schemas/GreeksAlertResponse'
+          type: array
+          title: Alerts
+        top_contributors:
+          additionalProperties:
+            items:
+              $ref: '#/components/schemas/PositionGreeksResponse'
+            type: array
+          type: object
+          title: Top Contributors
+      type: object
+      required:
+      - account
+      - strategies
+      - alerts
+      - top_contributors
+      title: GreeksOverviewResponse
+      description: Full overview response with account, strategies, and alerts.
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    HaltRequest:
+      properties:
+        reason:
+          type: string
+          title: Reason
+      type: object
+      required:
+      - reason
+      title: HaltRequest
+      description: Request body for halt endpoint.
+    KillSwitchActionsExecuted:
+      properties:
+        halted:
+          type: boolean
+          title: Halted
+        orders_cancelled:
+          type: integer
+          title: Orders Cancelled
+        positions_flattened:
+          type: integer
+          title: Positions Flattened
+        flatten_orders:
+          items:
+            type: string
+          type: array
+          title: Flatten Orders
+      type: object
+      required:
+      - halted
+      - orders_cancelled
+      - positions_flattened
+      - flatten_orders
+      title: KillSwitchActionsExecuted
+      description: Details of actions executed by kill switch.
+    KillSwitchResult:
+      properties:
+        success:
+          type: boolean
+          title: Success
+        state:
+          type: string
+          title: State
+        actions_executed:
+          $ref: '#/components/schemas/KillSwitchActionsExecuted'
+        errors:
+          items:
+            type: string
+          type: array
+          title: Errors
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+        triggered_by:
+          type: string
+          title: Triggered By
+      type: object
+      required:
+      - success
+      - state
+      - actions_executed
+      - errors
+      - timestamp
+      - triggered_by
+      title: KillSwitchResult
+      description: Response for kill-switch compound endpoint.
+    ManualCheckResponse:
+      properties:
+        run_id:
+          type: string
+          title: Run Id
+        positions_checked:
+          type: integer
+          title: Positions Checked
+        alerts_created:
+          type: integer
+          title: Alerts Created
+        alerts_deduplicated:
+          type: integer
+          title: Alerts Deduplicated
+        errors:
+          items:
+            type: string
+          type: array
+          title: Errors
+      type: object
+      required:
+      - run_id
+      - positions_checked
+      - alerts_created
+      - alerts_deduplicated
+      - errors
+      title: ManualCheckResponse
+      description: Response for POST /api/options/check-expirations.
+    PauseRequest:
+      properties:
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+      type: object
+      title: PauseRequest
+      description: Request body for pause endpoint (optional).
+    PermissionInfo:
+      properties:
+        allowed:
+          type: boolean
+          title: Allowed
+        restricted:
+          type: boolean
+          title: Restricted
+          default: false
+        warning:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Warning
+        local_only:
+          type: boolean
+          title: Local Only
+          default: false
+      type: object
+      required:
+      - allowed
+      title: PermissionInfo
+      description: Permission info for a single action type.
+    PortfolioSnapshotResponse:
+      properties:
+        cash:
+          type: string
+          title: Cash
+        position_qty:
+          type: integer
+          title: Position Qty
+        position_avg_cost:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Position Avg Cost
+        equity:
+          type: string
+          title: Equity
+      type: object
+      required:
+      - cash
+      - position_qty
+      - position_avg_cost
+      - equity
+      title: PortfolioSnapshotResponse
+      description: Schema for portfolio snapshot data.
+    PositionGreeksResponse:
+      properties:
+        position_id:
+          type: integer
+          title: Position Id
+        symbol:
+          type: string
+          title: Symbol
+        underlying_symbol:
+          type: string
+          title: Underlying Symbol
+        quantity:
+          type: integer
+          title: Quantity
+        dollar_delta:
+          type: number
+          title: Dollar Delta
+        gamma_dollar:
+          type: number
+          title: Gamma Dollar
+        gamma_pnl_1pct:
+          type: number
+          title: Gamma Pnl 1Pct
+        vega_per_1pct:
+          type: number
+          title: Vega Per 1Pct
+        theta_per_day:
+          type: number
+          title: Theta Per Day
+        notional:
+          type: number
+          title: Notional
+        valid:
+          type: boolean
+          title: Valid
+        source:
+          type: string
+          title: Source
+        as_of_ts:
+          type: string
+          format: date-time
+          title: As Of Ts
+      type: object
+      required:
+      - position_id
+      - symbol
+      - underlying_symbol
+      - quantity
+      - dollar_delta
+      - gamma_dollar
+      - gamma_pnl_1pct
+      - vega_per_1pct
+      - theta_per_day
+      - notional
+      - valid
+      - source
+      - as_of_ts
+      title: PositionGreeksResponse
+      description: Response schema for a single position's Greeks.
+    PositionRead:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        asset_type:
+          $ref: '#/components/schemas/AssetType'
+          default: stock
+        strategy_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strategy Id
+        id:
+          type: integer
+          title: Id
+        account_id:
+          type: string
+          title: Account Id
+        quantity:
+          type: integer
+          title: Quantity
+        avg_cost:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Avg Cost
+        current_price:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Current Price
+        strike:
+          anyOf:
+          - type: string
+            pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          - type: 'null'
+          title: Strike
+        expiry:
+          anyOf:
+          - type: string
+            format: date
+          - type: 'null'
+          title: Expiry
+        put_call:
+          anyOf:
+          - $ref: '#/components/schemas/PutCall'
+          - type: 'null'
+        opened_at:
+          type: string
+          format: date-time
+          title: Opened At
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+        market_value:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Market Value
+          readOnly: true
+        unrealized_pnl:
+          type: string
+          pattern: ^(?!^[-+.]*$)[+-]?0*\d*\.?\d*$
+          title: Unrealized Pnl
+          readOnly: true
+      type: object
+      required:
+      - symbol
+      - id
+      - account_id
+      - quantity
+      - avg_cost
+      - current_price
+      - strike
+      - expiry
+      - put_call
+      - opened_at
+      - updated_at
+      - market_value
+      - unrealized_pnl
+      title: PositionRead
+    PositionResponse:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        quantity:
+          type: integer
+          title: Quantity
+        avg_cost:
+          type: number
+          title: Avg Cost
+        current_price:
+          type: number
+          title: Current Price
+        market_value:
+          type: number
+          title: Market Value
+        unrealized_pnl:
+          type: number
+          title: Unrealized Pnl
+        strategy_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strategy Id
+      type: object
+      required:
+      - symbol
+      - quantity
+      - avg_cost
+      - current_price
+      - market_value
+      - unrealized_pnl
+      - strategy_id
+      title: PositionResponse
+      description: Position response schema.
+    PutCall:
+      type: string
+      enum:
+      - put
+      - call
+      title: PutCall
+    ReconciliationAlert:
+      properties:
+        timestamp:
+          type: string
+          title: Timestamp
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - critical
+          title: Severity
+        type:
+          type: string
+          title: Type
+        symbol:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Symbol
+        local_value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Local Value
+        broker_value:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Broker Value
+        message:
+          type: string
+          title: Message
+      type: object
+      required:
+      - timestamp
+      - severity
+      - type
+      - symbol
+      - local_value
+      - broker_value
+      - message
+      title: ReconciliationAlert
+      description: Response model for reconciliation alerts.
+    RollPlanResponse:
+      properties:
+        symbol:
+          type: string
+          title: Symbol
+        strategy:
+          type: string
+          title: Strategy
+        close_action:
+          type: string
+          title: Close Action
+        open_action:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Open Action
+      type: object
+      required:
+      - symbol
+      - strategy
+      - close_action
+      - open_action
+      title: RollPlanResponse
+      description: "Response schema for a futures roll plan.\n\nAttributes:\n    symbol:\
+        \ The current position symbol (e.g., ESH24)\n    strategy: The roll strategy\
+        \ being applied (calendar_spread or close_open)\n    close_action: Description\
+        \ of the close action (e.g., \"SELL ESH24 to close\")\n    open_action: Description\
+        \ of the open action for calendar spreads,\n                None for CLOSE_OPEN\
+        \ strategy"
+    ScenarioResultResponse:
+      properties:
+        shock_pct:
+          type: number
+          title: Shock Pct
+        direction:
+          type: string
+          enum:
+          - up
+          - down
+          title: Direction
+        pnl_from_delta:
+          type: number
+          title: Pnl From Delta
+        pnl_from_gamma:
+          type: number
+          title: Pnl From Gamma
+        pnl_impact:
+          type: number
+          title: Pnl Impact
+        delta_change:
+          type: number
+          title: Delta Change
+        new_dollar_delta:
+          type: number
+          title: New Dollar Delta
+        breach_level:
+          type: string
+          enum:
+          - none
+          - warn
+          - crit
+          - hard
+          title: Breach Level
+        breach_dims:
+          items:
+            type: string
+          type: array
+          title: Breach Dims
+      type: object
+      required:
+      - shock_pct
+      - direction
+      - pnl_from_delta
+      - pnl_from_gamma
+      - pnl_impact
+      - delta_change
+      - new_dollar_delta
+      - breach_level
+      - breach_dims
+      title: ScenarioResultResponse
+      description: Single scenario result.
+    ScenarioShockApiResponse:
+      properties:
+        account_id:
+          type: string
+          title: Account Id
+        scope:
+          type: string
+          enum:
+          - ACCOUNT
+          - STRATEGY
+          title: Scope
+        scope_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Scope Id
+        asof_ts:
+          type: string
+          format: date-time
+          title: Asof Ts
+        current:
+          $ref: '#/components/schemas/CurrentGreeksResponse'
+        scenarios:
+          additionalProperties:
+            $ref: '#/components/schemas/ScenarioResultResponse'
+          type: object
+          title: Scenarios
+      type: object
+      required:
+      - account_id
+      - scope
+      - scope_id
+      - asof_ts
+      - current
+      - scenarios
+      title: ScenarioShockApiResponse
+      description: Response for GET /scenario endpoint.
+    SignalTraceResponse:
+      properties:
+        trace_id:
+          type: string
+          title: Trace Id
+        signal_timestamp:
+          type: string
+          title: Signal Timestamp
+        symbol:
+          type: string
+          title: Symbol
+        signal_direction:
+          type: string
+          title: Signal Direction
+        signal_quantity:
+          type: integer
+          title: Signal Quantity
+        signal_reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Signal Reason
+        signal_bar:
+          $ref: '#/components/schemas/BarSnapshotResponse'
+        portfolio_state:
+          $ref: '#/components/schemas/PortfolioSnapshotResponse'
+        strategy_snapshot:
+          anyOf:
+          - $ref: '#/components/schemas/StrategySnapshotResponse'
+          - type: 'null'
+        fill_bar:
+          anyOf:
+          - $ref: '#/components/schemas/BarSnapshotResponse'
+          - type: 'null'
+        fill_timestamp:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Fill Timestamp
+        fill_quantity:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Fill Quantity
+        fill_price:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Fill Price
+        expected_price:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expected Price
+        expected_price_type:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Expected Price Type
+        slippage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Slippage
+        slippage_bps:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Slippage Bps
+        commission:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Commission
+      type: object
+      required:
+      - trace_id
+      - signal_timestamp
+      - symbol
+      - signal_direction
+      - signal_quantity
+      - signal_reason
+      - signal_bar
+      - portfolio_state
+      - strategy_snapshot
+      - fill_bar
+      - fill_timestamp
+      - fill_quantity
+      - fill_price
+      - expected_price
+      - expected_price_type
+      - slippage
+      - slippage_bps
+      - commission
+      title: SignalTraceResponse
+      description: Schema for signal trace data.
+    StateResponse:
+      properties:
+        state:
+          type: string
+          title: State
+        since:
+          type: string
+          format: date-time
+          title: Since
+        changed_by:
+          type: string
+          title: Changed By
+        reason:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reason
+        can_resume:
+          type: boolean
+          title: Can Resume
+      type: object
+      required:
+      - state
+      - since
+      - changed_by
+      - reason
+      - can_resume
+      title: StateResponse
+      description: Response for state endpoint.
+    StorageStatsResponse:
+      properties:
+        database_size_bytes:
+          type: integer
+          title: Database Size Bytes
+        database_size_pretty:
+          type: string
+          title: Database Size Pretty
+        timestamp:
+          type: string
+          format: date-time
+          title: Timestamp
+        tables:
+          items:
+            $ref: '#/components/schemas/TableStatsResponse'
+          type: array
+          title: Tables
+        compression:
+          additionalProperties: true
+          type: object
+          title: Compression
+      type: object
+      required:
+      - database_size_bytes
+      - database_size_pretty
+      - timestamp
+      - tables
+      - compression
+      title: StorageStatsResponse
+      description: Storage statistics response.
+    StrategySnapshotResponse:
+      properties:
+        strategy_class:
+          type: string
+          title: Strategy Class
+        params:
+          additionalProperties: true
+          type: object
+          title: Params
+        state:
+          additionalProperties: true
+          type: object
+          title: State
+      type: object
+      required:
+      - strategy_class
+      - params
+      - state
+      title: StrategySnapshotResponse
+      description: Schema for strategy snapshot data.
+    SystemHealthResponse:
+      properties:
+        overall_status:
+          type: string
+          title: Overall Status
+        components:
+          items:
+            $ref: '#/components/schemas/ComponentHealthResponse'
+          type: array
+          title: Components
+        checked_at:
+          type: string
+          format: date-time
+          title: Checked At
+      type: object
+      required:
+      - overall_status
+      - components
+      - checked_at
+      title: SystemHealthResponse
+      description: Response for system-wide health.
+    SystemModeEnum:
+      type: string
+      enum:
+      - normal
+      - degraded
+      - safe_mode
+      - safe_mode_disconnected
+      - halt
+      - recovering
+      title: SystemModeEnum
+      description: Valid system modes for API requests.
+    SystemStatusResponse:
+      properties:
+        mode:
+          type: string
+          title: Mode
+        stage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Stage
+        is_override:
+          type: boolean
+          title: Is Override
+      type: object
+      required:
+      - mode
+      - stage
+      - is_override
+      title: SystemStatusResponse
+      description: Response model for system status.
+    TableStatsResponse:
+      properties:
+        table_name:
+          type: string
+          title: Table Name
+        row_count:
+          type: integer
+          title: Row Count
+        size_bytes:
+          type: integer
+          title: Size Bytes
+        size_pretty:
+          type: string
+          title: Size Pretty
+        is_hypertable:
+          type: boolean
+          title: Is Hypertable
+      type: object
+      required:
+      - table_name
+      - row_count
+      - size_bytes
+      - size_pretty
+      - is_hypertable
+      title: TableStatsResponse
+      description: Table statistics response.
+    ThresholdLevelsRequest:
+      properties:
+        warn:
+          type: number
+          title: Warn
+        crit:
+          type: number
+          title: Crit
+        hard:
+          type: number
+          title: Hard
+      type: object
+      required:
+      - warn
+      - crit
+      - hard
+      title: ThresholdLevelsRequest
+      description: Threshold levels for a single Greek.
+    TradingPermissionsResponse:
+      properties:
+        mode:
+          type: string
+          title: Mode
+        stage:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Stage
+        permissions:
+          additionalProperties:
+            $ref: '#/components/schemas/PermissionInfo'
+          type: object
+          title: Permissions
+      type: object
+      required:
+      - mode
+      - stage
+      - permissions
+      title: TradingPermissionsResponse
+      description: Response model for trading permissions.
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
