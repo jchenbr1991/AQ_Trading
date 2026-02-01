@@ -232,9 +232,13 @@ class AgentDispatcher:
 
         try:
             output = json.loads(stdout)
-        except json.JSONDecodeError:
-            # Try to capture raw output if not JSON
-            output = {"raw_output": stdout.strip()}
+        except json.JSONDecodeError as e:
+            # Re-raise with context so caller can mark as failure
+            raise json.JSONDecodeError(
+                f"Agent output is not valid JSON: {stdout[:200]}",
+                stdout,
+                e.pos,
+            ) from e
 
         return output
 

@@ -153,7 +153,7 @@ class TestAgentDispatcherDispatch:
 
     @patch("agents.dispatcher.subprocess.Popen")
     def test_dispatch_invalid_json_output(self, mock_popen, dispatcher, mock_session):
-        """Dispatch handles invalid JSON output."""
+        """Dispatch handles invalid JSON output as failure."""
         # Mock process with non-JSON output
         mock_process = MagicMock()
         mock_process.returncode = 0
@@ -167,9 +167,9 @@ class TestAgentDispatcherDispatch:
             {},
         )
 
-        # Should still succeed with raw output captured
-        assert result.success is True
-        assert result.result == {"raw_output": "not valid json"}
+        # Invalid JSON output is a failure - agents must return valid JSON
+        assert result.success is False
+        assert "Invalid JSON" in result.error
 
     @patch("agents.dispatcher.subprocess.Popen")
     def test_dispatch_empty_output(self, mock_popen, dispatcher, mock_session):
