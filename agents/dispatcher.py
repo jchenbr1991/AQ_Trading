@@ -7,8 +7,10 @@ in the trading hot path.
 
 import json
 import logging
+import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any, Protocol
 
 try:
@@ -109,9 +111,16 @@ class AgentDispatcher:
             # Wait for completion and capture output
             output = self._wait_and_capture(process, result_record)
 
-            # Update result with success
-            result_record.complete(result=output)
-            logger.info(f"Agent {role.value} completed task: {task}")
+            # Check if agent reported failure in its output
+            # Agents return {"success": false, "error": "..."} on internal errors
+            if isinstance(output, dict) and output.get("success") is False:
+                error_msg = output.get("error", "Agent reported failure")
+                logger.error(f"Agent {role.value} reported failure: {error_msg}")
+                result_record.complete(error=error_msg)
+            else:
+                # Update result with success
+                result_record.complete(result=output)
+                logger.info(f"Agent {role.value} completed task: {task}")
 
         except subprocess.TimeoutExpired as e:
             error_msg = f"Agent timeout after {self.timeout_seconds}s"
@@ -179,6 +188,18 @@ class AgentDispatcher:
 
         logger.debug(f"Spawning agent: {' '.join(cmd)}")
 
+        # Determine project root directory for proper module resolution
+        # This ensures agents.runner is discoverable regardless of cwd
+        project_root = Path(__file__).parent.parent.resolve()
+
+        # Set up environment with project root in PYTHONPATH
+        env = os.environ.copy()
+        python_path = env.get("PYTHONPATH", "")
+        if python_path:
+            env["PYTHONPATH"] = f"{project_root}:{python_path}"
+        else:
+            env["PYTHONPATH"] = str(project_root)
+
         # Spawn subprocess with stdin pipe for input
         process = subprocess.Popen(
             cmd,
@@ -186,6 +207,8 @@ class AgentDispatcher:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            cwd=str(project_root),
+            env=env,
         )
 
         # Write input to stdin

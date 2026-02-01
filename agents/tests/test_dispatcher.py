@@ -172,6 +172,29 @@ class TestAgentDispatcherDispatch:
         assert "Invalid JSON" in result.error
 
     @patch("agents.dispatcher.subprocess.Popen")
+    def test_dispatch_agent_reported_failure(self, mock_popen, dispatcher, mock_session):
+        """Dispatch handles agent-reported failures correctly."""
+        # Mock process that exits successfully but reports failure in JSON
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.communicate.return_value = (
+            json.dumps({"success": False, "error": "Agent internal error", "error_type": "ValueError"}),
+            "",
+        )
+        mock_process.stdin = MagicMock()
+        mock_popen.return_value = mock_process
+
+        result = dispatcher.dispatch(
+            AgentRole.RESEARCHER,
+            "analyze",
+            {},
+        )
+
+        # Agent-reported failure should be marked as failure
+        assert result.success is False
+        assert "Agent internal error" in result.error
+
+    @patch("agents.dispatcher.subprocess.Popen")
     def test_dispatch_empty_output(self, mock_popen, dispatcher, mock_session):
         """Dispatch handles empty output."""
         mock_process = MagicMock()
