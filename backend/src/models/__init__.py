@@ -1,5 +1,7 @@
 from src.models.account import Account
+from src.models.agent_result import AgentResult, AgentRole
 from src.models.close_request import CloseRequest, CloseRequestStatus
+from src.models.derivative_contract import ContractType, DerivativeContract
 from src.models.greeks import GreeksAlertRecord, GreeksSnapshot
 from src.models.order import OrderRecord, OrderSide, OrderStatus, OrderType
 from src.models.outbox import OutboxEvent, OutboxEventStatus
@@ -8,8 +10,12 @@ from src.models.transaction import Transaction, TransactionAction
 
 __all__ = [
     "Account",
+    "AgentResult",
+    "AgentRole",
     "CloseRequest",
     "CloseRequestStatus",
+    "ContractType",
+    "DerivativeContract",
     "GreeksAlertRecord",
     "GreeksSnapshot",
     "OutboxEvent",

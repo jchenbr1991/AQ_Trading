@@ -540,3 +540,68 @@ export interface GreeksWebSocketMessage {
     message: string;
   };
 }
+
+// Derivatives types
+export type ContractType = 'option' | 'future';
+
+export interface ExpirationAlertPosition {
+  symbol: string;
+  underlying: string;
+  expiry: string;
+  days_to_expiry: number;
+  contract_type: ContractType;
+  put_call: PutCall | null;
+  strike: number | null;
+}
+
+export interface ExpiringPositionsResponse {
+  positions: ExpirationAlertPosition[];
+  total: number;
+  warning_days: number;
+}
+
+export interface RollPlanResponse {
+  symbol: string;
+  strategy: string;
+  close_action: string;
+  open_action: string | null;
+}
+
+// Agent types
+export type AgentRole = 'researcher' | 'analyst' | 'risk_controller' | 'ops';
+
+export interface AgentInvokeRequest {
+  role: AgentRole;
+  task: string;
+  context?: Record<string, unknown>;
+}
+
+export interface AgentResultResponse {
+  id: string;
+  role: AgentRole;
+  task: string;
+  success: boolean;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  started_at: string;
+  completed_at: string | null;
+  duration_ms: number | null;
+}
+
+export interface AgentResultsListResponse {
+  results: AgentResultResponse[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface AgentPermission {
+  action: string;
+  allowed: boolean;
+  description: string;
+}
+
+export interface AgentPermissions {
+  role: AgentRole;
+  permissions: AgentPermission[];
+}

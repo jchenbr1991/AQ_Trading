@@ -1,0 +1,41 @@
+# backend/config/derivatives.yaml
+# Configuration for derivative contract management
+#
+# This file configures:
+# - Expiration warning thresholds
+# - Futures roll strategies per underlying
+
+# Expiration monitoring settings
+expiration:
+  warning_days: 5              # SC-011: Alert at least 5 days before expiry
+
+# Futures roll configuration
+# Strategies:
+#   - calendar_spread: Sell current month, buy next month simultaneously
+#   - close_open: Close position without opening new one
+futures_roll:
+  default:
+    strategy: calendar_spread  # Default strategy for unconfigured underlyings
+    days_before: 5             # Default days before expiry to initiate roll
+
+  # Per-underlying configurations
+  underlyings:
+    ES:                        # S&P 500 E-mini
+      strategy: calendar_spread
+      days_before: 5
+
+    NQ:                        # Nasdaq 100 E-mini
+      strategy: calendar_spread
+      days_before: 5
+
+    CL:                        # Crude Oil
+      strategy: close_open
+      days_before: 3
+
+    GC:                        # Gold
+      strategy: calendar_spread
+      days_before: 5
+
+    ZB:                        # 30-Year Treasury Bond
+      strategy: calendar_spread
+      days_before: 7
