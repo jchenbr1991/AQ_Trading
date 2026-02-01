@@ -14,14 +14,18 @@ Acceptance Criteria:
 
 import logging
 from datetime import date
+from functools import lru_cache
+from pathlib import Path as FilePath
+from typing import Any
 
+import yaml
 from fastapi import APIRouter, Depends, HTTPException, Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db.database import get_session
 from src.derivatives.expiration_manager import ExpirationManager
-from src.derivatives.futures_roll import FuturesRollManager
+from src.derivatives.futures_roll import FuturesRollManager, RollStrategy
 from src.models.derivative_contract import ContractType, DerivativeContract, PutCall
 from src.schemas.derivatives import (
     ExpirationAlertResponse,
@@ -35,6 +39,40 @@ router = APIRouter(prefix="/derivatives", tags=["derivatives"])
 
 # Default warning window per SC-011
 DEFAULT_WARNING_DAYS = 5
+
+
+@lru_cache
+def _load_derivatives_config() -> dict[str, Any]:
+    """Load derivatives configuration from YAML file.
+
+    Returns:
+        Configuration dictionary, or empty dict if file not found.
+    """
+    config_path = FilePath(__file__).parent.parent.parent.parent / "config" / "derivatives.yaml"
+    if not config_path.exists():
+        logger.warning("Derivatives config not found at %s, using defaults", config_path)
+        return {}
+
+    try:
+        with open(config_path) as f:
+            config = yaml.safe_load(f) or {}
+        logger.info("Loaded derivatives config from %s", config_path)
+        return config
+    except Exception as e:
+        logger.error("Failed to load derivatives config: %s", e)
+        return {}
+
+
+def _get_warning_days() -> int:
+    """Get warning days from config or default."""
+    config = _load_derivatives_config()
+    return config.get("expiration", {}).get("warning_days", DEFAULT_WARNING_DAYS)
+
+
+def _get_futures_roll_config() -> dict[str, Any]:
+    """Get futures roll configuration."""
+    config = _load_derivatives_config()
+    return config.get("futures_roll", {})
 
 
 def _coerce_contract_type(value: ContractType | str) -> ContractType:
@@ -56,15 +94,54 @@ def _coerce_put_call(value: PutCall | str | None) -> PutCall | None:
 async def get_expiration_manager(
     session: AsyncSession = Depends(get_session),
 ) -> ExpirationManager:
-    """Dependency to create ExpirationManager with session."""
-    return ExpirationManager(session=session, warning_days=DEFAULT_WARNING_DAYS)
+    """Dependency to create ExpirationManager with session.
+
+    Uses warning_days from config/derivatives.yaml if available.
+    """
+    warning_days = _get_warning_days()
+    return ExpirationManager(session=session, warning_days=warning_days)
 
 
 async def get_futures_roll_manager(
     session: AsyncSession = Depends(get_session),
 ) -> FuturesRollManager:
-    """Dependency to create FuturesRollManager with session."""
-    return FuturesRollManager(session=session, default_days_before=DEFAULT_WARNING_DAYS)
+    """Dependency to create FuturesRollManager with session.
+
+    Configures per-underlying roll strategies from config/derivatives.yaml.
+    """
+    roll_config = _get_futures_roll_config()
+    default_config = roll_config.get("default", {})
+    default_days = default_config.get("days_before", DEFAULT_WARNING_DAYS)
+
+    # Get default strategy
+    default_strategy_str = default_config.get("strategy", "calendar_spread")
+    try:
+        default_strategy = RollStrategy(default_strategy_str)
+    except ValueError:
+        logger.warning("Invalid default strategy '%s', using calendar_spread", default_strategy_str)
+        default_strategy = RollStrategy.CALENDAR_SPREAD
+
+    manager = FuturesRollManager(
+        session=session,
+        default_days_before=default_days,
+        default_strategy=default_strategy,
+    )
+
+    # Configure per-underlying strategies
+    for underlying, underlying_config in roll_config.items():
+        if underlying == "default" or not isinstance(underlying_config, dict):
+            continue
+
+        strategy_str = underlying_config.get("strategy", default_strategy_str)
+        days_before = underlying_config.get("days_before", default_days)
+
+        try:
+            strategy = RollStrategy(strategy_str)
+            manager.configure_underlying(underlying, strategy, days_before)
+        except ValueError:
+            logger.warning("Invalid strategy '%s' for %s, skipping", strategy_str, underlying)
+
+    return manager
 
 
 @router.get("/expiring", response_model=ExpiringPositionsResponse)

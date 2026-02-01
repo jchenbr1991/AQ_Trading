@@ -11,6 +11,7 @@ Usage (invoked by dispatcher):
 """
 
 import argparse
+import asyncio
 import json
 import logging
 import sys
@@ -57,7 +58,7 @@ def get_agent_for_role(role: str) -> Any:
     return agents[role]()
 
 
-def run_agent(role: str, task: str, context: dict[str, Any]) -> dict[str, Any]:
+async def run_agent(role: str, task: str, context: dict[str, Any]) -> dict[str, Any]:
     """Run an agent task and return the result.
 
     Args:
@@ -72,7 +73,7 @@ def run_agent(role: str, task: str, context: dict[str, Any]) -> dict[str, Any]:
 
     try:
         agent = get_agent_for_role(role)
-        result = agent.execute(task, context)
+        result = await agent.execute(task, context)
         logger.info(f"Agent {role} completed successfully")
         return result
     except Exception as e:
@@ -106,8 +107,8 @@ def main() -> None:
         print(json.dumps(result))
         sys.exit(1)
 
-    # Run the agent
-    result = run_agent(args.role, task, context)
+    # Run the agent (async execution)
+    result = asyncio.run(run_agent(args.role, task, context))
 
     # Output result as JSON to stdout
     print(json.dumps(result))
