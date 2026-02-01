@@ -66,9 +66,11 @@ def get_dispatcher():
 
     try:
         from agents.dispatcher import AgentDispatcher
+        from agents.permissions import PermissionChecker
     except ImportError:
         # Fallback for when running from project root
         from dispatcher import AgentDispatcher
+        from permissions import PermissionChecker
 
     # Create a simple session factory for the dispatcher
     # Note: The dispatcher uses sync sessions for subprocess management
@@ -84,7 +86,13 @@ def get_dispatcher():
         Session = sessionmaker(bind=engine)
         return Session()
 
-    return AgentDispatcher(session_factory=session_factory)
+    # Create permission checker for FR-020 compliance
+    permission_checker = PermissionChecker()
+
+    return AgentDispatcher(
+        session_factory=session_factory,
+        permission_checker=permission_checker,
+    )
 
 
 @router.post("/invoke", response_model=AgentResultResponse)

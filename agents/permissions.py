@@ -376,3 +376,32 @@ class PermissionChecker:
             return f"Unknown operation: {operation}"
 
         return None
+
+    def can_execute(
+        self, role: "AgentRole | str", task: str, context: dict[str, Any]
+    ) -> bool:
+        """Check if an agent role can execute a task.
+
+        This method is used by the AgentDispatcher to validate task dispatch.
+        It checks if the role is defined in the permissions matrix.
+
+        Handles both local AgentRole enum and backend AgentRole enum by
+        converting to string value for comparison.
+
+        Args:
+            role: The agent role (can be AgentRole enum or string)
+            task: Task description (used for logging, not permission check)
+            context: Task context (used for logging, not permission check)
+
+        Returns:
+            True if the role can execute tasks (i.e., role is defined)
+        """
+        # Convert role to string value to handle different AgentRole enums
+        role_value = role.value if hasattr(role, "value") else str(role)
+
+        # Find matching role in our permissions
+        for perm_role in self._permissions:
+            if perm_role.value == role_value:
+                return True
+
+        return False

@@ -193,37 +193,51 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
-### User Story 6: AI Agent System [COMPLETED]
+### User Story 6: AI Agent System [FRAMEWORK COMPLETE]
 
 | Task | Status | Description |
 |------|--------|-------------|
 | T017: AgentDispatcher | Done | Subprocess lifecycle, result capture |
 | T018: Permission Model | Done | RBAC matrix, tool validation |
 | T019: Agent Base | Done | Common interface, tool registration |
-| T020: Researcher Agent | Done | Strategy optimization with walk-forward |
-| T021: Analyst Agent | Done | Sentiment scoring from news/social |
-| T022: Risk Controller Agent | Done | Dynamic risk bias via Redis |
-| T023: Ops Agent | Done | Reconciliation analysis |
-| T024-T028: Agent Tools | Done | backtest, market_data, portfolio, redis_writer, reconciliation (scaffolds) |
+| T020: Researcher Agent | Framework | Strategy optimization with walk-forward (scaffold) |
+| T021: Analyst Agent | Framework | Sentiment scoring from news/social (scaffold) |
+| T022: Risk Controller Agent | Framework | Dynamic risk bias via Redis (scaffold) |
+| T023: Ops Agent | Framework | Reconciliation analysis (scaffold) |
+| T024-T028: Agent Tools | Framework | backtest, market_data, portfolio, redis_writer, reconciliation (scaffolds) |
 | T029: WalkForwardValidator | Done | 70/15/15 split, <20% degradation check |
 | T030: Agent API | Done | `/api/agents/invoke`, `/api/agents/results` |
 | T031: RiskManager Integration | Done | Redis risk_bias with graceful degradation |
 | T032: AgentsPage | Done | Frontend invocation + results UI |
 | T033: TypeScript Types | Done | Generated from OpenAPI spec |
 
-**Acceptance Criteria Met:**
-- FR-019: AI agent subsystem support ✅
-- FR-020: Permission boundaries (read-only, parameters only) ✅
-- FR-021: Graceful degradation when components fail ✅
-- FR-022: Analyst generates sentiment factors ✅ (scaffold)
-- FR-023: Researcher with overfitting protection ✅
-- SC-013: Out-of-sample validation via walk-forward ✅
-- SC-014: Risk bias takes effect within 1 minute ✅
+**Framework Status:**
+- ✅ FR-019: AI agent subsystem support (API, dispatcher, subprocess architecture)
+- ✅ FR-020: Permission boundaries defined (RBAC matrix implemented)
+- ✅ FR-021: Graceful degradation when components fail
+- ⏳ FR-022: Analyst generates sentiment factors (scaffold - needs LLM)
+- ⏳ FR-023: Researcher with overfitting protection (scaffold - needs LLM)
+- ✅ SC-013: Out-of-sample validation framework (WalkForwardValidator)
+- ✅ SC-014: Risk bias takes effect within 1 minute (RiskManager reads Redis)
 
-**Note:** Agent tools (T024-T028) and agent execute methods are scaffold implementations. Full implementation requires:
-- LLM provider integration (Anthropic Claude, OpenAI, etc.)
-- Tool execution framework for agent-tool calls
-- Backend service integration for tool implementations
+**⚠️ What's Done vs What's Pending:**
+
+**Done (Framework):**
+- Agent subprocess architecture (sidecar pattern)
+- API endpoints for invoke/results
+- Permission RBAC matrix
+- Walk-forward validation logic
+- Redis integration for risk_bias
+
+**Pending (Requires LLM Integration):**
+- Agent execute() methods return stub responses
+- Agent tools return "not_implemented"
+- No actual LLM provider connected
+
+**To Complete Full Functionality:**
+1. Choose LLM provider (Anthropic Claude, OpenAI, etc.)
+2. Implement tool execution framework for agent-tool calls
+3. Connect agent tools to backend services
 
 ---
 
