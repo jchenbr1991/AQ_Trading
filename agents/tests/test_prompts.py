@@ -4,12 +4,13 @@
 Tests cover:
 - Agent initialization with correct roles
 - SYSTEM_PROMPT constant presence and content
-- Execute method signature and placeholder behavior
+- Execute method integration with CLI executor
 - Tool registration inheritance
 """
 
 import pytest
 from typing import Any
+from unittest.mock import AsyncMock, patch
 
 from agents.base import AgentRole, PermissionChecker, Tool
 
@@ -105,30 +106,48 @@ class TestResearcherAgent:
         assert "validation" in prompt.lower()
 
     @pytest.mark.asyncio
-    async def test_execute_returns_placeholder(self):
-        """ResearcherAgent.execute returns placeholder result."""
+    async def test_execute_calls_cli_executor(self):
+        """ResearcherAgent.execute calls CLI executor."""
         agent = ResearcherAgent()
 
-        result = await agent.execute(
-            task="Optimize momentum strategy",
-            context={"strategy_id": "momentum", "period": "30d"},
-        )
+        mock_result = {
+            "success": True,
+            "result": "analysis complete",
+            "confidence": 0.9,
+        }
+
+        with patch("agents.prompts.researcher.CLIExecutor") as mock_executor_class:
+            mock_executor = mock_executor_class.return_value
+            mock_executor.execute = AsyncMock(return_value=mock_result)
+
+            result = await agent.execute(
+                task="Optimize momentum strategy",
+                context={"strategy_id": "momentum", "period": "30d"},
+            )
+
+            # Verify executor was called with correct args
+            mock_executor.execute.assert_called_once()
+            call_args = mock_executor.execute.call_args
+            assert "Optimize momentum strategy" in call_args.kwargs["task"]
+            assert call_args.kwargs["context"] == {"strategy_id": "momentum", "period": "30d"}
 
         assert isinstance(result, dict)
-        assert "success" in result
-        assert result["success"] is False
-        assert "Not implemented" in result.get("error", "")
-        assert result["task"] == "Optimize momentum strategy"
-        assert "strategy_id" in result["context_keys"]
+        assert result["success"] is True
+        assert result["result"] == "analysis complete"
 
     @pytest.mark.asyncio
-    async def test_execute_with_empty_context(self):
-        """ResearcherAgent.execute handles empty context."""
+    async def test_execute_handles_exception(self):
+        """ResearcherAgent.execute handles exceptions gracefully."""
         agent = ResearcherAgent()
 
-        result = await agent.execute(task="Simple task", context={})
+        with patch("agents.prompts.researcher.CLIExecutor") as mock_executor_class:
+            mock_executor = mock_executor_class.return_value
+            mock_executor.execute = AsyncMock(side_effect=Exception("CLI error"))
 
-        assert result["context_keys"] == []
+            result = await agent.execute(task="Simple task", context={})
+
+            assert result["success"] is False
+            assert "CLI error" in result["error"]
 
     def test_repr(self):
         """ResearcherAgent repr is informative."""
@@ -181,19 +200,30 @@ class TestAnalystAgent:
         assert "event" in prompt.lower()
 
     @pytest.mark.asyncio
-    async def test_execute_returns_placeholder(self):
-        """AnalystAgent.execute returns placeholder result."""
+    async def test_execute_calls_cli_executor(self):
+        """AnalystAgent.execute calls CLI executor."""
         agent = AnalystAgent()
 
-        result = await agent.execute(
-            task="Analyze TSLA sentiment",
-            context={"symbol": "TSLA", "hours": 24},
-        )
+        mock_result = {
+            "success": True,
+            "result": {"sentiment_score": 0.65, "symbol": "TSLA"},
+            "confidence": 0.8,
+        }
+
+        with patch("agents.prompts.analyst.CLIExecutor") as mock_executor_class:
+            mock_executor = mock_executor_class.return_value
+            mock_executor.execute = AsyncMock(return_value=mock_result)
+
+            result = await agent.execute(
+                task="Analyze TSLA sentiment",
+                context={"symbol": "TSLA", "hours": 24},
+            )
+
+            # Verify executor was called
+            mock_executor.execute.assert_called_once()
 
         assert isinstance(result, dict)
-        assert "success" in result
-        assert result["success"] is False
-        assert result["task"] == "Analyze TSLA sentiment"
+        assert result["success"] is True
 
     def test_repr(self):
         """AnalystAgent repr is informative."""
@@ -249,20 +279,30 @@ class TestRiskControllerAgent:
         assert "emergency" in prompt.lower() or "safety" in prompt.lower()
 
     @pytest.mark.asyncio
-    async def test_execute_returns_placeholder(self):
-        """RiskControllerAgent.execute returns placeholder result."""
+    async def test_execute_calls_cli_executor(self):
+        """RiskControllerAgent.execute calls CLI executor."""
         agent = RiskControllerAgent()
 
-        result = await agent.execute(
-            task="Calculate risk bias",
-            context={"vix": 25.5, "drawdown_5d": -3.2},
-        )
+        mock_result = {
+            "success": True,
+            "result": {"bias": 0.7, "reasoning": "VIX at 25.5 -> reduced exposure"},
+            "confidence": 0.85,
+        }
+
+        with patch("agents.prompts.risk_controller.CLIExecutor") as mock_executor_class:
+            mock_executor = mock_executor_class.return_value
+            mock_executor.execute = AsyncMock(return_value=mock_result)
+
+            result = await agent.execute(
+                task="Calculate risk bias",
+                context={"vix": 25.5, "drawdown_5d": -3.2},
+            )
+
+            # Verify executor was called
+            mock_executor.execute.assert_called_once()
 
         assert isinstance(result, dict)
-        assert "success" in result
-        assert result["success"] is False
-        assert result["task"] == "Calculate risk bias"
-        assert "vix" in result["context_keys"]
+        assert result["success"] is True
 
     def test_repr(self):
         """RiskControllerAgent repr is informative."""
@@ -318,21 +358,30 @@ class TestOpsAgent:
         assert "rollback" in prompt.lower() or "review" in prompt.lower()
 
     @pytest.mark.asyncio
-    async def test_execute_returns_placeholder(self):
-        """OpsAgent.execute returns placeholder result."""
+    async def test_execute_calls_cli_executor(self):
+        """OpsAgent.execute calls CLI executor."""
         agent = OpsAgent()
 
-        result = await agent.execute(
-            task="Investigate AAPL position mismatch",
-            context={"local_qty": 100, "broker_qty": 110, "symbol": "AAPL"},
-        )
+        mock_result = {
+            "success": True,
+            "result": {"diagnosis": "Missed fill notification", "fix_type": "sync_from_broker"},
+            "confidence": 0.9,
+        }
+
+        with patch("agents.prompts.ops.CLIExecutor") as mock_executor_class:
+            mock_executor = mock_executor_class.return_value
+            mock_executor.execute = AsyncMock(return_value=mock_result)
+
+            result = await agent.execute(
+                task="Investigate AAPL position mismatch",
+                context={"local_qty": 100, "broker_qty": 110, "symbol": "AAPL"},
+            )
+
+            # Verify executor was called
+            mock_executor.execute.assert_called_once()
 
         assert isinstance(result, dict)
-        assert "success" in result
-        assert result["success"] is False
-        assert result["task"] == "Investigate AAPL position mismatch"
-        assert "local_qty" in result["context_keys"]
-        assert "broker_qty" in result["context_keys"]
+        assert result["success"] is True
 
     def test_repr(self):
         """OpsAgent repr is informative."""
@@ -391,13 +440,25 @@ class TestAgentCommonBehavior:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "agent_class",
-        [ResearcherAgent, AnalystAgent, RiskControllerAgent, OpsAgent],
+        "agent_class,module_path",
+        [
+            (ResearcherAgent, "agents.prompts.researcher"),
+            (AnalystAgent, "agents.prompts.analyst"),
+            (RiskControllerAgent, "agents.prompts.risk_controller"),
+            (OpsAgent, "agents.prompts.ops"),
+        ],
     )
-    async def test_all_agents_execute_is_async(self, agent_class):
-        """All agents have async execute method."""
+    async def test_all_agents_execute_is_async(self, agent_class, module_path):
+        """All agents have async execute method that calls CLI executor."""
         agent = agent_class()
-        result = await agent.execute("test task", {})
+
+        mock_result = {"success": True, "result": "test"}
+
+        with patch(f"{module_path}.CLIExecutor") as mock_executor_class:
+            mock_executor = mock_executor_class.return_value
+            mock_executor.execute = AsyncMock(return_value=mock_result)
+
+            result = await agent.execute("test task", {})
 
         assert isinstance(result, dict)
         assert "success" in result

@@ -191,14 +191,16 @@ class AgentDispatcher:
         # Determine project root directory for proper module resolution
         # This ensures agents.runner is discoverable regardless of cwd
         project_root = Path(__file__).parent.parent.resolve()
+        backend_dir = project_root / "backend"
 
-        # Set up environment with project root in PYTHONPATH
+        # Set up environment with project root and backend in PYTHONPATH
+        # The backend directory is needed for `from src.*` imports in agent tools
         env = os.environ.copy()
         python_path = env.get("PYTHONPATH", "")
+        paths = [str(project_root), str(backend_dir)]
         if python_path:
-            env["PYTHONPATH"] = f"{project_root}:{python_path}"
-        else:
-            env["PYTHONPATH"] = str(project_root)
+            paths.append(python_path)
+        env["PYTHONPATH"] = ":".join(paths)
 
         # Spawn subprocess with stdin pipe for input
         process = subprocess.Popen(

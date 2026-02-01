@@ -47,8 +47,9 @@ Confidence-building before real capital deployment.
 | **Strategy Warm-up** | Historical indicator initialization | `strategies/base.py` |
 | **Health Monitoring** | Multi-layer heartbeat, alerts | `core/health_monitor.py` |
 | **Retention Policies** | Data archival, snapshot compression | `db/retention.py` |
+| **Greeks Monitoring** | Portfolio delta/theta/vega tracking | Risk Manager extension |
 
-**Exit Criteria:** Can backtest strategies with benchmark comparison, analyze trade execution quality, trust system health.
+**Exit Criteria:** Can backtest strategies with benchmark comparison, analyze trade execution quality, trust system health, monitor portfolio Greeks.
 
 ---
 
@@ -60,7 +61,6 @@ Sophistication for complex instruments and automation.
 |-----------|-------|-------------|
 | **Options Lifecycle** | Expiration tracking, assignment handling | `core/expiration_manager.py` |
 | **Futures Roll-over** | Automatic contract rolling | `core/expiration_manager.py` |
-| **Greeks Monitoring** | Portfolio delta/theta/vega tracking | Risk Manager extension |
 | **CLI Agents** | Researcher, Analyst, Risk Controller, Ops | `agents/` |
 | **Dynamic Risk Bias** | Agent-driven risk adjustment | Agent + Redis integration |
 | **Sentiment Factors** | News/social media factor production | Analyst agent |
@@ -78,12 +78,12 @@ Phase 1 (MVP)          Phase 2 (Analytics)      Phase 3 (Advanced)
 ─────────────────      ──────────────────       ──────────────────
 Portfolio Manager      Backtesting              Options Lifecycle
 Strategy Engine        Benchmark Compare        Futures Roll-over
-Risk Manager (basic)   Trace Viewer             Greeks Monitoring
-Order Manager          Slippage Analysis        CLI Agents
-Reconciliation         Strategy Warm-up         Dynamic Risk Bias
-Live / Paper Mode      Health Monitoring        Sentiment Factors
-Basic Dashboard        Retention Policies       Auto-Tuning
-Basic Market Data                               Graceful Degradation
+Risk Manager (basic)   Trace Viewer             CLI Agents
+Order Manager          Slippage Analysis        Dynamic Risk Bias
+Reconciliation         Strategy Warm-up         Sentiment Factors
+Live / Paper Mode      Health Monitoring        Auto-Tuning
+Basic Dashboard        Retention Policies       Graceful Degradation
+Basic Market Data      Greeks Monitoring
 
 Timeline: 4-6 weeks    Timeline: 2-4 weeks      Timeline: Ongoing
 ```

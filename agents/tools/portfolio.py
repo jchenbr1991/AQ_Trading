@@ -3,7 +3,7 @@
 """Portfolio tool for AI agents.
 
 This tool provides read-only access to portfolio data,
-positions, and Greeks exposure information.
+positions, and Greeks exposure information via the backend portfolio service.
 
 Usage:
     tool = create_portfolio_tool()
@@ -12,18 +12,25 @@ Usage:
     )
 """
 
+import json
+import logging
+from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 from agents.base import Tool
+from agents.connections import get_db_session_or_none, get_redis_or_none
 
+logger = logging.getLogger(__name__)
 
-QueryType = Literal["summary", "positions", "greeks", "pnl", "exposure"]
+QueryType = Literal["summary", "positions", "greeks", "pnl"]
 
 
 async def query_portfolio(
     query_type: QueryType = "summary",
+    account_id: str = "default",
     symbol: str | None = None,
-    include_closed: bool = False,
+    strategy_id: str | None = None,
 ) -> dict[str, Any]:
     """Query portfolio data and positions.
 
@@ -35,108 +42,271 @@ async def query_portfolio(
             - 'positions': Current open positions
             - 'greeks': Greeks exposure data (delta, gamma, theta, vega)
             - 'pnl': Profit/loss breakdown
-            - 'exposure': Risk exposure by sector/asset class
+        account_id: Account ID to query (default: "default")
         symbol: Optional symbol to filter by (e.g., "AAPL")
-        include_closed: Include recently closed positions (last 24h)
+        strategy_id: Optional strategy ID to filter by
 
     Returns:
         Dictionary containing:
         - status: 'success' or 'error'
         - query_type: The type of query performed
-        - data: The portfolio data (placeholder)
+        - data: The portfolio data
         - timestamp: When the data was retrieved
         - error: Error message if status is 'error'
 
     Example:
-        >>> result = await query_portfolio(query_type="greeks")
+        >>> result = await query_portfolio(query_type="positions")
         >>> result["status"]
-        'not_implemented'
+        'success'
     """
-    # Placeholder implementation
-    # TODO: Integrate with portfolio service
-    return {
-        "status": "not_implemented",
-        "query_type": query_type,
-        "symbol_filter": symbol,
-        "include_closed": include_closed,
-        "data": _get_placeholder_data(query_type),
-        "timestamp": None,
-        "message": "Portfolio service integration pending",
-    }
+    try:
+        if query_type == "positions":
+            return await _get_positions(account_id, symbol, strategy_id)
+        elif query_type == "summary":
+            return await _get_account_summary(account_id)
+        elif query_type == "pnl":
+            return await _get_pnl(account_id, strategy_id)
+        elif query_type == "greeks":
+            return await get_greeks_exposure(symbol)
+        else:
+            return {
+                "status": "error",
+                "error": f"Query type '{query_type}' not yet supported",
+            }
+
+    except Exception as e:
+        logger.error("Portfolio query failed: %s", e)
+        return {
+            "status": "error",
+            "error": f"Query failed: {str(e)}",
+            "query_type": query_type,
+        }
 
 
-def _get_placeholder_data(query_type: QueryType) -> dict[str, Any]:
-    """Get placeholder data structure for each query type."""
-    if query_type == "summary":
+async def _get_positions(
+    account_id: str,
+    symbol: str | None,
+    strategy_id: str | None,
+) -> dict[str, Any]:
+    """Get positions from the database."""
+    try:
+        from sqlalchemy import select
+        from src.models.position import Position
+
+        async with get_db_session_or_none() as session:
+            if session is None:
+                logger.warning("Database not available")
+                return {
+                    "status": "success",
+                    "query_type": "positions",
+                    "data": {"positions": [], "count": 0},
+                    "message": "Database not available",
+                }
+
+            stmt = select(Position).where(Position.account_id == account_id)
+            if symbol:
+                stmt = stmt.where(Position.symbol == symbol)
+            if strategy_id:
+                stmt = stmt.where(Position.strategy_id == strategy_id)
+
+            result = await session.execute(stmt)
+            positions = result.scalars().all()
+
+            position_list = [
+                {
+                    "symbol": p.symbol,
+                    "quantity": p.quantity,
+                    "avg_cost": str(p.avg_cost) if p.avg_cost else None,
+                    "current_price": str(p.current_price) if p.current_price else None,
+                    "market_value": str(p.market_value) if hasattr(p, 'market_value') and p.market_value else None,
+                    "asset_type": p.asset_type.value if hasattr(p, 'asset_type') and p.asset_type else "stock",
+                    "strategy_id": p.strategy_id,
+                }
+                for p in positions
+            ]
+
+            return {
+                "status": "success",
+                "query_type": "positions",
+                "data": {
+                    "positions": position_list,
+                    "count": len(position_list),
+                },
+                "timestamp": datetime.now().isoformat(),
+            }
+
+    except ImportError as e:
+        logger.warning("Database dependencies not available: %s", e)
         return {
-            "total_value": None,
-            "cash": None,
-            "buying_power": None,
-            "day_pnl": None,
-            "total_pnl": None,
+            "status": "success",
+            "query_type": "positions",
+            "data": {"positions": [], "count": 0},
+            "message": "Database not available",
         }
-    elif query_type == "positions":
+    except Exception as e:
+        logger.error("Position query failed: %s", e)
         return {
-            "positions": [],
-            "count": 0,
+            "status": "error",
+            "error": f"Position query failed: {str(e)}",
         }
-    elif query_type == "greeks":
+
+
+async def _get_account_summary(account_id: str) -> dict[str, Any]:
+    """Get account summary from the database."""
+    try:
+        from sqlalchemy import select
+        from src.models.account import Account
+
+        async with get_db_session_or_none() as session:
+            if session is None:
+                return {
+                    "status": "success",
+                    "query_type": "summary",
+                    "data": {"account_id": account_id, "cash": None},
+                    "message": "Database not available",
+                }
+
+            stmt = select(Account).where(Account.account_id == account_id)
+            result = await session.execute(stmt)
+            account = result.scalar_one_or_none()
+
+            if account:
+                summary = {
+                    "account_id": account.account_id,
+                    "cash": str(account.cash) if account.cash else "0",
+                    "buying_power": str(account.buying_power) if hasattr(account, 'buying_power') and account.buying_power else None,
+                    "total_equity": str(account.total_equity) if hasattr(account, 'total_equity') and account.total_equity else None,
+                    "margin_used": str(account.margin_used) if hasattr(account, 'margin_used') and account.margin_used else None,
+                }
+            else:
+                summary = {"account_id": account_id, "cash": None, "message": "Account not found"}
+
+            return {
+                "status": "success",
+                "query_type": "summary",
+                "data": summary,
+                "timestamp": datetime.now().isoformat(),
+            }
+
+    except ImportError:
         return {
-            "portfolio_delta": None,
-            "portfolio_gamma": None,
-            "portfolio_theta": None,
-            "portfolio_vega": None,
-            "by_underlying": {},
+            "status": "success",
+            "query_type": "summary",
+            "data": {"account_id": account_id, "cash": None},
+            "message": "Database not available",
         }
-    elif query_type == "pnl":
+    except Exception as e:
+        logger.error("Account summary query failed: %s", e)
         return {
-            "realized": None,
-            "unrealized": None,
-            "day_pnl": None,
-            "by_symbol": {},
+            "status": "error",
+            "error": f"Summary query failed: {str(e)}",
         }
-    elif query_type == "exposure":
+
+
+async def _get_pnl(account_id: str, strategy_id: str | None) -> dict[str, Any]:
+    """Get P&L breakdown."""
+    try:
+        async with get_redis_or_none() as client:
+            if client is None:
+                return {
+                    "status": "success",
+                    "query_type": "pnl",
+                    "data": {"realized": None, "unrealized": None},
+                    "message": "Redis not available",
+                }
+
+            pnl_key = f"pnl:{account_id}"
+            if strategy_id:
+                pnl_key = f"pnl:{account_id}:{strategy_id}"
+
+            pnl_data = await client.get(pnl_key)
+
+            if pnl_data:
+                return {
+                    "status": "success",
+                    "query_type": "pnl",
+                    "data": json.loads(pnl_data),
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            return {
+                "status": "success",
+                "query_type": "pnl",
+                "data": {
+                    "realized": None,
+                    "unrealized": None,
+                    "day_pnl": None,
+                },
+                "message": "P&L data not available in cache",
+            }
+
+    except Exception as e:
         return {
-            "by_sector": {},
-            "by_asset_class": {},
-            "concentration": {},
+            "status": "error",
+            "error": f"P&L query failed: {str(e)}",
         }
-    return {}
 
 
 async def get_greeks_exposure(
     underlying: str | None = None,
-    aggregate: bool = True,
 ) -> dict[str, Any]:
-    """Get Greeks exposure data for the portfolio.
+    """Get aggregated Greeks exposure data for the portfolio.
 
     Args:
         underlying: Optional underlying symbol to filter by
-        aggregate: If True, return aggregated Greeks; if False, by position
 
     Returns:
-        Dictionary containing Greeks exposure data.
+        Dictionary containing aggregated Greeks exposure data.
 
     Example:
         >>> result = await get_greeks_exposure()
         >>> result["status"]
-        'not_implemented'
+        'success'
     """
-    # Placeholder implementation
-    return {
-        "status": "not_implemented",
-        "underlying_filter": underlying,
-        "aggregate": aggregate,
-        "greeks": {
-            "delta": None,
-            "gamma": None,
-            "theta": None,
-            "vega": None,
-            "rho": None,
-        },
-        "by_expiry": {},
-        "message": "Greeks service integration pending",
-    }
+    try:
+        async with get_redis_or_none() as client:
+            if client is None:
+                return {
+                    "status": "success",
+                    "query_type": "greeks",
+                    "data": {"delta": None, "gamma": None, "theta": None, "vega": None},
+                    "message": "Redis not available",
+                }
+
+            # Get aggregated Greeks from Redis cache
+            greeks_key = "greeks:portfolio"
+            if underlying:
+                greeks_key = f"greeks:{underlying}"
+
+            greeks_data = await client.get(greeks_key)
+
+            if greeks_data:
+                return {
+                    "status": "success",
+                    "query_type": "greeks",
+                    "underlying_filter": underlying,
+                    "data": json.loads(greeks_data),
+                    "timestamp": datetime.now().isoformat(),
+                }
+
+            return {
+                "status": "success",
+                "query_type": "greeks",
+                "data": {
+                    "delta": None,
+                    "gamma": None,
+                    "theta": None,
+                    "vega": None,
+                },
+                "message": "Greeks data not available in cache",
+            }
+
+    except Exception as e:
+        logger.error("Greeks query failed: %s", e)
+        return {
+            "status": "error",
+            "error": f"Greeks query failed: {str(e)}",
+        }
 
 
 def create_portfolio_tool() -> Tool:
