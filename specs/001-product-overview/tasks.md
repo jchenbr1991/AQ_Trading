@@ -104,79 +104,79 @@
 
 #### Agent Core Infrastructure
 
-- [ ] T017 [US6] Implement AgentDispatcher in `agents/dispatcher.py`
+- [x] T017 [US6] Implement AgentDispatcher in `agents/dispatcher.py`
   - Manage agent lifecycle (spawn, monitor, terminate)
   - Route tasks to appropriate agent roles
   - Capture results to AgentResult table
-- [ ] T018 [US6] Implement Permission model in `agents/permissions.py`
+- [x] T018 [US6] Implement Permission model in `agents/permissions.py`
   - Role-based access control matrix
   - Validate tool calls against permissions
   - Block unauthorized operations
-- [ ] T019 [P] [US6] Create base Agent class in `agents/base.py`
+- [x] T019 [P] [US6] Create base Agent class in `agents/base.py`
   - Common agent interface
   - Tool registration and validation
 
 #### Agent Roles
 
-- [ ] T020 [P] [US6] Create Researcher agent prompt in `agents/prompts/researcher.py`
+- [x] T020 [P] [US6] Create Researcher agent prompt in `agents/prompts/researcher.py`
   - Strategy analysis and optimization
   - Parameter sensitivity testing
   - Walk-forward validation requirements
-- [ ] T021 [P] [US6] Create Analyst agent prompt in `agents/prompts/analyst.py`
+- [x] T021 [P] [US6] Create Analyst agent prompt in `agents/prompts/analyst.py`
   - Market data analysis
   - Sentiment factor generation
   - News/social media processing
-- [ ] T022 [P] [US6] Create RiskController agent prompt in `agents/prompts/risk_controller.py`
+- [x] T022 [P] [US6] Create RiskController agent prompt in `agents/prompts/risk_controller.py`
   - Portfolio risk assessment
   - Dynamic risk bias adjustment
   - VIX-based scaling
-- [ ] T023 [P] [US6] Create Ops agent prompt in `agents/prompts/ops.py`
+- [x] T023 [P] [US6] Create Ops agent prompt in `agents/prompts/ops.py`
   - Reconciliation analysis (local vs broker positions)
   - Discrepancy investigation and fix suggestions
   - System health monitoring
 
 #### Agent Tools
 
-- [ ] T024 [P] [US6] Implement backtest tool in `agents/tools/backtest.py`
+- [x] T024 [P] [US6] Implement backtest tool in `agents/tools/backtest.py`
   - Run backtest with specified parameters
   - Return performance metrics
-- [ ] T025 [P] [US6] Implement market_data tool in `agents/tools/market_data.py`
+- [x] T025 [P] [US6] Implement market_data tool in `agents/tools/market_data.py`
   - Query historical and live market data
   - VIX and volatility metrics
-- [ ] T026 [P] [US6] Implement portfolio tool in `agents/tools/portfolio.py`
+- [x] T026 [P] [US6] Implement portfolio tool in `agents/tools/portfolio.py`
   - Read-only portfolio and position access
   - Greeks exposure data
-- [ ] T027 [P] [US6] Implement redis_writer tool in `agents/tools/redis_writer.py`
+- [x] T027 [P] [US6] Implement redis_writer tool in `agents/tools/redis_writer.py`
   - Write to allowed Redis keys only (risk_bias, sentiment)
   - Enforce key prefix restrictions
-- [ ] T028 [P] [US6] Implement reconciliation tool in `agents/tools/reconciliation.py`
+- [x] T028 [P] [US6] Implement reconciliation tool in `agents/tools/reconciliation.py`
   - Query broker positions via existing reconciliation service
   - Compare local vs broker positions
   - Return discrepancy analysis for Ops agent
 
 #### Overfitting Prevention
 
-- [ ] T029 [US6] Implement WalkForwardValidator in `agents/validation/walk_forward.py`
+- [x] T029 [US6] Implement WalkForwardValidator in `agents/validation/walk_forward.py`
   - 70% train / 15% validation / 15% test split
   - Performance degradation check (<20% drop)
   - Parameter stability tests (±10%, ±20%)
 
 #### Agent API and Integration
 
-- [ ] T030 [P] [US6] Create agent API routes in `backend/src/api/routes/agents.py`
+- [x] T030 [P] [US6] Create agent API routes in `backend/src/api/routes/agents.py`
   - POST /api/agents/invoke - Invoke agent task
   - GET /api/agents/results - List agent results
   - GET /api/agents/results/{id} - Get specific result
-- [ ] T031 [US6] Integrate risk_bias from Redis into RiskManager in `backend/src/core/risk_manager.py`
+- [x] T031 [US6] Integrate risk_bias from Redis into RiskManager in `backend/src/risk/manager.py`
   - Read redis:risk_bias at signal validation
   - Apply bias multiplier to position limits
   - **Graceful degradation**: Fallback to default bias=1.0 if Redis unavailable
   - Continue trading if agent subsystem fails (FR-021)
-- [ ] T032 [P] [US6] Add Agents page component in `frontend/src/pages/AgentsPage.tsx`
+- [x] T032 [P] [US6] Add Agents page component in `frontend/src/pages/AgentsPage.tsx`
   - Agent invocation interface
   - Results history table
   - Permission matrix display
-- [ ] T033 [US6] Generate TypeScript types for agents API in `frontend/src/api/generated/`
+- [x] T033 [US6] Generate TypeScript types for agents API in `frontend/src/api/generated/`
 
 **Checkpoint**: User Story 6 complete - AI agent system functional
 
