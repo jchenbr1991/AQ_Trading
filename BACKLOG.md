@@ -220,7 +220,10 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 - SC-013: Out-of-sample validation via walk-forward ✅
 - SC-014: Risk bias takes effect within 1 minute ✅
 
-**Note:** Agent tools (T024-T028) are scaffold implementations awaiting backend service integration.
+**Note:** Agent tools (T024-T028) and agent execute methods are scaffold implementations. Full implementation requires:
+- LLM provider integration (Anthropic Claude, OpenAI, etc.)
+- Tool execution framework for agent-tool calls
+- Backend service integration for tool implementations
 
 ---
 
@@ -229,8 +232,9 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 | Task | Status | Description |
 |------|--------|-------------|
 | Graceful Degradation | Done | Risk bias fallback, agent failure tolerance |
-| Enhanced Alerts | Pending | Multi-channel notifications |
-| Audit Logging | Pending | Compliance trail |
+| Enhanced Alerts | Done | EmailChannel + WebhookChannel in backend/src/alerts/channels.py |
+| Audit Logging | Done | AuditService with tiered write paths in backend/src/audit/service.py |
+| Agent Tools Integration | Pending | Connect T024-T028 scaffolds to backend services |
 
 ---
 
