@@ -1,0 +1,45 @@
+strategy:
+  name: trend-breakout-mvp
+  class: src.strategies.examples.trend_breakout.TrendBreakoutStrategy
+  universe: mvp-universe
+  entry_threshold: 0.0
+  exit_threshold: -0.02
+  position_sizing: equal_weight
+  position_size: 100
+  feature_weights:
+    roc_20: 0.5
+    price_vs_ma_20: 0.5
+    price_vs_high_20: 0.5
+    volume_zscore: 0.5
+  factor_weights:
+    momentum_factor: 0.5
+    breakout_factor: 0.5
+  # Weight calculation method: "manual" (use factor_weights above) or "ic" (data-driven IC weighting)
+  weight_method: manual
+  # IC weighting configuration (only used when weight_method: ic)
+  ic_weight_config:
+    lookback_window: 60     # Bars for rolling IC calculation (~3 months daily)
+    ewma_span: 20           # EWMA span for recency weighting (null = disabled)
+    ic_history_periods: 12  # Number of rolling ICs for IC_IR calculation
+
+# Mode-specific configuration for paper/live trading (FR-021)
+modes:
+  paper:
+    enabled: true
+    account_id: "PAPER001"
+    # Paper trading specific settings
+    fill_delay_ms: 100
+    slippage_bps: 5
+  live:
+    enabled: false  # Disabled by default for safety (T045)
+    account_id: null  # Must be configured before enabling live trading
+    broker: "futu"  # Broker adapter to use: "futu", "ibkr", etc.
+    # Risk limits for live trading (T045)
+    risk_limits:
+      max_position_size: 1000  # Maximum shares per position
+      max_order_value: 50000   # Maximum order value in account currency
+      max_daily_loss: 5000     # Maximum daily loss before halting
+      max_open_orders: 10      # Maximum concurrent open orders
+    # Pre-trade validation requirements
+    require_broker_connection: true
+    require_confirmation: true  # Require explicit confirmation for live orders
