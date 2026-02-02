@@ -261,6 +261,41 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
+## Phase 4: First Runnable Trading Strategy [COMPLETED]
+
+**Goal:** Create the first end-to-end runnable trading system using the infrastructure built in Phases 1-3.
+
+### Feature 002: Minimal MVP Trading System
+
+**Spec:** `specs/002-minimal-mvp-trading/spec.md`
+**Plan:** `specs/002-minimal-mvp-trading/plan.md`
+**Branch:** `002-minimal-mvp-trading` (merged to master)
+
+| Task | Status | Description |
+|------|--------|-------------|
+| Feature Specification | Done | 25 functional requirements, reviewed by Codex/Gemini |
+| Implementation Plan | Done | Technical design, data model, API contracts |
+| Indicators Module | Done | ROC, price_vs_ma, price_vs_high, volume_zscore, volatility |
+| Factors Module | Done | momentum_factor, breakout_factor, composite |
+| TrendBreakoutStrategy | Done | Strategy implementation using existing base class |
+| PnL Attribution | Done | Factor-level attribution tracking |
+| Universe Config | Done | YAML-based universe configuration |
+| Integration Tests | Done | Backtest → Paper → Live validation |
+| IC Weight Calculator | Done | Data-driven factor weighting (IC, IC_IR, EWMA) |
+
+**Acceptance Criteria:**
+- SC-001: All 3 symbols (MU, GLD, GOOG) complete backtest with same codebase ✅
+- SC-002: 100% signal agreement across backtest/paper/live modes ✅
+- SC-003: Attribution sums to total PnL (< 0.1% error) ✅
+- SC-004: 1-year backtest completes in < 30 seconds ✅
+- SC-005: Paper trading signals in < 5 seconds ✅
+- SC-006: Paper → Live transition via config only ✅
+- SC-007: Zero lookahead bias validated ✅
+
+**Exit Criteria Met:** Can run TrendBreakoutStrategy with manual or IC-based factor weights across backtest/paper/live modes.
+
+---
+
 ## Legend
 
 | Status | Meaning |
