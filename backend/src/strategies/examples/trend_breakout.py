@@ -479,72 +479,96 @@ class TrendBreakoutStrategy(Strategy):
     def _maybe_update_ic_weights(self) -> None:
         """Update factor weights using IC calculation if enough data.
 
-        Aggregates factor score and return history across all symbols,
-        then calculates IC-based weights using the full pipeline.
-        Updates the composite factor with new weights.
+        Calculates IC-based weights per symbol using the full pipeline,
+        then averages weights across symbols for robustness.
+
+        Weight updates are throttled to reduce churn - only recalculates
+        when enough new data has accumulated (lookback_window / 4 new bars).
         """
         if self._ic_calculator is None:
             return
 
-        # Check if we have enough data
         required_data = self._ic_calculator.lookback_window + self._ic_calculator.ic_history_periods
 
-        # Aggregate factor history across all symbols
-        all_momentum_scores: list[Decimal] = []
-        all_breakout_scores: list[Decimal] = []
-        all_returns: list[Decimal] = []
+        # Throttle updates: only recalculate every N bars (lookback / 4)
+        update_interval = max(self._ic_calculator.lookback_window // 4, 10)
+        total_returns = sum(len(self._return_history.get(s, [])) for s in self.symbols)
+
+        # Skip update if not enough new data since last update
+        if hasattr(self, "_last_ic_update_count"):
+            bars_since_update = total_returns - self._last_ic_update_count
+            if bars_since_update < update_interval and self._ic_weights_initialized:
+                return
+        self._last_ic_update_count = total_returns
+
+        # Calculate weights per symbol, then average
+        symbol_weights: dict[str, dict[str, Decimal]] = {}
 
         for symbol in self.symbols:
             momentum_history = self._factor_score_history[symbol].get("momentum_factor", [])
             breakout_history = self._factor_score_history[symbol].get("breakout_factor", [])
             return_history = self._return_history.get(symbol, [])
 
-            # Align lengths (returns are shifted by 1)
+            # Align lengths (factor scores at t predict returns at t+1)
             min_len = min(len(momentum_history), len(breakout_history), len(return_history) + 1)
-            if min_len > 1:
-                # Factor scores at t predict returns at t+1
-                all_momentum_scores.extend(momentum_history[: min_len - 1])
-                all_breakout_scores.extend(breakout_history[: min_len - 1])
-                all_returns.extend(return_history[: min_len - 1])
 
-        # Check if we have enough aggregated data
-        if len(all_returns) < required_data:
+            if min_len < required_data:
+                continue  # Not enough data for this symbol
+
+            # Use aligned data for this symbol only
+            aligned_momentum = momentum_history[: min_len - 1]
+            aligned_breakout = breakout_history[: min_len - 1]
+            aligned_returns = return_history[: min_len - 1]
+
+            try:
+                factor_history = {
+                    "momentum_factor": aligned_momentum,
+                    "breakout_factor": aligned_breakout,
+                }
+                weights = self._ic_calculator.calculate_weights_full_pipeline(
+                    factor_history, aligned_returns
+                )
+                symbol_weights[symbol] = weights
+            except Exception as e:
+                logger.debug(f"[{self.name}] IC weight calc failed for {symbol}: {e}")
+
+        if not symbol_weights:
             logger.debug(
-                f"[{self.name}] IC weight update: insufficient data "
-                f"({len(all_returns)}/{required_data})"
+                f"[{self.name}] IC weight update: insufficient data for all symbols"
             )
             return
 
-        # Calculate weights using IC calculator
-        factor_history = {
-            "momentum_factor": all_momentum_scores,
-            "breakout_factor": all_breakout_scores,
+        # Average weights across symbols
+        momentum_sum = sum(w.get("momentum_factor", Decimal("0")) for w in symbol_weights.values())
+        breakout_sum = sum(w.get("breakout_factor", Decimal("0")) for w in symbol_weights.values())
+        n_symbols = Decimal(len(symbol_weights))
+
+        momentum_weight = momentum_sum / n_symbols
+        breakout_weight = breakout_sum / n_symbols
+
+        # Normalize to sum to 1
+        total = momentum_weight + breakout_weight
+        if total > Decimal("0"):
+            momentum_weight = momentum_weight / total
+            breakout_weight = breakout_weight / total
+
+        # Update composite factor weights
+        self._composite_factor.update_weights(
+            momentum_weight=momentum_weight,
+            breakout_weight=breakout_weight,
+        )
+
+        self._dynamic_factor_weights = {
+            "momentum_factor": momentum_weight,
+            "breakout_factor": breakout_weight,
         }
+        self._ic_weights_initialized = True
 
-        try:
-            new_weights = self._ic_calculator.calculate_weights_full_pipeline(
-                factor_history, all_returns
-            )
-
-            # Update composite factor weights
-            momentum_weight = new_weights.get("momentum_factor", Decimal("0.5"))
-            breakout_weight = new_weights.get("breakout_factor", Decimal("0.5"))
-
-            self._composite_factor.update_weights(
-                momentum_weight=momentum_weight,
-                breakout_weight=breakout_weight,
-            )
-
-            self._dynamic_factor_weights = new_weights
-            self._ic_weights_initialized = True
-
-            logger.info(
-                f"[{self.name}] IC weights updated: "
-                f"momentum={float(momentum_weight):.3f}, "
-                f"breakout={float(breakout_weight):.3f}"
-            )
-        except Exception as e:
-            logger.warning(f"[{self.name}] IC weight calculation failed: {e}")
+        logger.info(
+            f"[{self.name}] IC weights updated (from {len(symbol_weights)} symbols): "
+            f"momentum={float(momentum_weight):.3f}, "
+            f"breakout={float(breakout_weight):.3f}"
+        )
 
     def _calculate_position_size(
         self,
@@ -667,7 +691,23 @@ class TrendBreakoutStrategy(Strategy):
         self._price_history.clear()
         self._volume_history.clear()
         self._high_history.clear()
-        logger.debug(f"[{self.name}] History buffers cleared")
+
+        # Reset IC weight calculation state
+        self._factor_score_history.clear()
+        self._return_history.clear()
+        self._last_price.clear()
+        self._ic_weights_initialized = False
+        if hasattr(self, "_last_ic_update_count"):
+            delattr(self, "_last_ic_update_count")
+
+        # Reset to manual weights
+        self._dynamic_factor_weights = self._manual_factor_weights.copy()
+        self._composite_factor.update_weights(
+            momentum_weight=self._manual_factor_weights["momentum_factor"],
+            breakout_weight=self._manual_factor_weights["breakout_factor"],
+        )
+
+        logger.debug(f"[{self.name}] All history buffers cleared (including IC state)")
 
     async def on_stop(self) -> None:
         """Cleanup when strategy stops."""
