@@ -175,6 +175,8 @@ class TrendBreakoutStrategy(Strategy):
         )
         self._return_history: dict[str, list[Decimal]] = defaultdict(list)
         self._last_price: dict[str, Decimal] = {}
+        # Separate bar counter for throttling (not capped like history buffers)
+        self._ic_bar_count: int = 0
 
         # Current dynamic factor weights (updated via IC calculation)
         self._dynamic_factor_weights: dict[str, Decimal] = self._manual_factor_weights.copy()
@@ -191,9 +193,7 @@ class TrendBreakoutStrategy(Strategy):
         """
         return self.DEFAULT_LOOKBACK
 
-    async def on_market_data(
-        self, data: MarketData, context: StrategyContext
-    ) -> list[Signal]:
+    async def on_market_data(self, data: MarketData, context: StrategyContext) -> list[Signal]:
         """Process market data and generate signals.
 
         Updates indicator buffers, calculates factors, and generates
@@ -230,9 +230,7 @@ class TrendBreakoutStrategy(Strategy):
 
         # If any indicator is None, we can't calculate factors
         if any(v is None for v in indicators.values()):
-            logger.debug(
-                f"[{self.name}] {data.symbol}: Indicator calculation incomplete"
-            )
+            logger.debug(f"[{self.name}] {data.symbol}: Indicator calculation incomplete")
             return []
 
         # Calculate factor scores
@@ -240,18 +238,14 @@ class TrendBreakoutStrategy(Strategy):
 
         # If any factor is None, we can't generate signals
         if factors is None:
-            logger.debug(
-                f"[{self.name}] {data.symbol}: Factor calculation failed"
-            )
+            logger.debug(f"[{self.name}] {data.symbol}: Factor calculation failed")
             return []
 
         momentum_score, breakout_score, composite_score = factors
 
         # Update IC weight history if using IC-based weighting
         if self.weight_method == "ic":
-            self._update_ic_weight_history(
-                data.symbol, data.price, momentum_score, breakout_score
-            )
+            self._update_ic_weight_history(data.symbol, data.price, momentum_score, breakout_score)
             # Periodically update weights (every bar - could be optimized)
             self._maybe_update_ic_weights()
 
@@ -359,7 +353,7 @@ class TrendBreakoutStrategy(Strategy):
         # For live/paper, we use price as the high (daily close approximation)
         # This is a simplification - real implementation would need OHLCV data
         high_value = getattr(data, "high", data.price)
-        if isinstance(high_value, (int, float)):
+        if isinstance(high_value, int | float):
             high_value = Decimal(str(high_value))
         self._high_history[symbol].append(high_value)
 
@@ -469,12 +463,17 @@ class TrendBreakoutStrategy(Strategy):
         self._last_price[symbol] = current_price
 
         # Limit history size to required lookback + buffer
-        max_history = self._ic_calculator.lookback_window + self._ic_calculator.ic_history_periods + 10
+        max_history = (
+            self._ic_calculator.lookback_window + self._ic_calculator.ic_history_periods + 10
+        )
         for key in self._factor_score_history[symbol]:
             if len(self._factor_score_history[symbol][key]) > max_history:
                 self._factor_score_history[symbol][key].pop(0)
         if len(self._return_history[symbol]) > max_history:
             self._return_history[symbol].pop(0)
+
+        # Increment bar counter (not capped, used for throttling)
+        self._ic_bar_count += 1
 
     def _maybe_update_ic_weights(self) -> None:
         """Update factor weights using IC calculation if enough data.
@@ -491,15 +490,15 @@ class TrendBreakoutStrategy(Strategy):
         required_data = self._ic_calculator.lookback_window + self._ic_calculator.ic_history_periods
 
         # Throttle updates: only recalculate every N bars (lookback / 4)
+        # Use separate bar counter (not capped like history buffers)
         update_interval = max(self._ic_calculator.lookback_window // 4, 10)
-        total_returns = sum(len(self._return_history.get(s, [])) for s in self.symbols)
 
-        # Skip update if not enough new data since last update
-        if hasattr(self, "_last_ic_update_count"):
-            bars_since_update = total_returns - self._last_ic_update_count
+        # Skip update if not enough new bars since last update
+        if hasattr(self, "_last_ic_update_bar"):
+            bars_since_update = self._ic_bar_count - self._last_ic_update_bar
             if bars_since_update < update_interval and self._ic_weights_initialized:
                 return
-        self._last_ic_update_count = total_returns
+        self._last_ic_update_bar = self._ic_bar_count
 
         # Calculate weights per symbol, then average
         symbol_weights: dict[str, dict[str, Decimal]] = {}
@@ -533,9 +532,7 @@ class TrendBreakoutStrategy(Strategy):
                 logger.debug(f"[{self.name}] IC weight calc failed for {symbol}: {e}")
 
         if not symbol_weights:
-            logger.debug(
-                f"[{self.name}] IC weight update: insufficient data for all symbols"
-            )
+            logger.debug(f"[{self.name}] IC weight update: insufficient data for all symbols")
             return
 
         # Average weights across symbols
@@ -662,8 +659,7 @@ class TrendBreakoutStrategy(Strategy):
         """
         # T052: INFO level for fills (key position change events)
         logger.info(
-            f"[{self.name}] FILL: {fill.action} {fill.quantity} "
-            f"{fill.symbol} @ {fill.price}"
+            f"[{self.name}] FILL: {fill.action} {fill.quantity} " f"{fill.symbol} @ {fill.price}"
         )
         # T052: DEBUG level for fill details
         logger.debug(
@@ -678,9 +674,7 @@ class TrendBreakoutStrategy(Strategy):
         Clears all history buffers for clean start.
         """
         # T052: INFO level for lifecycle events
-        logger.info(
-            f"[{self.name}] STARTING strategy with symbols: {self.symbols}"
-        )
+        logger.info(f"[{self.name}] STARTING strategy with symbols: {self.symbols}")
         logger.debug(
             f"[{self.name}] Configuration: "
             f"entry_threshold={self.entry_threshold}, "
@@ -696,9 +690,10 @@ class TrendBreakoutStrategy(Strategy):
         self._factor_score_history.clear()
         self._return_history.clear()
         self._last_price.clear()
+        self._ic_bar_count = 0
         self._ic_weights_initialized = False
-        if hasattr(self, "_last_ic_update_count"):
-            delattr(self, "_last_ic_update_count")
+        if hasattr(self, "_last_ic_update_bar"):
+            delattr(self, "_last_ic_update_bar")
 
         # Reset to manual weights
         self._dynamic_factor_weights = self._manual_factor_weights.copy()
