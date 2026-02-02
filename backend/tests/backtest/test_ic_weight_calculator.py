@@ -308,6 +308,76 @@ class TestRollingICCalculation:
         assert sum(weights.values()) == Decimal("1.0")
 
 
+class TestConfigValidation:
+    """Tests for configuration parameter validation."""
+
+    def test_lookback_window_must_be_at_least_3(self) -> None:
+        """lookback_window must be >= 3."""
+        with pytest.raises(ValueError, match="lookback_window must be >= 3"):
+            ICWeightCalculator(lookback_window=2)
+
+    def test_ewma_span_must_be_at_least_1(self) -> None:
+        """ewma_span must be >= 1 if set."""
+        with pytest.raises(ValueError, match="ewma_span must be >= 1"):
+            ICWeightCalculator(ewma_span=0)
+
+    def test_ic_history_periods_must_be_at_least_1(self) -> None:
+        """ic_history_periods must be >= 1."""
+        with pytest.raises(ValueError, match="ic_history_periods must be >= 1"):
+            ICWeightCalculator(ic_history_periods=0)
+
+    def test_valid_config_accepted(self) -> None:
+        """Valid configuration values are accepted."""
+        calc = ICWeightCalculator(lookback_window=3, ewma_span=1, ic_history_periods=1)
+        assert calc.lookback_window == 3
+        assert calc.ewma_span == 1
+        assert calc.ic_history_periods == 1
+
+
+class TestLengthAlignment:
+    """Tests for length alignment between factor and returns data."""
+
+    def test_ewma_ic_requires_same_length(self) -> None:
+        """EWMA IC raises when arrays have different lengths."""
+        calc = ICWeightCalculator(lookback_window=5, ewma_span=3)
+
+        factor_values = [Decimal("0.1")] * 10
+        future_returns = [Decimal("0.01")] * 8  # Different length
+
+        with pytest.raises(ValueError, match="same length"):
+            calc.calculate_ewma_ic(factor_values, future_returns)
+
+    def test_weights_from_history_aligns_lengths(self) -> None:
+        """calculate_weights_from_history aligns mismatched lengths."""
+        calc = ICWeightCalculator(lookback_window=3)
+
+        # Factor has more data than returns
+        factor_history = {
+            "factor_a": [Decimal(str(i * 0.1)) for i in range(10)],
+        }
+        future_returns = [Decimal(str(i * 0.01)) for i in range(5)]
+
+        # Should not raise - aligns to shorter length
+        weights = calc.calculate_weights_from_history(factor_history, future_returns)
+
+        assert "factor_a" in weights
+        assert weights["factor_a"] == Decimal("1.0")
+
+    def test_weights_from_history_insufficient_data(self) -> None:
+        """calculate_weights_from_history handles insufficient data gracefully."""
+        calc = ICWeightCalculator(lookback_window=10)
+
+        factor_history = {
+            "factor_a": [Decimal("0.1"), Decimal("0.2")],  # Only 2 points
+        }
+        future_returns = [Decimal("0.01"), Decimal("0.02")]
+
+        weights = calc.calculate_weights_from_history(factor_history, future_returns)
+
+        # Should return 0 IC -> equal weight (only 1 factor)
+        assert weights["factor_a"] == Decimal("1.0")
+
+
 class TestEdgeCases:
     """Edge case tests for IC weight calculator."""
 

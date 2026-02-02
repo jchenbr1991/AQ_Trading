@@ -49,12 +49,22 @@ class ICWeightCalculator:
 
         Args:
             lookback_window: Number of bars to use for rolling IC calculation.
-                Default is 60 (approximately 3 months of daily bars).
+                Default is 60 (approximately 3 months of daily bars). Must be >= 3.
             ewma_span: Span for exponential weighting. None = use simple average.
-                Lower values = more weight on recent data.
+                Lower values = more weight on recent data. Must be >= 1 if set.
             ic_history_periods: Number of IC periods to use for IC_IR calculation.
-                Default is 12 (e.g., 12 monthly ICs for annual IR).
+                Default is 12 (e.g., 12 monthly ICs for annual IR). Must be >= 1.
+
+        Raises:
+            ValueError: If lookback_window < 3, ewma_span < 1, or ic_history_periods < 1.
         """
+        if lookback_window < 3:
+            raise ValueError(f"lookback_window must be >= 3, got {lookback_window}")
+        if ewma_span is not None and ewma_span < 1:
+            raise ValueError(f"ewma_span must be >= 1, got {ewma_span}")
+        if ic_history_periods < 1:
+            raise ValueError(f"ic_history_periods must be >= 1, got {ic_history_periods}")
+
         self._lookback_window = lookback_window
         self._ewma_span = ewma_span
         self._ic_history_periods = ic_history_periods
@@ -181,15 +191,21 @@ class ICWeightCalculator:
 
         Args:
             factor_values: Factor scores at time t.
-            future_returns: Returns at time t+1.
+            future_returns: Returns at time t+1. Must have same length as factor_values.
 
         Returns:
             Decimal EWMA-weighted correlation.
 
         Raises:
-            ValueError: If insufficient data or ewma_span not set.
+            ValueError: If insufficient data, length mismatch, or ewma_span not set.
         """
         n = len(factor_values)
+        n_returns = len(future_returns)
+
+        if n != n_returns:
+            raise ValueError(
+                f"Arrays must have same length: factor_values={n}, future_returns={n_returns}"
+            )
 
         if n < self._lookback_window:
             raise ValueError(f"Insufficient data: need {self._lookback_window} points, got {n}")
@@ -331,6 +347,7 @@ class ICWeightCalculator:
         """Calculate weights from historical factor and return data.
 
         Computes rolling IC for each factor, then converts to weights.
+        Aligns factor and returns data to use the shorter length.
 
         Args:
             factor_history: Dictionary mapping factor names to their value history.
@@ -342,12 +359,20 @@ class ICWeightCalculator:
         factor_ics = {}
 
         for factor_name, factor_values in factor_history.items():
+            # Align lengths - use the minimum of factor_values and future_returns
+            aligned_len = min(len(factor_values), len(future_returns))
+            aligned_factors = factor_values[-aligned_len:]
+            aligned_returns = future_returns[-aligned_len:]
+
             # Handle case where we have exactly lookback_window or more
-            if len(factor_values) >= self._lookback_window:
-                ic = self.calculate_rolling_ic(factor_values, future_returns)
+            if aligned_len >= self._lookback_window:
+                ic = self.calculate_rolling_ic(aligned_factors, aligned_returns)
+            elif aligned_len >= 3:
+                # Use all available aligned data if less than window
+                ic = self.calculate_ic(aligned_factors, aligned_returns)
             else:
-                # Use all available data if less than window
-                ic = self.calculate_ic(factor_values, future_returns)
+                # Not enough data
+                ic = Decimal("0")
 
             factor_ics[factor_name] = ic
 
