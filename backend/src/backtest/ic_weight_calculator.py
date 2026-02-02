@@ -148,6 +148,7 @@ class ICWeightCalculator:
         IC_IR = mean(IC) / std(IC)
 
         Higher IC_IR means more consistent predictive power.
+        Uses sample standard deviation (n-1) for unbiased estimation.
 
         Args:
             ic_history: List of historical IC values.
@@ -168,8 +169,8 @@ class ICWeightCalculator:
         # Calculate mean IC
         mean_ic = sum(ic_history) / n_decimal
 
-        # Calculate standard deviation of IC
-        variance = sum((ic - mean_ic) ** 2 for ic in ic_history) / n_decimal
+        # Calculate sample standard deviation of IC (using n-1 for unbiased estimation)
+        variance = sum((ic - mean_ic) ** 2 for ic in ic_history) / (n_decimal - Decimal("1"))
         std_ic = variance.sqrt()
 
         # Handle zero std (all ICs identical)
@@ -210,48 +211,11 @@ class ICWeightCalculator:
         if n < self._lookback_window:
             raise ValueError(f"Insufficient data: need {self._lookback_window} points, got {n}")
 
-        span = self._ewma_span if self._ewma_span else self._lookback_window
-
-        # Calculate EWMA weights: w_i = alpha * (1 - alpha)^i
-        # More recent = higher weight
-        alpha = Decimal("2") / (Decimal(span) + Decimal("1"))
-
-        # Use lookback window
+        # Use lookback window and delegate to shared implementation
         window_factors = factor_values[-self._lookback_window :]
         window_returns = future_returns[-self._lookback_window :]
 
-        # Calculate EWMA weights (newest first)
-        weights = []
-        for i in range(self._lookback_window):
-            # i=0 is most recent
-            w = alpha * (Decimal("1") - alpha) ** i
-            weights.append(w)
-
-        # Reverse to match data order (oldest first)
-        weights = weights[::-1]
-        total_weight = sum(weights)
-
-        # Normalize weights
-        weights = [w / total_weight for w in weights]
-
-        # Weighted means
-        mean_x = sum(w * x for w, x in zip(weights, window_factors, strict=True))
-        mean_y = sum(w * y for w, y in zip(weights, window_returns, strict=True))
-
-        # Weighted variance and covariance
-        var_x = sum(w * (x - mean_x) ** 2 for w, x in zip(weights, window_factors, strict=True))
-        var_y = sum(w * (y - mean_y) ** 2 for w, y in zip(weights, window_returns, strict=True))
-        cov_xy = sum(
-            w * (x - mean_x) * (y - mean_y)
-            for w, x, y in zip(weights, window_factors, window_returns, strict=True)
-        )
-
-        # Handle zero variance
-        if var_x == Decimal("0") or var_y == Decimal("0"):
-            return Decimal("0")
-
-        # Weighted correlation
-        return cov_xy / (var_x.sqrt() * var_y.sqrt())
+        return self._calculate_ewma_ic_from_window(window_factors, window_returns)
 
     def calculate_weights_from_ic(
         self,

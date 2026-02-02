@@ -526,6 +526,23 @@ class TestICIR:
 
         assert ic_ir == Decimal("0")
 
+    def test_ic_ir_uses_sample_std(self) -> None:
+        """IC_IR uses sample standard deviation (n-1) for unbiased estimation."""
+        calc = ICWeightCalculator()
+
+        # 3 values: mean = 0.4, sample variance = ((0.3-0.4)^2 + (0.4-0.4)^2 + (0.5-0.4)^2) / 2
+        # = (0.01 + 0 + 0.01) / 2 = 0.01
+        # sample std = sqrt(0.01) = 0.1
+        # IC_IR = 0.4 / 0.1 = 4.0
+        ic_history = [Decimal("0.3"), Decimal("0.4"), Decimal("0.5")]
+
+        ic_ir = calc.calculate_ic_ir(ic_history)
+
+        # With sample std (n-1): IC_IR = 0.4 / 0.1 = 4.0
+        # With population std (n): IC_IR = 0.4 / 0.0816... = ~4.9
+        # So IC_IR should be exactly 4.0 with sample std
+        assert ic_ir == Decimal("4")
+
     def test_weights_from_ic_ir(self) -> None:
         """Calculate weights using IC_IR instead of single IC."""
         calc = ICWeightCalculator()
