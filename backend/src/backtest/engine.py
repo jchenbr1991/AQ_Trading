@@ -5,12 +5,13 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+from src.backtest.attribution import AttributionCalculator
 from src.backtest.bar_loader import BarLoader
 from src.backtest.benchmark import BenchmarkBuilder
 from src.backtest.benchmark_metrics import BenchmarkMetrics
 from src.backtest.fill_engine import SimulatedFillEngine
 from src.backtest.metrics import MetricsCalculator
-from src.backtest.models import BacktestConfig, BacktestResult, Bar
+from src.backtest.models import BacktestConfig, BacktestResult, Bar, Trade
 from src.backtest.portfolio import BacktestPortfolio
 from src.backtest.trace import SignalTrace
 from src.backtest.trace_builder import TraceBuilder
@@ -87,12 +88,30 @@ class BacktestEngine:
         )
 
         equity_curve: list[tuple[datetime, Decimal]] = []
-        trades: list = []
+        trades: list[Trade] = []
         first_signal_bar: datetime | None = None
 
         # Trace tracking for signal-to-fill audit trail
         pending_traces: dict[datetime, SignalTrace] = {}  # keyed by signal_timestamp
         completed_traces: list[SignalTrace] = []
+
+        # Attribution tracking
+        attribution_calculator = AttributionCalculator()
+
+        # Extract factor_weights from strategy params for attribution calculation
+        # These weights are used by calculate_trade_attribution per FR-023
+        raw_factor_weights = config.strategy_params.get("factor_weights", {})
+        factor_weights: dict[str, Decimal] | None = None
+        if raw_factor_weights:
+            factor_weights = {k: Decimal(str(v)) for k, v in raw_factor_weights.items()}
+        # Track entry positions for attribution calculation
+        # Supports scale-ins (multiple buys) and partial exits
+        # Key: symbol, Value: dict with:
+        #   - entry_trades: list of (trade, quantity_remaining) tuples
+        #   - total_qty: total shares held
+        #   - weighted_avg_cost: quantity-weighted average entry price
+        #   - weighted_factors: quantity-weighted average factor scores
+        pending_entry_positions: dict[str, dict] = {}
 
         # Prepare bars to process: warmup bars (last N) + backtest bars
         bars_to_process = (
@@ -108,6 +127,7 @@ class BacktestEngine:
             # Execute pending signal at this bar's open
             if pending_signal is not None and is_backtest_phase:
                 trade_executed = False
+                trade: Trade | None = None
                 if pending_signal.action == "buy":
                     if portfolio.can_buy(
                         bar.open,
@@ -118,12 +138,74 @@ class BacktestEngine:
                         portfolio.apply_trade(trade)
                         trades.append(trade)
                         trade_executed = True
+                        # Track entry trade for attribution (FR-025)
+                        # Support scale-ins: accumulate entries with weighted averaging
+                        symbol = trade.symbol
+                        if symbol not in pending_entry_positions:
+                            pending_entry_positions[symbol] = {
+                                "entry_trades": [],
+                                "total_qty": 0,
+                                "weighted_avg_cost": Decimal("0"),
+                                "weighted_factors": {},
+                                "total_commission": Decimal("0"),
+                            }
+                        pos = pending_entry_positions[symbol]
+                        pos["entry_trades"].append((trade, trade.quantity))
+                        old_qty = pos["total_qty"]
+                        new_qty = old_qty + trade.quantity
+                        # Update weighted average cost
+                        if new_qty > 0:
+                            pos["weighted_avg_cost"] = (
+                                pos["weighted_avg_cost"] * old_qty
+                                + trade.fill_price * trade.quantity
+                            ) / new_qty
+                        # Update weighted factor scores
+                        for factor, score in trade.entry_factors.items():
+                            old_score = pos["weighted_factors"].get(factor, Decimal("0"))
+                            if new_qty > 0:
+                                pos["weighted_factors"][factor] = (
+                                    old_score * old_qty + score * trade.quantity
+                                ) / new_qty
+                        pos["total_qty"] = new_qty
+                        pos["total_commission"] += trade.commission
                 elif pending_signal.action == "sell":
                     if portfolio.can_sell(pending_signal.quantity):
                         trade = fill_engine.execute(pending_signal, bar)
+                        # Store exit_factors from the signal (FR-025)
+                        trade.exit_factors = dict(pending_signal.factor_scores)
                         portfolio.apply_trade(trade)
                         trades.append(trade)
                         trade_executed = True
+                        # Calculate attribution when position is (partially) closed (FR-023)
+                        symbol = trade.symbol
+                        if symbol in pending_entry_positions:
+                            pos = pending_entry_positions[symbol]
+                            sell_qty = trade.quantity
+                            # Calculate PnL using weighted average cost
+                            # Pro-rate entry commission based on sold quantity
+                            entry_commission_prorata = (
+                                pos["total_commission"] * sell_qty / pos["total_qty"]
+                                if pos["total_qty"] > 0
+                                else Decimal("0")
+                            )
+                            pnl = (
+                                (trade.fill_price - pos["weighted_avg_cost"]) * sell_qty
+                                - trade.commission
+                                - entry_commission_prorata
+                            )
+                            # Calculate attribution using weighted factor scores
+                            attribution = attribution_calculator.calculate_trade_attribution(
+                                pnl=pnl,
+                                entry_factors=pos["weighted_factors"],
+                                factor_weights=factor_weights,
+                            )
+                            trade.attribution = attribution
+                            # Update position: reduce quantity and pro-rate commission
+                            pos["total_qty"] -= sell_qty
+                            pos["total_commission"] -= entry_commission_prorata
+                            # Clean up if fully closed
+                            if pos["total_qty"] <= 0:
+                                del pending_entry_positions[symbol]
 
                 # Complete pending trace if trade was executed
                 if trade_executed and pending_signal.timestamp in pending_traces:
@@ -197,7 +279,37 @@ class BacktestEngine:
                     equity_curve, benchmark_curve, config.benchmark_symbol
                 )
 
-        # 8. Build and return result
+        # 8. Calculate attribution summary across all trades (FR-023)
+        # First, calculate realized attribution from completed trades
+        attribution_summary = attribution_calculator.calculate_summary(trades)
+
+        # Include unrealized PnL attribution from open positions if any remain
+        # Note: We don't modify Trade objects - unrealized attribution is added
+        # directly to the summary to maintain data model integrity
+        final_price = backtest_bars[-1].close if backtest_bars else config.initial_capital
+        for _symbol, pos in pending_entry_positions.items():
+            remaining_qty = pos["total_qty"]
+            if remaining_qty > 0:
+                # Calculate unrealized PnL using weighted average cost
+                # (current_price - weighted_avg_cost) * remaining_qty
+                # No exit commission since position is still open
+                unrealized_pnl = (final_price - pos["weighted_avg_cost"]) * remaining_qty
+                # Calculate attribution for unrealized PnL using weighted entry factors
+                unrealized_attribution = attribution_calculator.calculate_trade_attribution(
+                    pnl=unrealized_pnl,
+                    entry_factors=pos["weighted_factors"],
+                    factor_weights=factor_weights,
+                )
+                # Add unrealized attribution directly to summary
+                for factor_name, attr_value in unrealized_attribution.items():
+                    if factor_name not in attribution_summary:
+                        attribution_summary[factor_name] = Decimal("0")
+                    attribution_summary[factor_name] += attr_value
+                # Update total if it exists
+                if "total" in attribution_summary:
+                    attribution_summary["total"] += sum(unrealized_attribution.values())
+
+        # 9. Build and return result
         return BacktestResult(
             config=config,
             equity_curve=equity_curve,
@@ -219,6 +331,7 @@ class BacktestEngine:
             completed_at=completed_at,
             benchmark=benchmark,
             traces=completed_traces,
+            attribution_summary=attribution_summary,
         )
 
     def _create_strategy(self, config: BacktestConfig) -> Strategy:
@@ -256,7 +369,14 @@ class BacktestEngine:
         strategy_cls = getattr(module, class_name)
 
         # Instantiate with params
-        return strategy_cls(**config.strategy_params)
+        # Automatically add name and symbols if not provided
+        params = dict(config.strategy_params)
+        if "name" not in params:
+            params["name"] = class_name
+        if "symbols" not in params:
+            params["symbols"] = [config.symbol]
+
+        return strategy_cls(**params)
 
     def _bar_to_market_data(self, bar: Bar) -> MarketData:
         """Convert a Bar to MarketData for strategy consumption.
