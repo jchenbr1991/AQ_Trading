@@ -104,18 +104,18 @@ class TestGetHypothesisEndpoint:
 class TestCheckFalsifiersEndpoint:
     """Tests for /governance/hypotheses/{hypothesis_id}/falsifiers/check endpoint."""
 
-    def test_check_falsifiers_returns_501(self, client):
-        """POST /governance/hypotheses/{id}/falsifiers/check should return 501."""
+    def test_check_falsifiers_returns_404_for_unknown(self, client):
+        """POST /governance/hypotheses/{id}/falsifiers/check should return 404 for unknown hypothesis."""
         response = client.post("/governance/hypotheses/test_hypothesis/falsifiers/check")
 
-        assert response.status_code == 501
-        assert "implemented" in response.json()["detail"].lower()
+        assert response.status_code == 404
+        assert "test_hypothesis" in response.json()["detail"]
 
-    def test_check_falsifiers_includes_id_in_message(self, client):
-        """Response should reference the hypothesis ID."""
+    def test_check_falsifiers_returns_404_includes_id(self, client):
+        """Response should reference the hypothesis ID in the 404 error."""
         response = client.post("/governance/hypotheses/memory_demand_2027/falsifiers/check")
 
-        assert response.status_code == 501
+        assert response.status_code == 404
         assert "memory_demand_2027" in response.json()["detail"]
 
 

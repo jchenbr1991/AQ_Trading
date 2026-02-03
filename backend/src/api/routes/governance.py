@@ -56,6 +56,9 @@ from src.governance.lint.allowlist import AllowlistLint
 from src.governance.lint.alpha_path import AlphaPathLint
 from src.governance.lint.models import GateCheckResult, GateResult, LintResult
 from src.governance.models import HypothesisStatus
+from src.governance.monitoring.falsifier import FalsifierChecker
+from src.governance.monitoring.metrics import MetricRegistry
+from src.governance.monitoring.models import FalsifierCheckResult
 from src.governance.pool.builder import EmptyPoolError, PoolBuilder
 from src.governance.pool.models import Pool, PoolAuditEntry, StructuralFilters
 
@@ -108,6 +111,37 @@ def reset_hypothesis_registry() -> None:
     global _hypothesis_loader, _hypothesis_registry
     _hypothesis_loader = None
     _hypothesis_registry = None
+
+
+# =============================================================================
+# Singleton - MetricRegistry
+# =============================================================================
+
+_metric_registry: MetricRegistry | None = None
+
+
+def get_metric_registry() -> MetricRegistry:
+    """Get the singleton MetricRegistry instance.
+
+    Lazily initializes the MetricRegistry on first access.
+    Metric providers should be registered externally after initialization.
+
+    Returns:
+        The singleton MetricRegistry instance.
+    """
+    global _metric_registry
+
+    if _metric_registry is None:
+        _metric_registry = MetricRegistry()
+        logger.info("Initialized MetricRegistry (no providers registered yet)")
+
+    return _metric_registry
+
+
+def reset_metric_registry() -> None:
+    """Reset the metric registry singleton (for testing purposes)."""
+    global _metric_registry
+    _metric_registry = None
 
 
 # =============================================================================
@@ -309,34 +343,58 @@ async def get_hypothesis(hypothesis_id: str) -> Hypothesis:
     return hypothesis
 
 
-@router.post("/hypotheses/{hypothesis_id}/falsifiers/check")
-async def check_falsifiers(hypothesis_id: str):
+@router.post(
+    "/hypotheses/{hypothesis_id}/falsifiers/check",
+    response_model=list[FalsifierCheckResult],
+)
+async def check_falsifiers(hypothesis_id: str) -> list[FalsifierCheckResult]:
     """Run falsifier checks for a hypothesis.
 
     Evaluates all falsifier rules defined for the hypothesis against
-    current metric data.
+    current metric data from the MetricRegistry.
 
     Args:
         hypothesis_id: The unique hypothesis identifier
 
     Returns:
-        501: Not Implemented - To be completed in Phase 6
+        List of FalsifierCheckResult, one per falsifier.
 
-    Example Response (when implemented):
+    Raises:
+        HTTPException 404: If hypothesis not found.
+
+    Example Response:
         [
             {
                 "hypothesis_id": "memory_demand_2027",
                 "falsifier_index": 0,
                 "metric": "rolling_ic_mean",
-                "expected": ">= 0",
-                "actual": 0.05,
+                "operator": "<",
+                "threshold": 0.0,
+                "window": "6m",
+                "metric_value": 0.05,
                 "triggered": false,
                 "trigger_action": "review",
-                "checked_at": "2026-02-03T10:00:00Z"
+                "checked_at": "2026-02-03T10:00:00Z",
+                "message": "Passed: rolling_ic_mean=0.05, threshold <0.0 not met"
             }
         ]
     """
-    raise _not_implemented(6, f"Check falsifiers for {hypothesis_id}")
+    registry = get_hypothesis_registry()
+    hypothesis = registry.get(hypothesis_id)
+
+    if hypothesis is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Hypothesis '{hypothesis_id}' not found",
+        )
+
+    metric_registry = get_metric_registry()
+    checker = FalsifierChecker(
+        hypothesis_registry=registry,
+        metric_registry=metric_registry,
+    )
+
+    return checker.check_hypothesis(hypothesis_id)
 
 
 # =============================================================================
@@ -887,6 +945,8 @@ __all__ = [
     "router",
     "get_hypothesis_registry",
     "reset_hypothesis_registry",
+    "get_metric_registry",
+    "reset_metric_registry",
     "get_constraint_registry",
     "get_constraint_resolver",
     "reset_constraint_registry",
