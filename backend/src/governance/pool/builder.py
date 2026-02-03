@@ -213,8 +213,10 @@ class PoolBuilder:
 
         # Step 4: Generate version string
         now = datetime.now(timezone.utc)
+        universe_symbols = sorted(sd.symbol for sd in universe)
         version = self._generate_version(
             now,
+            universe_symbols,
             filters,
             denylist_hypotheses,
             allowlist_hypotheses,
@@ -328,6 +330,7 @@ class PoolBuilder:
     def _generate_version(
         self,
         timestamp: datetime,
+        universe_symbols: list[str],
         filters: StructuralFilters,
         denylist_hypotheses: list[str],
         allowlist_hypotheses: list[str],
@@ -342,6 +345,7 @@ class PoolBuilder:
 
         Args:
             timestamp: Build timestamp.
+            universe_symbols: Sorted list of universe symbol names.
             filters: Structural filter configuration.
             denylist_hypotheses: Denylist hypothesis IDs.
             allowlist_hypotheses: Allowlist hypothesis IDs.
@@ -354,7 +358,9 @@ class PoolBuilder:
         date_str = timestamp.strftime("%Y%m%d")
 
         # Create deterministic config representation for hashing
+        # Include universe symbols to ensure different universes produce different versions
         config = {
+            "universe_symbols": universe_symbols,
             "filters": filters.model_dump(mode="json"),
             "denylist_hypotheses": sorted(denylist_hypotheses),
             "allowlist_hypotheses": sorted(allowlist_hypotheses),

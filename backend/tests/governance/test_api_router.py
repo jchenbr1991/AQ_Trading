@@ -17,12 +17,14 @@ def app():
     from src.api.routes.governance import (
         reset_constraint_registry,
         reset_hypothesis_registry,
+        reset_pool_builder,
         router,
     )
 
     # Reset the singleton registries before each test
     reset_hypothesis_registry()
     reset_constraint_registry()
+    reset_pool_builder()
 
     app = FastAPI()
     app.include_router(router)
