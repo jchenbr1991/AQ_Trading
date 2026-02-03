@@ -80,6 +80,7 @@ class PoolBuilder:
         universe: list[Any],
         filters: StructuralFilters,
         denylist_hypotheses: list[str] | None = None,
+        allowlist_hypotheses: list[str] | None = None,
         bias_hypotheses: list[str] | None = None,
         bias_multiplier: float = 1.0,
     ) -> Pool:
@@ -87,7 +88,7 @@ class PoolBuilder:
 
         Steps:
         1. Apply structural filters to the universe.
-        2. Apply hypothesis gating (denylist exclusions, bias weights).
+        2. Apply hypothesis gating (denylist exclusions, allowlist restrictions, bias weights).
         3. Sort symbols alphabetically for determinism.
         4. Generate version string with timestamp and config hash.
         5. Record audit trail for all symbols.
@@ -97,6 +98,8 @@ class PoolBuilder:
             universe: List of symbol data objects.
             filters: Structural filter configuration.
             denylist_hypotheses: List of hypothesis IDs whose scope.symbols should be excluded.
+            allowlist_hypotheses: List of hypothesis IDs whose scope restricts pool to only
+                matching symbols/sectors. Only ACTIVE hypotheses are applied.
             bias_hypotheses: List of hypothesis IDs whose scope.sectors get weight bias.
             bias_multiplier: Multiplier for bias weights (default 1.0).
 
@@ -107,6 +110,7 @@ class PoolBuilder:
             EmptyPoolError: If all symbols are excluded after filtering.
         """
         denylist_hypotheses = denylist_hypotheses or []
+        allowlist_hypotheses = allowlist_hypotheses or []
         bias_hypotheses = bias_hypotheses or []
 
         audit_trail: list[PoolAuditEntry] = []
@@ -143,6 +147,28 @@ class PoolBuilder:
                 )
             else:
                 symbols_after_denylist.append(symbol_data)
+
+        # Step 2b: Apply hypothesis gating - allowlist
+        allowed = self._resolve_allowlist(allowlist_hypotheses)
+        if allowed is not None:
+            allowed_symbols_set = allowed["symbols"]
+            allowed_sectors_set = allowed["sectors"]
+            symbols_after_allowlist = []
+            for sd in symbols_after_denylist:
+                if sd.symbol in allowed_symbols_set or sd.sector in allowed_sectors_set:
+                    symbols_after_allowlist.append(sd)
+                else:
+                    hypothesis_ids = allowed.get("hypothesis_ids", [])
+                    source = hypothesis_ids[0] if hypothesis_ids else "allowlist"
+                    audit_trail.append(
+                        PoolAuditEntry(
+                            symbol=sd.symbol,
+                            action="excluded",
+                            reason=f"hypothesis_allowlist:{source}",
+                            source=source,
+                        )
+                    )
+            symbols_after_denylist = symbols_after_allowlist
 
         # Step 3: Sort symbols alphabetically for determinism
         symbols_after_denylist.sort(key=lambda sd: sd.symbol)
@@ -188,7 +214,12 @@ class PoolBuilder:
         # Step 4: Generate version string
         now = datetime.now(timezone.utc)
         version = self._generate_version(
-            now, filters, denylist_hypotheses, bias_hypotheses, bias_multiplier
+            now,
+            filters,
+            denylist_hypotheses,
+            allowlist_hypotheses,
+            bias_hypotheses,
+            bias_multiplier,
         )
 
         # Step 5: Return Pool
@@ -227,6 +258,47 @@ class PoolBuilder:
 
         return denylist
 
+    def _resolve_allowlist(
+        self, allowlist_hypotheses: list[str]
+    ) -> dict[str, set[str] | list[str]] | None:
+        """Resolve allowlist hypothesis IDs to allowed symbols and sectors.
+
+        Only ACTIVE hypotheses are applied. If no allowlist hypotheses are
+        specified or none are active, returns None (no restriction).
+
+        Args:
+            allowlist_hypotheses: List of hypothesis IDs to check.
+
+        Returns:
+            Dict with "symbols" (set), "sectors" (set), and "hypothesis_ids" (list),
+            or None if no allowlist restriction applies.
+        """
+        if not self.hypothesis_registry or not allowlist_hypotheses:
+            return None
+
+        allowed_symbols: set[str] = set()
+        allowed_sectors: set[str] = set()
+        active_ids: list[str] = []
+
+        for hypothesis_id in allowlist_hypotheses:
+            hypothesis = self.hypothesis_registry.get(hypothesis_id)
+            if hypothesis is None:
+                continue
+            if not hypothesis.is_active:
+                continue
+            active_ids.append(hypothesis_id)
+            allowed_symbols.update(hypothesis.scope.symbols)
+            allowed_sectors.update(hypothesis.scope.sectors)
+
+        if not active_ids:
+            return None
+
+        return {
+            "symbols": allowed_symbols,
+            "sectors": allowed_sectors,
+            "hypothesis_ids": active_ids,
+        }
+
     def _resolve_bias_sectors(self, bias_hypotheses: list[str]) -> dict[str, str]:
         """Resolve bias hypothesis IDs to a map of sector -> hypothesis_id.
 
@@ -258,6 +330,7 @@ class PoolBuilder:
         timestamp: datetime,
         filters: StructuralFilters,
         denylist_hypotheses: list[str],
+        allowlist_hypotheses: list[str],
         bias_hypotheses: list[str],
         bias_multiplier: float,
     ) -> str:
@@ -271,6 +344,7 @@ class PoolBuilder:
             timestamp: Build timestamp.
             filters: Structural filter configuration.
             denylist_hypotheses: Denylist hypothesis IDs.
+            allowlist_hypotheses: Allowlist hypothesis IDs.
             bias_hypotheses: Bias hypothesis IDs.
             bias_multiplier: Bias weight multiplier.
 
@@ -283,6 +357,7 @@ class PoolBuilder:
         config = {
             "filters": filters.model_dump(mode="json"),
             "denylist_hypotheses": sorted(denylist_hypotheses),
+            "allowlist_hypotheses": sorted(allowlist_hypotheses),
             "bias_hypotheses": sorted(bias_hypotheses),
             "bias_multiplier": bias_multiplier,
         }

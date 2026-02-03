@@ -10,7 +10,9 @@ Classes:
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
+
+from pydantic import Field
 
 from src.governance.models import GovernanceBaseModel
 
@@ -32,13 +34,13 @@ class StructuralFilters(GovernanceBaseModel):
         min_price: Minimum share price required (>=0).
     """
 
-    exclude_state_owned_ratio_gte: float | None = None
-    exclude_dividend_yield_gte: float | None = None
-    min_avg_dollar_volume: float | None = None
+    exclude_state_owned_ratio_gte: Annotated[float, Field(ge=0, le=1)] | None = None
+    exclude_dividend_yield_gte: Annotated[float, Field(ge=0)] | None = None
+    min_avg_dollar_volume: Annotated[float, Field(ge=0)] | None = None
     exclude_sectors: list[str] = []
-    min_market_cap: float | None = None
-    max_price: float | None = None
-    min_price: float | None = None
+    min_market_cap: Annotated[float, Field(ge=0)] | None = None
+    max_price: Annotated[float, Field(ge=0)] | None = None
+    min_price: Annotated[float, Field(ge=0)] | None = None
 
 
 class PoolAuditEntry(GovernanceBaseModel):
