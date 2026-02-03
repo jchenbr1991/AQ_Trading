@@ -1,0 +1,25 @@
+# Structural Filters for Pool Building
+# These filters are applied independently of hypotheses
+# FR-016: exclude_state_owned_ratio_gte, exclude_dividend_yield_gte,
+#         min_avg_dollar_volume, exclude_sectors
+
+# Exclude stocks where state-owned ratio >= threshold
+exclude_state_owned_ratio_gte: 0.5
+
+# Exclude stocks where dividend yield >= threshold (10%)
+exclude_dividend_yield_gte: 0.10
+
+# Minimum average daily dollar volume in HKD (100M)
+min_avg_dollar_volume: 100000000
+
+# Sectors to exclude from the pool (empty = no exclusions)
+exclude_sectors: []
+
+# Minimum market capitalization in HKD (1B)
+min_market_cap: 1000000000
+
+# Maximum price filter (null = no upper limit)
+max_price: null
+
+# Minimum price filter in HKD
+min_price: 5.0
