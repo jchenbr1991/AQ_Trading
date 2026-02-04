@@ -20,6 +20,7 @@ Example:
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
@@ -98,19 +99,29 @@ class FactorRegistry:
     def __init__(self) -> None:
         """Initialize an empty FactorRegistry."""
         self._factors: dict[str, Factor] = {}
+        self._lock = threading.Lock()
 
     def register(self, factor: Factor) -> None:
         """Register a factor in the registry.
+
+        Enforces gate:factor_requires_failure_rule - factors without failure
+        rules are rejected.
 
         Args:
             factor: The Factor to register.
 
         Raises:
             DuplicateFactorError: If a factor with the same ID already exists.
+            ValueError: If the factor has no failure rules.
         """
-        if factor.id in self._factors:
-            raise DuplicateFactorError(factor.id)
-        self._factors[factor.id] = factor
+        if not factor.failure_rules:
+            raise ValueError(
+                f"Factor '{factor.id}' has no failure rules (gate:factor_requires_failure_rule)"
+            )
+        with self._lock:
+            if factor.id in self._factors:
+                raise DuplicateFactorError(factor.id)
+            self._factors[factor.id] = factor
         logger.debug(f"Registered factor: {factor.id}")
 
     def get(self, factor_id: str) -> Factor | None:
@@ -122,26 +133,31 @@ class FactorRegistry:
         Returns:
             The Factor if found, None otherwise.
         """
-        return self._factors.get(factor_id)
+        with self._lock:
+            return self._factors.get(factor_id)
 
     def list_all(self) -> list[Factor]:
-        """List all registered factors.
+        """List all registered factors. Thread-safe.
 
         Returns:
             List of all factors in the registry.
         """
-        return list(self._factors.values())
+        with self._lock:
+            return list(self._factors.values())
 
     def get_enabled(self) -> list[Factor]:
-        """Get all factors with ENABLED status.
+        """Get all factors with ENABLED status. Thread-safe.
 
         Returns:
             List of factors with status == ENABLED and enabled == True.
         """
-        return [f for f in self._factors.values() if f.status == FactorStatus.ENABLED and f.enabled]
+        with self._lock:
+            return [
+                f for f in self._factors.values() if f.status == FactorStatus.ENABLED and f.enabled
+            ]
 
     def disable_factor(self, factor_id: str) -> None:
-        """Disable a factor by setting status to DISABLED and enabled to False.
+        """Disable a factor by setting status to DISABLED and enabled to False. Thread-safe.
 
         Args:
             factor_id: The ID of the factor to disable.
@@ -149,22 +165,22 @@ class FactorRegistry:
         Raises:
             KeyError: If the factor is not found.
         """
-        factor = self._factors.get(factor_id)
-        if factor is None:
-            raise KeyError(f"Factor '{factor_id}' not found in registry")
+        with self._lock:
+            factor = self._factors.get(factor_id)
+            if factor is None:
+                raise KeyError(f"Factor '{factor_id}' not found in registry")
 
-        # Create updated factor with new status (Pydantic models are immutable-ish)
-        updated = factor.model_copy(
-            update={
-                "status": FactorStatus.DISABLED,
-                "enabled": False,
-            }
-        )
-        self._factors[factor_id] = updated
+            updated = factor.model_copy(
+                update={
+                    "status": FactorStatus.DISABLED,
+                    "enabled": False,
+                }
+            )
+            self._factors[factor_id] = updated
         logger.info(f"Disabled factor: {factor_id}")
 
     def enable_factor(self, factor_id: str) -> None:
-        """Enable a factor by setting status to ENABLED and enabled to True.
+        """Enable a factor by setting status to ENABLED and enabled to True. Thread-safe.
 
         Args:
             factor_id: The ID of the factor to enable.
@@ -172,21 +188,22 @@ class FactorRegistry:
         Raises:
             KeyError: If the factor is not found.
         """
-        factor = self._factors.get(factor_id)
-        if factor is None:
-            raise KeyError(f"Factor '{factor_id}' not found in registry")
+        with self._lock:
+            factor = self._factors.get(factor_id)
+            if factor is None:
+                raise KeyError(f"Factor '{factor_id}' not found in registry")
 
-        updated = factor.model_copy(
-            update={
-                "status": FactorStatus.ENABLED,
-                "enabled": True,
-            }
-        )
-        self._factors[factor_id] = updated
+            updated = factor.model_copy(
+                update={
+                    "status": FactorStatus.ENABLED,
+                    "enabled": True,
+                }
+            )
+            self._factors[factor_id] = updated
         logger.info(f"Enabled factor: {factor_id}")
 
     def set_review(self, factor_id: str) -> None:
-        """Set a factor's status to REVIEW.
+        """Set a factor's status to REVIEW. Thread-safe.
 
         Args:
             factor_id: The ID of the factor to set to review.
@@ -194,20 +211,21 @@ class FactorRegistry:
         Raises:
             KeyError: If the factor is not found.
         """
-        factor = self._factors.get(factor_id)
-        if factor is None:
-            raise KeyError(f"Factor '{factor_id}' not found in registry")
+        with self._lock:
+            factor = self._factors.get(factor_id)
+            if factor is None:
+                raise KeyError(f"Factor '{factor_id}' not found in registry")
 
-        updated = factor.model_copy(
-            update={
-                "status": FactorStatus.REVIEW,
-            }
-        )
-        self._factors[factor_id] = updated
+            updated = factor.model_copy(
+                update={
+                    "status": FactorStatus.REVIEW,
+                }
+            )
+            self._factors[factor_id] = updated
         logger.info(f"Set factor to review: {factor_id}")
 
     def unregister(self, factor_id: str) -> bool:
-        """Remove a factor from the registry.
+        """Remove a factor from the registry. Thread-safe.
 
         Args:
             factor_id: The ID of the factor to remove.
@@ -215,19 +233,21 @@ class FactorRegistry:
         Returns:
             True if the factor was removed, False if not found.
         """
-        if factor_id in self._factors:
-            del self._factors[factor_id]
-            logger.debug(f"Unregistered factor: {factor_id}")
-            return True
-        return False
+        with self._lock:
+            if factor_id in self._factors:
+                del self._factors[factor_id]
+                logger.debug(f"Unregistered factor: {factor_id}")
+                return True
+            return False
 
     def count(self) -> int:
-        """Count total registered factors.
+        """Count total registered factors. Thread-safe.
 
         Returns:
             The total number of factors in the registry.
         """
-        return len(self._factors)
+        with self._lock:
+            return len(self._factors)
 
     def check_factor_health(
         self,
