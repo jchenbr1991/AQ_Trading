@@ -31,6 +31,7 @@ Example:
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime
 
 from src.governance.models import RegimeState
@@ -72,6 +73,7 @@ class RegimeDetector:
         self._config = config
         self._metric_registry = metric_registry
         self._previous_state: RegimeState | None = None
+        self._lock = threading.Lock()
 
     def detect(self) -> RegimeSnapshot:
         """Evaluate current market metrics and determine regime state.
@@ -108,31 +110,32 @@ class RegimeDetector:
         # Get pacing multiplier from config
         pacing_multiplier = self._config.pacing_multipliers.get(state.value, 1.0)
 
-        # Build snapshot
-        snapshot = RegimeSnapshot(
-            state=state,
-            previous_state=self._previous_state,
-            changed_at=datetime.utcnow(),
-            metrics={
-                "portfolio_volatility": volatility,
-                "max_drawdown": drawdown,
-            },
-            pacing_multiplier=pacing_multiplier,
-        )
-
-        # Log state transitions
-        if self._previous_state is not None and self._previous_state != state:
-            logger.info(
-                "Regime transition: %s -> %s (vol=%.4f, dd=%.4f, pacing=%.2f)",
-                self._previous_state.value,
-                state.value,
-                volatility,
-                drawdown,
-                pacing_multiplier,
+        # Build snapshot and update previous state atomically
+        with self._lock:
+            snapshot = RegimeSnapshot(
+                state=state,
+                previous_state=self._previous_state,
+                changed_at=datetime.utcnow(),
+                metrics={
+                    "portfolio_volatility": volatility,
+                    "max_drawdown": drawdown,
+                },
+                pacing_multiplier=pacing_multiplier,
             )
 
-        # Track state for next detection
-        self._previous_state = state
+            # Log state transitions
+            if self._previous_state is not None and self._previous_state != state:
+                logger.info(
+                    "Regime transition: %s -> %s (vol=%.4f, dd=%.4f, pacing=%.2f)",
+                    self._previous_state.value,
+                    state.value,
+                    volatility,
+                    drawdown,
+                    pacing_multiplier,
+                )
+
+            # Track state for next detection
+            self._previous_state = state
 
         return snapshot
 
