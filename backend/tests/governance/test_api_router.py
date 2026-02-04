@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 def app():
     """Create a FastAPI app with the governance router."""
     from src.api.routes.governance import (
+        reset_audit_store,
         reset_constraint_registry,
         reset_hypothesis_registry,
         reset_pool_builder,
@@ -25,6 +26,7 @@ def app():
     reset_hypothesis_registry()
     reset_constraint_registry()
     reset_pool_builder()
+    reset_audit_store()
 
     app = FastAPI()
     app.include_router(router)
@@ -267,12 +269,70 @@ class TestRegimeEndpoint:
 class TestAuditEndpoint:
     """Tests for /governance/audit endpoint."""
 
-    def test_query_audit_returns_501(self, client):
-        """GET /governance/audit should return 501 Not Implemented."""
+    def test_query_audit_returns_200(self, client):
+        """GET /governance/audit should return 200 with list of audit entries."""
         response = client.get("/governance/audit")
 
-        assert response.status_code == 501
-        assert "implemented" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_query_audit_with_event_type_filter(self, client):
+        """GET /governance/audit?event_type=constraint_activated should filter."""
+        response = client.get("/governance/audit?event_type=constraint_activated")
+
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_query_audit_with_symbol_filter(self, client):
+        """GET /governance/audit?symbol=AAPL should filter by symbol."""
+        response = client.get("/governance/audit?symbol=AAPL")
+
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_query_audit_with_constraint_id_filter(self, client):
+        """GET /governance/audit?constraint_id=test should filter by constraint."""
+        response = client.get("/governance/audit?constraint_id=test")
+
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_query_audit_with_limit(self, client):
+        """GET /governance/audit?limit=10 should respect the limit."""
+        response = client.get("/governance/audit?limit=10")
+
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_query_audit_limit_capped_at_1000(self, client):
+        """GET /governance/audit?limit=5000 should cap limit at 1000."""
+        response = client.get("/governance/audit?limit=5000")
+
+        # Should still return 200 (limit is capped, not rejected)
+        assert response.status_code == 200
+
+    def test_query_audit_default_limit_is_100(self, client):
+        """GET /governance/audit should default to limit=100."""
+        response = client.get("/governance/audit")
+
+        assert response.status_code == 200
+        # Default limit is applied, result is at most 100 entries
+        assert len(response.json()) <= 100
+
+    def test_query_audit_with_time_filters(self, client):
+        """GET /governance/audit?start_time=...&end_time=... should filter by time."""
+        response = client.get(
+            "/governance/audit" "?start_time=2026-01-01T00:00:00Z" "&end_time=2026-12-31T23:59:59Z"
+        )
+
+        assert response.status_code == 200
+        assert isinstance(response.json(), list)
+
+    def test_query_audit_with_invalid_event_type(self, client):
+        """GET /governance/audit?event_type=invalid should return 422."""
+        response = client.get("/governance/audit?event_type=invalid_type_xyz")
+
+        assert response.status_code == 422
 
 
 # =============================================================================

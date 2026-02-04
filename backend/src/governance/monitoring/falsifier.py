@@ -25,10 +25,11 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from src.governance.models import ComparisonOperator
+from src.governance.models import ComparisonOperator, GovernanceAuditEventType
 from src.governance.monitoring.models import FalsifierCheckResult
 
 if TYPE_CHECKING:
+    from src.governance.audit.store import InMemoryAuditStore
     from src.governance.hypothesis.models import Falsifier
     from src.governance.hypothesis.registry import HypothesisRegistry
     from src.governance.monitoring.metrics import MetricRegistry
@@ -58,15 +59,18 @@ class FalsifierChecker:
         self,
         hypothesis_registry: HypothesisRegistry,
         metric_registry: MetricRegistry,
+        audit_store: InMemoryAuditStore | None = None,
     ) -> None:
-        """Initialize FalsifierChecker with registries.
+        """Initialize FalsifierChecker with registries and optional audit store.
 
         Args:
             hypothesis_registry: Registry for looking up hypotheses by ID.
             metric_registry: Registry for querying current metric values.
+            audit_store: Optional InMemoryAuditStore for logging audit events.
         """
         self.hypothesis_registry = hypothesis_registry
         self.metric_registry = metric_registry
+        self.audit_store = audit_store
 
     def check_hypothesis(self, hypothesis_id: str) -> list[FalsifierCheckResult]:
         """Check all falsifiers for a hypothesis.
@@ -179,7 +183,7 @@ class FalsifierChecker:
             )
             logger.debug(f"Falsifier passed for hypothesis '{hypothesis_id}': {message}")
 
-        return FalsifierCheckResult(
+        result = FalsifierCheckResult(
             hypothesis_id=hypothesis_id,
             falsifier_index=falsifier_index,
             metric=falsifier.metric,
@@ -191,6 +195,44 @@ class FalsifierChecker:
             trigger_action=falsifier.trigger,
             checked_at=now,
             message=message,
+        )
+
+        # Log audit event if audit store is configured
+        self._log_falsifier_check(result)
+
+        return result
+
+    def _log_falsifier_check(self, result: FalsifierCheckResult) -> None:
+        """Log an audit event for a falsifier check result.
+
+        Logs FALSIFIER_CHECK_PASS for passed checks and
+        FALSIFIER_CHECK_TRIGGERED for triggered checks.
+
+        Args:
+            result: The falsifier check result to log.
+        """
+        if self.audit_store is None:
+            return
+
+        event_type = (
+            GovernanceAuditEventType.FALSIFIER_CHECK_TRIGGERED
+            if result.triggered
+            else GovernanceAuditEventType.FALSIFIER_CHECK_PASS
+        )
+
+        self.audit_store.log(
+            event_type=event_type,
+            hypothesis_id=result.hypothesis_id,
+            action_details={
+                "metric": result.metric,
+                "metric_value": result.metric_value,
+                "threshold": result.threshold,
+                "operator": result.operator.value,
+                "window": result.window,
+                "triggered": result.triggered,
+                "trigger_action": result.trigger_action.value,
+                "falsifier_index": result.falsifier_index,
+            },
         )
 
     def _compare(

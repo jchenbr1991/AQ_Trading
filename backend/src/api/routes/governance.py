@@ -41,10 +41,13 @@ Example:
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from pydantic import BaseModel
 
+from src.governance.audit.models import AuditLogEntry
+from src.governance.audit.store import InMemoryAuditStore
 from src.governance.constraints.loader import ConstraintLoader
 from src.governance.constraints.models import Constraint, ResolvedConstraints
 from src.governance.constraints.registry import ConstraintRegistry
@@ -55,7 +58,7 @@ from src.governance.hypothesis.registry import HypothesisRegistry
 from src.governance.lint.allowlist import AllowlistLint
 from src.governance.lint.alpha_path import AlphaPathLint
 from src.governance.lint.models import GateCheckResult, GateResult, LintResult
-from src.governance.models import HypothesisStatus
+from src.governance.models import GovernanceAuditEventType, HypothesisStatus
 from src.governance.monitoring.falsifier import FalsifierChecker
 from src.governance.monitoring.metrics import MetricRegistry
 from src.governance.monitoring.models import FalsifierCheckResult
@@ -250,6 +253,36 @@ def reset_pool_builder() -> None:
     global _pool_builder, _current_pool
     _pool_builder = None
     _current_pool = None
+
+
+# =============================================================================
+# Singleton - Audit Store
+# =============================================================================
+
+_audit_store: InMemoryAuditStore | None = None
+
+
+def get_audit_store() -> InMemoryAuditStore:
+    """Get the singleton InMemoryAuditStore instance.
+
+    Lazily initializes the store on first access.
+
+    Returns:
+        The singleton InMemoryAuditStore instance.
+    """
+    global _audit_store
+
+    if _audit_store is None:
+        _audit_store = InMemoryAuditStore()
+        logger.info("Initialized InMemoryAuditStore")
+
+    return _audit_store
+
+
+def reset_audit_store() -> None:
+    """Reset the audit store singleton (for testing purposes)."""
+    global _audit_store
+    _audit_store = None
 
 
 def _not_implemented(phase: int, description: str) -> HTTPException:
@@ -720,24 +753,50 @@ async def get_regime():
 # =============================================================================
 
 
-@router.get("/audit")
-async def query_audit():
+@router.get("/audit", response_model=list[AuditLogEntry])
+async def query_audit(
+    start_time: datetime | None = Query(
+        default=None,
+        description="Filter events after this time (inclusive)",
+    ),
+    end_time: datetime | None = Query(
+        default=None,
+        description="Filter events before this time (inclusive)",
+    ),
+    event_type: GovernanceAuditEventType | None = Query(
+        default=None,
+        description="Filter by event type",
+    ),
+    symbol: str | None = Query(
+        default=None,
+        description="Filter by trading symbol",
+    ),
+    constraint_id: str | None = Query(
+        default=None,
+        description="Filter by constraint ID",
+    ),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        description="Maximum records to return (default: 100, max: 1000)",
+    ),
+) -> list[AuditLogEntry]:
     """Query audit logs.
 
     Returns governance audit events with optional filters.
 
-    Query Parameters (when implemented):
-        start_time: Filter events after this time
-        end_time: Filter events before this time
-        event_type: Filter by event type
-        symbol: Filter by trading symbol
-        constraint_id: Filter by constraint ID
-        limit: Maximum records to return (default: 100, max: 1000)
+    Args:
+        start_time: Filter events after this time (inclusive).
+        end_time: Filter events before this time (inclusive).
+        event_type: Filter by event type.
+        symbol: Filter by trading symbol.
+        constraint_id: Filter by constraint ID.
+        limit: Maximum records to return (default: 100, max: 1000).
 
     Returns:
-        501: Not Implemented - To be completed in Phase 7
+        List of AuditLogEntry objects matching the filter criteria.
 
-    Example Response (when implemented):
+    Example Response:
         [
             {
                 "id": 1,
@@ -748,7 +807,18 @@ async def query_audit():
             }
         ]
     """
-    raise _not_implemented(7, "Query audit logs")
+    # Cap limit at 1000
+    effective_limit = min(limit, 1000)
+
+    store = get_audit_store()
+    return store.query(
+        start_time=start_time,
+        end_time=end_time,
+        event_type=event_type,
+        symbol=symbol,
+        constraint_id=constraint_id,
+        limit=effective_limit,
+    )
 
 
 # =============================================================================
@@ -952,4 +1022,6 @@ __all__ = [
     "reset_constraint_registry",
     "get_pool_builder",
     "reset_pool_builder",
+    "get_audit_store",
+    "reset_audit_store",
 ]
