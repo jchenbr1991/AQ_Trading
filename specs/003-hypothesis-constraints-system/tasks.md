@@ -250,11 +250,11 @@
 
 **Purpose**: Final validation and cleanup
 
-- [ ] T081 [P] Add CI lint rules for alpha path isolation in `.github/workflows/lint.yml`
-- [ ] T082 [P] Add all gate validations to CI pipeline in `.github/workflows/gates.yml`
-- [ ] T083 Validate quickstart.md scenarios work end-to-end in `specs/003-hypothesis-constraints-system/quickstart.md`
-- [ ] T084 [P] Add __all__ exports to all governance `__init__.py` files in `backend/src/governance/`
-- [ ] T085 Code cleanup and docstrings for public APIs in `backend/src/governance/`
+- [x] T081 [P] Add CI lint rules for alpha path isolation in `.github/workflows/lint.yml`
+- [x] T082 [P] Add all gate validations to CI pipeline in `.github/workflows/gates.yml`
+- [x] T083 Validate quickstart.md scenarios work end-to-end in `specs/003-hypothesis-constraints-system/quickstart.md`
+- [x] T084 [P] Add __all__ exports to all governance `__init__.py` files in `backend/src/governance/`
+- [x] T085 Code cleanup and docstrings for public APIs in `backend/src/governance/`
 
 ---
 
