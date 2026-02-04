@@ -300,7 +300,7 @@ class FactorRegistry:
                     action=rule.action,
                     checked_at=now,
                     message=(
-                        f"No data available for metric '{rule.metric}' " f"(window={rule.window})"
+                        f"No data available for metric '{rule.metric}' (window={rule.window})"
                     ),
                 )
                 results.append(result)

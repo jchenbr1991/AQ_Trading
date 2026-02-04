@@ -112,16 +112,12 @@ def _check_filters(symbol_data: Any, filters: StructuralFilters) -> str | None:
     # Check minimum price
     if filters.min_price is not None:
         if symbol_data.price < filters.min_price:
-            return (
-                f"structural_filter:min_price " f"(price {symbol_data.price} < {filters.min_price})"
-            )
+            return f"structural_filter:min_price (price {symbol_data.price} < {filters.min_price})"
 
     # Check maximum price
     if filters.max_price is not None:
         if symbol_data.price > filters.max_price:
-            return (
-                f"structural_filter:max_price " f"(price {symbol_data.price} > {filters.max_price})"
-            )
+            return f"structural_filter:max_price (price {symbol_data.price} > {filters.max_price})"
 
     return None
 

@@ -89,9 +89,7 @@ class AlertGenerator:
             severity=severity,
             source="falsifier_checker",
             hypothesis_id=result.hypothesis_id,
-            title=(
-                f"Falsifier triggered: {result.metric} " f"for hypothesis '{result.hypothesis_id}'"
-            ),
+            title=(f"Falsifier triggered: {result.metric} for hypothesis '{result.hypothesis_id}'"),
             message=(
                 f"Falsifier [{result.falsifier_index}] triggered: "
                 f"{result.metric}={result.metric_value} "

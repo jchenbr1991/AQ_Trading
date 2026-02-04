@@ -159,8 +159,7 @@ class FalsifierChecker:
                 trigger_action=falsifier.trigger,
                 checked_at=now,
                 message=(
-                    f"No data available for metric '{falsifier.metric}' "
-                    f"(window={falsifier.window})"
+                    f"No data available for metric '{falsifier.metric}' (window={falsifier.window})"
                 ),
             )
 

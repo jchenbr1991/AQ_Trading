@@ -89,7 +89,7 @@ class FalsifierScheduler:
                 self.alert_generator.generate_from_check(result)
 
         logger.info(
-            f"Falsifier check run complete: {len(results)} checks, " f"{triggered_count} triggered"
+            f"Falsifier check run complete: {len(results)} checks, {triggered_count} triggered"
         )
 
         return results
