@@ -52,6 +52,7 @@ from src.governance.constraints.loader import ConstraintLoader
 from src.governance.constraints.models import Constraint, ResolvedConstraints
 from src.governance.constraints.registry import ConstraintRegistry
 from src.governance.constraints.resolver import ConstraintResolver
+from src.governance.context import GovernanceContext, build_governance_context
 from src.governance.hypothesis.loader import HypothesisLoader
 from src.governance.hypothesis.models import Hypothesis
 from src.governance.hypothesis.registry import HypothesisRegistry
@@ -1096,6 +1097,42 @@ async def run_gates(response: Response) -> GateResult:
         response.status_code = status.HTTP_400_BAD_REQUEST
 
     return result
+
+
+# =============================================================================
+# Context Endpoint (Phase 10 - Strategy Interface Integration)
+# =============================================================================
+
+
+@router.get("/context/{symbol}", response_model=GovernanceContext)
+async def get_governance_context(symbol: str) -> GovernanceContext:
+    """Get resolved governance context for a symbol.
+
+    Returns a GovernanceContext containing only scalar values derived from
+    the current pool, regime, and constraint state. This is the primary
+    interface between the governance system and the strategy framework.
+
+    No raw Constraint, Hypothesis, or other governance domain objects are
+    returned — only simple types (str, float, bool, list[str]).
+
+    Args:
+        symbol: The trading symbol (e.g., "AAPL")
+
+    Returns:
+        GovernanceContext with resolved scalar values.
+
+    Example Response:
+        {
+            "active_pool": ["AAPL", "NVDA", "AMD"],
+            "pacing_multiplier": 1.0,
+            "risk_budget_multiplier": 1.0,
+            "veto_downgrade_active": false,
+            "stop_mode": "baseline",
+            "pool_version": "20260204_abc123",
+            "regime_state": "NORMAL"
+        }
+    """
+    return build_governance_context(symbol)
 
 
 __all__ = [
