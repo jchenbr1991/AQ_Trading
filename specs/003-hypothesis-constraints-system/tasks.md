@@ -145,19 +145,19 @@
 
 ### Tests for User Story 4 (TDD - write FIRST, ensure FAIL)
 
-- [ ] T050 [P] [US4] Write falsifier checker tests in `backend/tests/governance/test_falsifier.py`
-- [ ] T051 [P] [US4] Write alert generation tests in `backend/tests/governance/test_alerts.py`
+- [x] T050 [P] [US4] Write falsifier checker tests in `backend/tests/governance/test_falsifier.py`
+- [x] T051 [P] [US4] Write alert generation tests in `backend/tests/governance/test_alerts.py`
 
 ### Implementation for User Story 4
 
-- [ ] T052 [P] [US4] Create FalsifierCheckResult model in `backend/src/governance/monitoring/models.py`
-- [ ] T053 [P] [US4] Create Alert model in `backend/src/governance/monitoring/models.py`
-- [ ] T054 [US4] Implement MetricRegistry pattern for falsifier evaluation in `backend/src/governance/monitoring/metrics.py`
-- [ ] T055 [US4] Implement falsifier checker logic in `backend/src/governance/monitoring/falsifier.py`
-- [ ] T056 [US4] Implement alert generation in `backend/src/governance/monitoring/alerts.py`
-- [ ] T057 [US4] Implement scheduled falsifier check runner with APScheduler in `backend/src/governance/monitoring/scheduler.py`
-- [ ] T058 [US4] Implement `disabled_if_falsified` constraint deactivation in `backend/src/governance/constraints/resolver.py`
-- [ ] T059 [US4] Add falsifier check API endpoint in `backend/src/api/routes/governance.py`
+- [x] T052 [P] [US4] Create FalsifierCheckResult model in `backend/src/governance/monitoring/models.py`
+- [x] T053 [P] [US4] Create Alert model in `backend/src/governance/monitoring/models.py`
+- [x] T054 [US4] Implement MetricRegistry pattern for falsifier evaluation in `backend/src/governance/monitoring/metrics.py`
+- [x] T055 [US4] Implement falsifier checker logic in `backend/src/governance/monitoring/falsifier.py`
+- [x] T056 [US4] Implement alert generation in `backend/src/governance/monitoring/alerts.py`
+- [x] T057 [US4] Implement scheduled falsifier check runner with APScheduler in `backend/src/governance/monitoring/scheduler.py`
+- [x] T058 [US4] Implement `disabled_if_falsified` constraint deactivation in `backend/src/governance/constraints/resolver.py`
+- [x] T059 [US4] Add falsifier check API endpoint in `backend/src/api/routes/governance.py`
 
 **Checkpoint**: User Story 4 complete - falsifiers are monitored and alerts generated
 
