@@ -215,14 +215,14 @@
 
 ### Tests for User Story 7 (TDD - write FIRST, ensure FAIL)
 
-- [ ] T072 [P] [US7] Write regime detector tests in `backend/tests/governance/test_regime_detector.py`
+- [x] T072 [P] [US7] Write regime detector tests in `backend/tests/governance/test_regime_detector.py`
 
 ### Implementation for User Story 7
 
-- [ ] T073 [P] [US7] Create Regime and RegimeThresholds models in `backend/src/governance/regime/models.py`
-- [ ] T074 [US7] Implement regime detector in `backend/src/governance/regime/detector.py`
-- [ ] T075 [US7] Create regime config in `config/regimes/regime_v1.yml`
-- [ ] T076 [US7] Add regime API endpoint in `backend/src/api/routes/governance.py`
+- [x] T073 [P] [US7] Create Regime and RegimeThresholds models in `backend/src/governance/regime/models.py`
+- [x] T074 [US7] Implement regime detector in `backend/src/governance/regime/detector.py`
+- [x] T075 [US7] Create regime config in `config/regimes/regime_v1.yml`
+- [x] T076 [US7] Add regime API endpoint in `backend/src/api/routes/governance.py`
 
 **Checkpoint**: User Story 7 complete - regime affects position pacing
 
