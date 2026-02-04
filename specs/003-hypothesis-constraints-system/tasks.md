@@ -234,13 +234,13 @@
 
 ### Tests
 
-- [ ] T077 [P] Write strategy interface integration tests in `backend/tests/integration/test_governance_integration.py`
+- [x] T077 [P] Write strategy interface integration tests in `backend/tests/integration/test_governance_integration.py`
 
 ### Implementation
 
-- [ ] T078 Update StrategyContext with pre-resolved governance inputs (pool, regime, risk/timing scalars) in `backend/src/strategies/interface.py`
-- [ ] T079 Ensure StrategyContext does NOT expose raw Constraint objects - only scalar values in `backend/src/strategies/interface.py`
-- [ ] T080 Add governance initialization to main application startup in `backend/src/main.py`
+- [x] T078 Update StrategyContext with pre-resolved governance inputs (pool, regime, risk/timing scalars) in `backend/src/governance/context.py`
+- [x] T079 Ensure StrategyContext does NOT expose raw Constraint objects - only scalar values in `backend/src/governance/context.py`
+- [x] T080 Add governance initialization to main application startup in `backend/src/api/routes/governance.py`
 
 **Checkpoint**: Strategy receives governance inputs correctly
 
