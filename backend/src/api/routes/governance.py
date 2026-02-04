@@ -199,6 +199,7 @@ def get_constraint_resolver() -> ConstraintResolver:
         _constraint_resolver = ConstraintResolver(
             constraint_registry=get_constraint_registry(),
             hypothesis_registry=get_hypothesis_registry(),
+            audit_store=get_audit_store(),
         )
 
     return _constraint_resolver
@@ -425,6 +426,7 @@ async def check_falsifiers(hypothesis_id: str) -> list[FalsifierCheckResult]:
     checker = FalsifierChecker(
         hypothesis_registry=registry,
         metric_registry=metric_registry,
+        audit_store=get_audit_store(),
     )
 
     return checker.check_hypothesis(hypothesis_id)

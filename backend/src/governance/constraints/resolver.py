@@ -454,17 +454,21 @@ class ConstraintResolver:
                 action_details={
                     "priority": constraint.priority,
                     "title": constraint.title,
+                    "actions": constraint.actions.model_dump(mode="json", exclude_none=True),
+                    "applies_to": constraint.applies_to.model_dump(mode="json"),
                 },
             )
 
         # Log VETO_DOWNGRADE when veto_downgrade_active is True
         if result.veto_downgrade_active:
+            constraint_ids = [c.id for c in active_constraints if c.actions.veto_downgrade]
             self.audit_store.log(
                 event_type=GovernanceAuditEventType.VETO_DOWNGRADE,
+                constraint_id=constraint_ids[0] if constraint_ids else None,
                 symbol=symbol,
                 action_details={
                     "veto_downgrade_active": True,
-                    "constraint_count": len(active_constraints),
+                    "constraint_ids": constraint_ids,
                 },
             )
 
@@ -475,6 +479,16 @@ class ConstraintResolver:
                 symbol=symbol,
                 action_details={
                     "effective_multiplier": result.effective_risk_budget_multiplier,
+                },
+            )
+
+        # Log POSITION_CAP_APPLIED when guardrails have position caps
+        if result.guardrails and result.guardrails.max_position_pct is not None:
+            self.audit_store.log(
+                event_type=GovernanceAuditEventType.POSITION_CAP_APPLIED,
+                symbol=symbol,
+                action_details={
+                    "max_position_pct": result.guardrails.max_position_pct,
                 },
             )
 
