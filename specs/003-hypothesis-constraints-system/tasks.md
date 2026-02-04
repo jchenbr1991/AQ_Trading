@@ -171,15 +171,15 @@
 
 ### Tests for User Story 5 (TDD - write FIRST, ensure FAIL)
 
-- [ ] T060 [P] [US5] Write audit logger tests in `backend/tests/governance/test_audit_logger.py`
+- [x] T060 [P] [US5] Write audit logger tests in `backend/tests/governance/test_audit_logger.py`
 
 ### Implementation for User Story 5
 
-- [ ] T061 [P] [US5] Create AuditLogEntry and AuditEventType models in `backend/src/governance/audit/models.py`
-- [ ] T062 [US5] Implement audit log writer with PostgreSQL in `backend/src/governance/audit/logger.py`
-- [ ] T063 [US5] Add audit logging hooks to constraint resolver in `backend/src/governance/constraints/resolver.py`
-- [ ] T064 [US5] Add audit logging hooks to falsifier checker in `backend/src/governance/monitoring/falsifier.py`
-- [ ] T065 [US5] Add audit API endpoint with filtering in `backend/src/api/routes/governance.py`
+- [x] T061 [P] [US5] Create AuditLogEntry and AuditEventType models in `backend/src/governance/audit/models.py`
+- [x] T062 [US5] Implement audit log writer with PostgreSQL in `backend/src/governance/audit/logger.py`
+- [x] T063 [US5] Add audit logging hooks to constraint resolver in `backend/src/governance/constraints/resolver.py`
+- [x] T064 [US5] Add audit logging hooks to falsifier checker in `backend/src/governance/monitoring/falsifier.py`
+- [x] T065 [US5] Add audit API endpoint with filtering in `backend/src/api/routes/governance.py`
 
 **Checkpoint**: User Story 5 complete - all governance effects are auditable
 
@@ -193,15 +193,15 @@
 
 ### Tests for User Story 6 (TDD - write FIRST, ensure FAIL)
 
-- [ ] T066 [P] [US6] Write factor registry tests in `backend/tests/governance/test_factor_registry.py`
+- [x] T066 [P] [US6] Write factor registry tests in `backend/tests/governance/test_factor_registry.py`
 
 ### Implementation for User Story 6
 
-- [ ] T067 [P] [US6] Create Factor and FactorFailureRule models in `backend/src/governance/factors/models.py`
-- [ ] T068 [US6] Implement factor loader with failure rule validation in `backend/src/governance/factors/loader.py`
-- [ ] T069 [US6] Implement `gate:factor_requires_failure_rule` in `backend/src/governance/factors/loader.py`
-- [ ] T070 [US6] Implement FactorRegistry with status tracking in `backend/src/governance/factors/registry.py`
-- [ ] T071 [US6] Create example factor config in `config/factors/_example.yml`
+- [x] T067 [P] [US6] Create Factor and FactorFailureRule models in `backend/src/governance/factors/models.py`
+- [x] T068 [US6] Implement factor loader with failure rule validation in `backend/src/governance/factors/loader.py`
+- [x] T069 [US6] Implement `gate:factor_requires_failure_rule` in `backend/src/governance/factors/loader.py`
+- [x] T070 [US6] Implement FactorRegistry with status tracking in `backend/src/governance/factors/registry.py`
+- [x] T071 [US6] Create example factor config in `config/factors/_example.yml`
 
 **Checkpoint**: User Story 6 complete - factors have mandatory failure rules
 
