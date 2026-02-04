@@ -274,7 +274,8 @@ class FactorRegistry:
         Raises:
             KeyError: If the factor is not found in the registry.
         """
-        factor = self._factors.get(factor_id)
+        with self._lock:
+            factor = self._factors.get(factor_id)
         if factor is None:
             raise KeyError(f"Factor '{factor_id}' not found in registry")
 

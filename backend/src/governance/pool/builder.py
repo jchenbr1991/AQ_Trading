@@ -295,6 +295,10 @@ class PoolBuilder:
         if not active_ids:
             return None
 
+        # If active hypotheses have empty scope, treat as no restriction
+        if not allowed_symbols and not allowed_sectors:
+            return None
+
         return {
             "symbols": allowed_symbols,
             "sectors": allowed_sectors,
