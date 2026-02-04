@@ -18,6 +18,7 @@ Example:
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
@@ -46,19 +47,21 @@ class MetricRegistry:
     def __init__(self) -> None:
         """Initialize an empty MetricRegistry."""
         self._providers: dict[str, Callable] = {}
+        self._lock = threading.Lock()
 
     def register(self, metric_name: str, provider: Callable) -> None:
         """Register a metric provider function.
 
         If a provider for the same metric name already exists, it will be
-        overwritten with the new provider.
+        overwritten with the new provider. Thread-safe.
 
         Args:
             metric_name: The name of the metric (e.g., "rolling_ic_mean").
             provider: Callable that accepts an optional window keyword argument
                       and returns a float or None.
         """
-        self._providers[metric_name] = provider
+        with self._lock:
+            self._providers[metric_name] = provider
         logger.debug(f"Registered metric provider: {metric_name}")
 
     def get_value(self, metric_name: str, window: str | None = None) -> float | None:
@@ -66,7 +69,7 @@ class MetricRegistry:
 
         Calls the registered provider for the given metric name.
         Returns None if the metric is not registered or if the provider
-        raises an exception.
+        raises an exception. Thread-safe.
 
         Args:
             metric_name: The name of the metric to query.
@@ -75,7 +78,8 @@ class MetricRegistry:
         Returns:
             The metric value as a float, or None if unavailable.
         """
-        provider = self._providers.get(metric_name)
+        with self._lock:
+            provider = self._providers.get(metric_name)
         if provider is None:
             logger.debug(f"No provider registered for metric: {metric_name}")
             return None
@@ -90,7 +94,7 @@ class MetricRegistry:
             return None
 
     def has_metric(self, metric_name: str) -> bool:
-        """Check if a metric provider is registered.
+        """Check if a metric provider is registered. Thread-safe.
 
         Args:
             metric_name: The name of the metric to check.
@@ -98,7 +102,8 @@ class MetricRegistry:
         Returns:
             True if a provider is registered for this metric, False otherwise.
         """
-        return metric_name in self._providers
+        with self._lock:
+            return metric_name in self._providers
 
 
 __all__ = ["MetricRegistry"]
