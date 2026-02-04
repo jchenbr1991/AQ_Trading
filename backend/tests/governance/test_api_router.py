@@ -251,14 +251,16 @@ class TestSymbolAuditEndpoint:
 
 
 class TestRegimeEndpoint:
-    """Tests for /governance/regime endpoint."""
+    """Tests for /governance/regime endpoint (Phase 9 - IMPLEMENTED)."""
 
-    def test_get_regime_returns_501(self, client):
-        """GET /governance/regime should return 501 Not Implemented."""
+    def test_get_regime_returns_200(self, client):
+        """GET /governance/regime should return 200 with regime snapshot."""
         response = client.get("/governance/regime")
 
-        assert response.status_code == 501
-        assert "implemented" in response.json()["detail"].lower()
+        assert response.status_code == 200
+        data = response.json()
+        assert data["state"] == "NORMAL"
+        assert data["pacing_multiplier"] == 1.0
 
 
 # =============================================================================

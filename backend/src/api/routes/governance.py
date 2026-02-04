@@ -64,6 +64,8 @@ from src.governance.monitoring.metrics import MetricRegistry
 from src.governance.monitoring.models import FalsifierCheckResult
 from src.governance.pool.builder import EmptyPoolError, PoolBuilder
 from src.governance.pool.models import Pool, PoolAuditEntry, StructuralFilters
+from src.governance.regime.detector import RegimeDetector
+from src.governance.regime.models import RegimeConfig, RegimeSnapshot, RegimeThresholds
 
 logger = logging.getLogger(__name__)
 
@@ -284,6 +286,83 @@ def reset_audit_store() -> None:
     """Reset the audit store singleton (for testing purposes)."""
     global _audit_store
     _audit_store = None
+
+
+# =============================================================================
+# Singleton - Regime Detector
+# =============================================================================
+
+_regime_detector: RegimeDetector | None = None
+
+# Default regime config used when no YAML config is loaded
+_DEFAULT_REGIME_CONFIG = RegimeConfig(
+    thresholds=RegimeThresholds(
+        volatility_transition=0.25,
+        volatility_stress=0.40,
+        drawdown_transition=0.10,
+        drawdown_stress=0.20,
+    ),
+    pacing_multipliers={
+        "NORMAL": 1.0,
+        "TRANSITION": 0.5,
+        "STRESS": 0.1,
+    },
+)
+
+
+def get_regime_detector() -> RegimeDetector:
+    """Get the singleton RegimeDetector instance.
+
+    Lazily initializes the detector with the default config and the
+    singleton MetricRegistry on first access.
+
+    Returns:
+        The singleton RegimeDetector instance.
+    """
+    global _regime_detector
+
+    if _regime_detector is None:
+        config = _load_regime_config()
+        _regime_detector = RegimeDetector(
+            config=config,
+            metric_registry=get_metric_registry(),
+        )
+        logger.info("Initialized RegimeDetector")
+
+    return _regime_detector
+
+
+def _load_regime_config() -> RegimeConfig:
+    """Load regime config from YAML or return defaults.
+
+    Tries to load config/regimes/regime_v1.yml. If the file doesn't exist
+    or fails to parse, returns the built-in default configuration.
+
+    Returns:
+        RegimeConfig loaded from YAML or default values.
+    """
+    from pathlib import Path
+
+    import yaml
+
+    config_path = Path("config/regimes/regime_v1.yml")
+    if not config_path.exists():
+        logger.warning("Regime config not found at %s, using defaults", config_path)
+        return _DEFAULT_REGIME_CONFIG
+
+    try:
+        with open(config_path) as f:
+            data = yaml.safe_load(f)
+        return RegimeConfig(**data)
+    except Exception:
+        logger.exception("Failed to load regime config, using defaults")
+        return _DEFAULT_REGIME_CONFIG
+
+
+def reset_regime_detector() -> None:
+    """Reset the regime detector singleton (for testing purposes)."""
+    global _regime_detector
+    _regime_detector = None
 
 
 def _not_implemented(phase: int, description: str) -> HTTPException:
@@ -728,26 +807,32 @@ def _load_base_universe() -> list:
 # =============================================================================
 
 
-@router.get("/regime")
-async def get_regime():
+@router.get("/regime", response_model=RegimeSnapshot)
+async def get_regime() -> RegimeSnapshot:
     """Get current regime state.
 
-    Returns the current market regime classification.
+    Returns the current market regime classification with position pacing
+    multiplier. The regime is detected from portfolio_volatility and
+    max_drawdown metrics registered in the MetricRegistry.
+
+    If no metrics are registered, returns a default NORMAL state with
+    pacing_multiplier=1.0.
 
     Returns:
-        501: Not Implemented - To be completed in Phase 9
+        RegimeSnapshot with current state, previous state, metrics,
+        and pacing multiplier.
 
-    Example Response (when implemented):
+    Example Response:
         {
             "state": "NORMAL",
-            "volatility": 0.15,
-            "drawdown": 0.02,
-            "dispersion": 0.18,
-            "detected_at": "2026-02-03T10:00:00Z",
-            "thresholds": {...}
+            "previous_state": null,
+            "changed_at": "2026-02-04T10:00:00Z",
+            "metrics": {"portfolio_volatility": 0.15, "max_drawdown": 0.05},
+            "pacing_multiplier": 1.0
         }
     """
-    raise _not_implemented(9, "Get regime state")
+    detector = get_regime_detector()
+    return detector.detect()
 
 
 # =============================================================================
@@ -1026,4 +1111,6 @@ __all__ = [
     "reset_pool_builder",
     "get_audit_store",
     "reset_audit_store",
+    "get_regime_detector",
+    "reset_regime_detector",
 ]

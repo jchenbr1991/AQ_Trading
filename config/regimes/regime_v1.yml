@@ -1,0 +1,9 @@
+thresholds:
+  volatility_transition: 0.25
+  volatility_stress: 0.40
+  drawdown_transition: 0.10
+  drawdown_stress: 0.20
+pacing_multipliers:
+  NORMAL: 1.0
+  TRANSITION: 0.5
+  STRESS: 0.1
