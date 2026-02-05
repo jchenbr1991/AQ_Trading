@@ -72,6 +72,9 @@ class TrendBreakoutStrategy(Strategy):
         factor_weights: dict[str, float] | None = None,
         weight_method: Literal["manual", "ic"] = "manual",
         ic_weight_config: dict[str, Any] | None = None,
+        normalize_scores: bool = True,
+        normalize_min_periods: int = 20,
+        normalize_window_size: int = 60,
         **kwargs,
     ) -> None:
         """Initialize TrendBreakout strategy.
@@ -88,6 +91,11 @@ class TrendBreakoutStrategy(Strategy):
             factor_weights: Weights for factors (momentum_factor, breakout_factor)
             weight_method: "manual" (use factor_weights) or "ic" (data-driven IC weighting)
             ic_weight_config: Configuration for IC weight calculator (lookback_window, ewma_span, etc.)
+            normalize_scores: If True, z-score normalize factor scores before combining
+                into composite. Prevents factors with larger natural scales from dominating.
+                Default: True.
+            normalize_min_periods: Minimum bars before normalization activates. Default: 20.
+            normalize_window_size: Rolling window for normalization statistics. Default: 60.
             **kwargs: Additional parameters (ignored).
         """
         self.name = name
@@ -156,6 +164,9 @@ class TrendBreakoutStrategy(Strategy):
         self._composite_factor = CompositeFactor(
             momentum_weight=momentum_weight,
             breakout_weight=breakout_weight,
+            normalize=normalize_scores,
+            normalize_min_periods=normalize_min_periods,
+            normalize_window_size=normalize_window_size,
         )
 
         # T019: Per-symbol history buffers for indicator calculation
@@ -411,12 +422,15 @@ class TrendBreakoutStrategy(Strategy):
         if breakout_result is None:
             return None
 
-        # Calculate composite factor
-        composite_input = {
+        # Update normalizer with raw scores before calculating composite
+        raw_scores = {
             "momentum_factor": momentum_result.score,
             "breakout_factor": breakout_result.score,
         }
-        composite_result = self._composite_factor.calculate(composite_input)
+        self._composite_factor.update_normalizer(raw_scores)
+
+        # Calculate composite factor (uses normalized scores if enabled)
+        composite_result = self._composite_factor.calculate(raw_scores)
         if composite_result is None:
             return None
 
