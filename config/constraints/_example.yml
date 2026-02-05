@@ -1,0 +1,61 @@
+# Example Constraint YAML
+# ----------------------
+# This file demonstrates the structure of a constraint configuration.
+# Files starting with underscore (_) are skipped by the loader.
+#
+# To create a real constraint:
+# 1. Copy this file and rename without underscore (e.g., growth_leverage_guard.yml)
+# 2. Fill in all required fields
+# 3. Ensure applies_to and activation sections are properly defined
+# 4. Submit via PR for review
+
+# Unique identifier (lowercase alphanumeric with underscores only)
+id: growth_leverage_guard
+
+# Human-readable title
+title: Growth Stock Leverage Guard
+
+# What this constraint applies to
+# Empty lists mean "all symbols" or "all strategies"
+applies_to:
+  symbols:
+    - NVDA
+    - AMD
+  strategies:
+    - momentum
+
+# Activation conditions
+# Constraints are activated when linked hypotheses are ACTIVE
+activation:
+  # List of hypothesis IDs that must be ACTIVE for this constraint to activate
+  requires_hypotheses_active:
+    - memory_demand_2027
+  # If true (default), constraint is disabled when any linked hypothesis is SUNSET
+  disabled_if_falsified: true
+
+# Actions when constraint is active (ALLOWLISTED FIELDS ONLY)
+# Only the following fields are permitted:
+#   - enable_strategy: bool
+#   - pool_bias_multiplier: float (> 0)
+#   - veto_downgrade: bool
+#   - risk_budget_multiplier: float (>= 1)
+#   - holding_extension_days: int (>= 0)
+#   - add_position_cap_multiplier: float (> 0)
+#   - stop_mode: "baseline" | "wide" | "fundamental_guarded"
+actions:
+  risk_budget_multiplier: 1.5
+  veto_downgrade: true
+  stop_mode: wide
+
+# Risk guardrails
+# These guardrails provide upper bounds on risk-taking even when
+# a constraint's actions are applied.
+guardrails:
+  # Maximum position size as percentage (0 to 1)
+  max_position_pct: 0.10
+  # Maximum additional drawdown allowed
+  max_drawdown_addon: 0.02
+
+# Priority for conflict resolution (default 100, minimum 1)
+# Lower number = higher priority
+priority: 50

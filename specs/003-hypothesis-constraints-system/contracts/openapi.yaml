@@ -1,0 +1,728 @@
+openapi: 3.1.0
+info:
+  title: AQ Trading Governance API
+  description: L0 Hypothesis + L1 Constraints governance layer API
+  version: 1.0.0
+
+servers:
+  - url: /api/governance
+    description: Governance API base path
+
+tags:
+  - name: hypotheses
+    description: Hypothesis registry operations
+  - name: constraints
+    description: Constraint registry operations
+  - name: pool
+    description: Pool building operations
+  - name: regime
+    description: Regime detection operations
+  - name: audit
+    description: Audit log operations
+  - name: lint
+    description: Lint/gate validation operations
+
+paths:
+  /hypotheses:
+    get:
+      tags: [hypotheses]
+      summary: List all hypotheses
+      operationId: listHypotheses
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [DRAFT, ACTIVE, SUNSET, REJECTED]
+          description: Filter by status
+      responses:
+        '200':
+          description: List of hypotheses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Hypothesis'
+
+  /hypotheses/{hypothesis_id}:
+    get:
+      tags: [hypotheses]
+      summary: Get hypothesis by ID
+      operationId: getHypothesis
+      parameters:
+        - name: hypothesis_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Hypothesis details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Hypothesis'
+        '404':
+          description: Hypothesis not found
+
+  /hypotheses/{hypothesis_id}/falsifiers/check:
+    post:
+      tags: [hypotheses]
+      summary: Run falsifier checks for a hypothesis
+      operationId: checkFalsifiers
+      parameters:
+        - name: hypothesis_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Falsifier check results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FalsifierCheckResult'
+
+  /constraints:
+    get:
+      tags: [constraints]
+      summary: List all constraints
+      operationId: listConstraints
+      parameters:
+        - name: symbol
+          in: query
+          schema:
+            type: string
+          description: Filter by applicable symbol
+        - name: active_only
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Only return active constraints
+      responses:
+        '200':
+          description: List of constraints
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Constraint'
+
+  /constraints/{constraint_id}:
+    get:
+      tags: [constraints]
+      summary: Get constraint by ID
+      operationId: getConstraint
+      parameters:
+        - name: constraint_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Constraint details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Constraint'
+        '404':
+          description: Constraint not found
+
+  /constraints/resolve/{symbol}:
+    get:
+      tags: [constraints]
+      summary: Get resolved constraints for a symbol
+      operationId: resolveConstraints
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resolved constraints
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedConstraints'
+
+  /pool:
+    get:
+      tags: [pool]
+      summary: Get current active pool
+      operationId: getPool
+      responses:
+        '200':
+          description: Current pool
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pool'
+
+    post:
+      tags: [pool]
+      summary: Rebuild pool with current config
+      operationId: rebuildPool
+      responses:
+        '200':
+          description: Newly built pool
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pool'
+        '400':
+          description: Pool build failed (e.g., empty pool)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /pool/{symbol}/audit:
+    get:
+      tags: [pool]
+      summary: Get audit trail for a symbol
+      operationId: getSymbolAudit
+      parameters:
+        - name: symbol
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audit entries for symbol
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PoolAuditEntry'
+
+  /regime:
+    get:
+      tags: [regime]
+      summary: Get current regime state
+      operationId: getRegime
+      responses:
+        '200':
+          description: Current regime
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Regime'
+
+  /audit:
+    get:
+      tags: [audit]
+      summary: Query audit logs
+      operationId: queryAuditLogs
+      parameters:
+        - name: start_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start of time range
+        - name: end_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End of time range
+        - name: symbol
+          in: query
+          schema:
+            type: string
+          description: Filter by symbol
+        - name: constraint_id
+          in: query
+          schema:
+            type: string
+          description: Filter by constraint ID
+        - name: event_type
+          in: query
+          schema:
+            type: string
+          description: Filter by event type
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 1000
+          description: Max entries to return
+      responses:
+        '200':
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditLogEntry'
+
+  /lint/alpha-path:
+    post:
+      tags: [lint]
+      summary: Run alpha path lint check
+      operationId: runAlphaPathLint
+      description: Check that hypothesis/constraint files are not imported in alpha paths
+      responses:
+        '200':
+          description: Lint passed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LintResult'
+        '400':
+          description: Lint failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LintResult'
+
+  /lint/constraint-allowlist:
+    post:
+      tags: [lint]
+      summary: Run constraint allowlist lint check
+      operationId: runConstraintAllowlistLint
+      description: Check that constraints only use allowlisted action fields
+      responses:
+        '200':
+          description: Lint passed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LintResult'
+        '400':
+          description: Lint failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LintResult'
+
+  /gates/validate:
+    post:
+      tags: [lint]
+      summary: Run all gate validations
+      operationId: runGates
+      description: Run hypothesis_requires_falsifiers and factor_requires_failure_rule gates
+      responses:
+        '200':
+          description: All gates passed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GateResult'
+        '400':
+          description: Gate validation failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GateResult'
+
+components:
+  schemas:
+    Hypothesis:
+      type: object
+      required: [id, title, statement, scope, status, review_cycle, created_at, evidence, falsifiers]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9_]+$'
+        title:
+          type: string
+        statement:
+          type: string
+        scope:
+          $ref: '#/components/schemas/HypothesisScope'
+        owner:
+          type: string
+          default: human
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, SUNSET, REJECTED]
+        review_cycle:
+          type: string
+        created_at:
+          type: string
+          format: date
+        evidence:
+          $ref: '#/components/schemas/Evidence'
+        falsifiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Falsifier'
+          minItems: 1
+        linked_constraints:
+          type: array
+          items:
+            type: string
+
+    HypothesisScope:
+      type: object
+      properties:
+        symbols:
+          type: array
+          items:
+            type: string
+        sectors:
+          type: array
+          items:
+            type: string
+
+    Evidence:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+
+    Falsifier:
+      type: object
+      required: [metric, operator, threshold, window, trigger]
+      properties:
+        metric:
+          type: string
+        operator:
+          type: string
+          enum: ['<', '<=', '>', '>=', '==']
+        threshold:
+          type: number
+        window:
+          type: string
+        trigger:
+          type: string
+          enum: [review, sunset]
+
+    FalsifierCheckResult:
+      type: object
+      properties:
+        hypothesis_id:
+          type: string
+        falsifier_index:
+          type: integer
+        metric:
+          type: string
+        expected:
+          type: string
+        actual:
+          type: number
+          nullable: true
+        triggered:
+          type: boolean
+        trigger_action:
+          type: string
+          enum: [review, sunset]
+        checked_at:
+          type: string
+          format: date-time
+        error:
+          type: string
+          nullable: true
+
+    Constraint:
+      type: object
+      required: [id, title, applies_to, activation, actions]
+      properties:
+        id:
+          type: string
+          pattern: '^[a-z0-9_]+$'
+        title:
+          type: string
+        applies_to:
+          $ref: '#/components/schemas/ConstraintAppliesTo'
+        activation:
+          $ref: '#/components/schemas/ConstraintActivation'
+        actions:
+          $ref: '#/components/schemas/ConstraintActions'
+        guardrails:
+          $ref: '#/components/schemas/ConstraintGuardrails'
+        priority:
+          type: integer
+          default: 100
+          minimum: 1
+
+    ConstraintAppliesTo:
+      type: object
+      properties:
+        symbols:
+          type: array
+          items:
+            type: string
+        strategies:
+          type: array
+          items:
+            type: string
+
+    ConstraintActivation:
+      type: object
+      properties:
+        requires_hypotheses_active:
+          type: array
+          items:
+            type: string
+        disabled_if_falsified:
+          type: boolean
+          default: true
+
+    ConstraintActions:
+      type: object
+      properties:
+        enable_strategy:
+          type: boolean
+          nullable: true
+        pool_bias_multiplier:
+          type: number
+          nullable: true
+          exclusiveMinimum: 0
+        veto_downgrade:
+          type: boolean
+          nullable: true
+        risk_budget_multiplier:
+          type: number
+          nullable: true
+          minimum: 1
+        holding_extension_days:
+          type: integer
+          nullable: true
+          minimum: 0
+        add_position_cap_multiplier:
+          type: number
+          nullable: true
+          exclusiveMinimum: 0
+        stop_mode:
+          type: string
+          nullable: true
+          enum: [baseline, wide, fundamental_guarded]
+
+    ConstraintGuardrails:
+      type: object
+      properties:
+        max_position_pct:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 1
+        max_gross_exposure_delta:
+          type: number
+          nullable: true
+        max_drawdown_addon:
+          type: number
+          nullable: true
+
+    ResolvedConstraints:
+      type: object
+      required: [symbol, constraints, resolved_at, version]
+      properties:
+        symbol:
+          type: string
+        constraints:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResolvedAction'
+        resolved_at:
+          type: string
+          format: date-time
+        version:
+          type: string
+        effective_risk_budget_multiplier:
+          type: number
+          default: 1.0
+        effective_pool_bias_multiplier:
+          type: number
+          default: 1.0
+        effective_stop_mode:
+          type: string
+          default: baseline
+        veto_downgrade_active:
+          type: boolean
+          default: false
+        guardrails:
+          $ref: '#/components/schemas/ConstraintGuardrails'
+
+    ResolvedAction:
+      type: object
+      required: [constraint_id, action_type, value]
+      properties:
+        constraint_id:
+          type: string
+        action_type:
+          type: string
+        value:
+          oneOf:
+            - type: number
+            - type: boolean
+            - type: string
+
+    Pool:
+      type: object
+      required: [symbols, version, built_at, audit_trail]
+      properties:
+        symbols:
+          type: array
+          items:
+            type: string
+        weights:
+          type: object
+          additionalProperties:
+            type: number
+        version:
+          type: string
+        built_at:
+          type: string
+          format: date-time
+        audit_trail:
+          type: array
+          items:
+            $ref: '#/components/schemas/PoolAuditEntry'
+
+    PoolAuditEntry:
+      type: object
+      required: [symbol, action, reason, source]
+      properties:
+        symbol:
+          type: string
+        action:
+          type: string
+          enum: [included, excluded, prioritized]
+        reason:
+          type: string
+        source:
+          type: string
+
+    Regime:
+      type: object
+      required: [state, volatility, drawdown, dispersion, detected_at]
+      properties:
+        state:
+          type: string
+          enum: [NORMAL, TRANSITION, STRESS]
+        volatility:
+          type: number
+        drawdown:
+          type: number
+        dispersion:
+          type: number
+        detected_at:
+          type: string
+          format: date-time
+        thresholds:
+          $ref: '#/components/schemas/RegimeThresholds'
+
+    RegimeThresholds:
+      type: object
+      properties:
+        volatility_normal_max:
+          type: number
+          default: 0.15
+        volatility_stress_min:
+          type: number
+          default: 0.25
+        drawdown_stress_min:
+          type: number
+          default: 0.10
+        dispersion_stress_min:
+          type: number
+          default: 0.30
+
+    AuditLogEntry:
+      type: object
+      required: [timestamp, event_type, action_details]
+      properties:
+        id:
+          type: integer
+        timestamp:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+          enum:
+            - constraint_activated
+            - constraint_deactivated
+            - falsifier_check_pass
+            - falsifier_check_triggered
+            - veto_downgrade
+            - risk_budget_adjusted
+            - position_cap_applied
+            - pool_built
+            - regime_changed
+        hypothesis_id:
+          type: string
+          nullable: true
+        constraint_id:
+          type: string
+          nullable: true
+        symbol:
+          type: string
+          nullable: true
+        strategy_id:
+          type: string
+          nullable: true
+        action_details:
+          type: object
+        trace_id:
+          type: string
+          nullable: true
+
+    LintResult:
+      type: object
+      required: [passed, violations]
+      properties:
+        passed:
+          type: boolean
+        violations:
+          type: array
+          items:
+            type: string
+        checked_files:
+          type: integer
+        checked_at:
+          type: string
+          format: date-time
+
+    GateResult:
+      type: object
+      required: [passed, gates]
+      properties:
+        passed:
+          type: boolean
+        gates:
+          type: array
+          items:
+            $ref: '#/components/schemas/GateCheckResult'
+
+    GateCheckResult:
+      type: object
+      required: [gate_name, passed, violations]
+      properties:
+        gate_name:
+          type: string
+        passed:
+          type: boolean
+        violations:
+          type: array
+          items:
+            type: string
+
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object

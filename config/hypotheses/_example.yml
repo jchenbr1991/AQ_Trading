@@ -1,0 +1,81 @@
+# Example Hypothesis YAML
+# -----------------------
+# This file demonstrates the structure of a hypothesis configuration.
+# Files starting with underscore (_) are skipped by the loader.
+#
+# To create a real hypothesis:
+# 1. Copy this file and rename without underscore (e.g., memory_demand_2027.yml)
+# 2. Fill in all required fields
+# 3. Ensure at least one falsifier is defined
+# 4. Submit via PR for review
+
+# Unique identifier (lowercase alphanumeric with underscores only)
+id: memory_demand_2027
+
+# Human-readable title
+title: AI Memory Demand Growth Hypothesis
+
+# Natural language statement of the hypothesis
+statement: |
+  AI compute demand will drive memory prices up through 2027.
+  The hypothesis is based on the observation that AI models are
+  becoming increasingly memory-intensive, and supply cannot keep
+  up with demand in the short to medium term.
+
+# Scope defines what symbols/sectors this hypothesis applies to
+# Empty lists mean "all symbols" or "all sectors"
+scope:
+  symbols:
+    - NVDA
+    - AMD
+    - MU
+    - SK_HYNIX
+  sectors:
+    - semiconductors
+    - memory
+
+# Owner is always "human" - hypotheses are human-owned
+owner: human
+
+# Lifecycle status: DRAFT, ACTIVE, SUNSET, REJECTED
+# DRAFT -> ACTIVE requires PR merge approval
+status: DRAFT
+
+# How often to review this hypothesis
+review_cycle: quarterly
+
+# Date the hypothesis was created
+created_at: "2026-01-15"
+
+# Supporting evidence for the hypothesis
+evidence:
+  sources:
+    - "https://example.com/ai-memory-demand-report-2026"
+    - "internal/research/memory_analysis_q1_2026.pdf"
+  notes: |
+    Based on semiconductor industry analysis and AI model size trends.
+    Key data points:
+    - GPU memory requirements doubled YoY for large models
+    - DRAM supply constraints expected through 2027
+
+# Falsifiers - rules that can invalidate this hypothesis
+# At least one falsifier is REQUIRED (gate:hypothesis_requires_falsifiers)
+falsifiers:
+  # Falsifier 1: If memory IC shows negative returns
+  - metric: rolling_ic_mean
+    operator: "<"
+    threshold: 0
+    window: 6m
+    trigger: review  # Alert for human review
+
+  # Falsifier 2: If sector underperforms significantly
+  - metric: sector_relative_return
+    operator: "<"
+    threshold: -0.15
+    window: 4q
+    trigger: sunset  # Automatically sunset the hypothesis
+
+# L1 Constraints derived from this hypothesis (populated after constraints are created)
+linked_constraints:
+  - memory_sector_leverage_guard
+  - semiconductor_position_cap
