@@ -27,7 +27,7 @@
       "Bash(mkdir *)",
       "Bash(pre-commit *)",
       "Bash(ruff *)",
-      "Bash(codex exec *)",
+      "Bash(codex review *)",
       "Bash(gemini -p *)"
     ],
     "deny": [
