@@ -25,63 +25,35 @@ AQ Trading - a full-stack algorithmic trading system.
 
 ---
 
-## 3. Superpowers (NON-NEGOTIABLE)
+## 3. Constitution (NON-NEGOTIABLE)
 
-**If a skill might apply, you MUST invoke it.** Even 1% chance means invoke. Skipping requires explicit human permission.
+All work MUST comply with `.specify/memory/constitution.md`. The
+constitution defines 5 core principles:
 
-| Situation | Required Superpower |
-|-----------|-------------------|
-| Creative work, requirements, design, specs, proposals | `superpowers:brainstorming` |
-| Any feature/bugfix code | `superpowers:test-driven-development` |
-| Implementation with tasks | `superpowers:subagent-driven-development` |
-| Multiple independent tasks | `superpowers:dispatching-parallel-agents` |
-| Planning implementation | `superpowers:writing-plans` |
-| Debugging issues | `superpowers:systematic-debugging` |
-| Before claiming "done" | `superpowers:verification-before-completion` |
-| Code review needed | `superpowers:requesting-code-review` |
+1. **Superpower-First Development** — invoke skills before work
+2. **Human Sovereignty** — human approves all direction-shaping changes
+3. **Intellectual Honesty** — no fabrication; distinguish fact vs assumption
+4. **Proactive Guidance** — always suggest next steps
+5. **External AI Review Gate** — Codex + Gemini dual review before human approval
 
----
-
-## 4. External Review Loop (MANDATORY)
-
-For iteration artifacts (proposal, design, specs, tasks, code):
-
-1. **Codex CLI** — Primary reviewer: `codex review "<prompt>"`
-2. **Gemini CLI** — Secondary reviewer: `gemini -p "<prompt>"`
-
-- PASS from both required before proceeding
-- FAIL/BLOCKED must be resolved, not ignored
-- If reviewers disagree, prefer conservative outcome
-- Escalate to human if trade-off decision needed
+Read the constitution for full details, skill mapping table, review
+process, self-validation checklist, and standing rules.
 
 ---
 
-## 5. Self-Validation Before External Review
-
-Before submitting to Codex/Gemini, self-check first:
-
-**tasks.md**: Task IDs use `[TASK-XX]` format, every task has a file path, every spec requirement has coverage, no duplicates.
-
-**Code**: All new functions have tests, all tests pass for affected module, no hardcoded secrets, no circular imports.
-
-**Specs/design**: All file paths exist or marked "to be created", no contradictions, tech choices match §2.
-
-**Fix all issues found, THEN submit.** This eliminates preventable review-fix cycles.
-
----
-
-## 6. OpenSpec Workflow
+## 4. OpenSpec Workflow
 
 ```
 /opsx:new → /opsx:continue → /opsx:apply → /opsx:archive
 proposal → design → specs → tasks → implementation
 ```
 
-Each artifact must pass Codex/Gemini review before proceeding.
+Each artifact must pass the External AI Review Gate (Constitution §V)
+before proceeding.
 
 ---
 
-## 7. Workflow Conventions
+## 5. Workflow Conventions
 
 ### Session Management
 Prioritize writing code early. Limit context gathering to the first 2-3 messages. The tasks.md IS your todo list — do not recreate it with TodoWrite.
@@ -104,13 +76,13 @@ Verify exact package names before installing. Check `package.json`/`requirements
 
 ---
 
-## 8. STOP Conditions
+## 6. STOP Conditions
 
 You MUST STOP and ask the human when:
 
 - Requirements are unclear or conflicting
-- You want to skip a Superpower
-- A reviewer returns FAIL/BLOCKED
+- You want to skip a Superpower (Constitution §I)
+- A reviewer returns FAIL/BLOCKED (Constitution §V)
 - Implementation reveals design issues
 - Uncertain about scope or approach
 

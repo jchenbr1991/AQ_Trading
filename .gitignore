@@ -75,7 +75,10 @@ Thumbs.db
 # Local tool configs (user-specific)
 .claude/commands/
 .codex/
-.specify/
+.specify/*
+!.specify/memory/
+.specify/memory/*
+!.specify/memory/constitution.md
 
 # Node modules (frontend)
 node_modules/
