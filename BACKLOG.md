@@ -296,6 +296,49 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 
 ---
 
+## Phase 5: Governance Layer [COMPLETED]
+
+**Goal:** Introduce an explicit, auditable L0 Hypothesis + L1 Constraints governance layer that separates human "worldview" from quantitative alpha generation.
+
+### Feature 003: L0 Hypothesis + L1 Constraints System
+
+**Spec:** `specs/003-hypothesis-constraints-system/spec.md`
+**Plan:** `specs/003-hypothesis-constraints-system/plan.md`
+**Branch:** `003-hypothesis-constraints-system` (merged to master)
+**PR:** #36
+
+| Task | Status | Description |
+|------|--------|-------------|
+| US1: Hypothesis Management | Done | YAML-based hypothesis definitions with lifecycle (DRAFT → ACTIVE → SUNSET → REJECTED) |
+| US2: Constraint System | Done | Priority-ordered constraints with symbol/sector scoping, hypothesis gating |
+| US3: Pool Builder | Done | Deterministic, versioned trading pools with structural filters |
+| US4: Falsifier Monitoring | Done | MetricRegistry + FalsifierChecker for threshold-based hypothesis falsification |
+| US5: Audit Logging | Done | InMemoryAuditStore with full event logging for compliance |
+| US6: Factor Registry | Done | Factors with mandatory failure rules (`gate:factor_requires_failure_rule`) |
+| US7: Regime Detection | Done | NORMAL/TRANSITION/STRESS classification driving position pacing |
+| Strategy Integration | Done | GovernanceContext with scalar-only interface (alpha path isolation) |
+| CI Lint & Gates | Done | Alpha path lint + gate validations in GitHub Actions |
+| Code Polish | Done | Docstrings, exports, cleanup |
+
+**Key Design Decisions:**
+- **Alpha Path Isolation**: Raw Hypothesis/Constraint objects never leak to strategy; GovernanceContext exposes only scalars (`pacing_multiplier`, `risk_budget_multiplier`, `veto_downgrade_active`, `stop_mode`, `regime_state`)
+- **Thread Safety**: MetricRegistry, FactorRegistry, RegimeDetector all use `threading.Lock`
+- **621 governance tests passing**, 85 tasks completed across 11 phases
+
+**Acceptance Criteria:**
+- Hypothesis YAML files validated with mandatory falsifiers ✅
+- Constraints enforce risk/timing only, never alpha ✅
+- `lint:no_hypothesis_in_alpha_path` blocks violating code ✅
+- `lint:no_constraint_in_alpha_path` blocks violating code ✅
+- `lint:constraint_actions_allowlist` enforces safe actions only ✅
+- Deterministic pool building with audit trail ✅
+- Falsifier monitoring with scheduled checks and alerts ✅
+- Regime-based position pacing (NORMAL/TRANSITION/STRESS) ✅
+
+**Exit Criteria Met:** Governance layer enforces hypothesis-constraint separation, alpha path isolation is lint-guaranteed, all trading decisions are auditable.
+
+---
+
 ## Legend
 
 | Status | Meaning |
