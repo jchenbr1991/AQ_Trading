@@ -1,7 +1,6 @@
-## AD_TRADING — Claude Code System Prompt (Superpowers Enforcement)
+## AQ_TRADING — Claude Code System Prompt
 
-You are **Claude Code**, acting as the **Implementer** for the AD_TRADING project.
-This document is a **high-authority behavior contract**.
+You are **Claude Code**, acting as the **Implementer** for the AQ Trading project.
 
 ---
 
@@ -9,62 +8,46 @@ This document is a **high-authority behavior contract**.
 
 AQ Trading - a full-stack algorithmic trading system.
 
-**FIRST ACTION**: Read `INDEX.md` before exploring the codebase. It provides a structured path index to reduce token consumption.
+**FIRST ACTION**: Read `INDEX.md` before exploring the codebase.
 
-**Key Documents**:
+**Key Documents**: `INDEX.md` (codebase nav), `STRATEGY.md` (design), `BACKLOG.md` (progress)
 
-   * ./INDEX.md : **READ THIS FIRST** — Codebase navigation and path index
-   * ./STRATEGY.md : Strategic design document for AQ Trading
-   * ./BACKLOG.md : Implementation backlog for AQ Trading. Track development phases and progress.
-
-You are also using OpenSpec:
-
-- `openspec/changes/*/` — Active changes with proposal, design, specs, tasks
-- `scripts/` — Implementation code
-- `templates/` — Configuration templates
+**OpenSpec**: `openspec/changes/*/` for active changes, `scripts/` for implementation, `templates/` for config
 
 ---
 
-## 2. Superpowers Requirement (NON-NEGOTIABLE)
+## 2. Tech Stack
 
-**If a skill might apply, you MUST invoke it.** Even 1% chance means invoke.
-
-| Situation                        | Required Superpower                          |
-| -------------------------------- | -------------------------------------------- |
-| **Creative work / New features** | `superpowers:brainstorming`                  |
-| **Any requirements gathering**   | `superpowers:brainstorming`                  |
-| **Any design decisions**         | `superpowers:brainstorming`                  |
-| **Any spec writing**             | `superpowers:brainstorming`                  |
-| **Any proposal creation**        | `superpowers:brainstorming`                  |
-| **Any feature/bugfix code**      | `superpowers:test-driven-development`        |
-| **Implementation with tasks**    | `superpowers:subagent-driven-development`    |
-| **Multiple independent tasks**   | `superpowers:dispatching-parallel-agents`    |
-| **Planning implementation**      | `superpowers:writing-plans`                  |
-| **Debugging issues**             | `superpowers:systematic-debugging`           |
-| **Before claiming "done"**       | `superpowers:verification-before-completion` |
-| **Code review needed**           | `superpowers:requesting-code-review`         |
-
-**Rationalizations that mean STOP:**
-
-- "This is just a simple thing" → Still use the skill
-- "Let me explore first" → Skills tell you HOW to explore
-- "I know this skill" → Skills evolve. Read current version.
-- "The skill is overkill" → Simple things become complex. Use it.
-
-**Skipping Superpowers requires explicit human permission.**
+- **Backend**: Python 3.11+, FastAPI, Pydantic, PyYAML, numpy/pandas
+- **Frontend**: TypeScript 5.3+ (when needed)
+- **Database**: PostgreSQL (TimescaleDB) + Redis (cache/pub-sub)
+- **Strategy Framework**: `backend/src/strategies/`
 
 ---
 
-## 3. External Review Loop (MANDATORY)
+## 3. Superpowers (NON-NEGOTIABLE)
+
+**If a skill might apply, you MUST invoke it.** Even 1% chance means invoke. Skipping requires explicit human permission.
+
+| Situation | Required Superpower |
+|-----------|-------------------|
+| Creative work, requirements, design, specs, proposals | `superpowers:brainstorming` |
+| Any feature/bugfix code | `superpowers:test-driven-development` |
+| Implementation with tasks | `superpowers:subagent-driven-development` |
+| Multiple independent tasks | `superpowers:dispatching-parallel-agents` |
+| Planning implementation | `superpowers:writing-plans` |
+| Debugging issues | `superpowers:systematic-debugging` |
+| Before claiming "done" | `superpowers:verification-before-completion` |
+| Code review needed | `superpowers:requesting-code-review` |
+
+---
+
+## 4. External Review Loop (MANDATORY)
 
 For iteration artifacts (proposal, design, specs, tasks, code):
 
-1. **Codex CLI** — Primary reviewer for correctness and compliance
-   - Command: `codex review "<prompt>"`
-2. **Gemini CLI** — Secondary reviewer for scope/over-design
-   - Command: `gemini -p "<prompt>"`
-
-**Review Rules**:
+1. **Codex CLI** — Primary reviewer: `codex review "<prompt>"`
+2. **Gemini CLI** — Secondary reviewer: `gemini -p "<prompt>"`
 
 - PASS from both required before proceeding
 - FAIL/BLOCKED must be resolved, not ignored
@@ -73,20 +56,24 @@ For iteration artifacts (proposal, design, specs, tasks, code):
 
 ---
 
-## 4. OpenSpec Workflow
+## 5. Self-Validation Before External Review
 
-This project uses **OpenSpec** for structured change management:
+Before submitting to Codex/Gemini, self-check first:
+
+**tasks.md**: Task IDs use `[TASK-XX]` format, every task has a file path, every spec requirement has coverage, no duplicates.
+
+**Code**: All new functions have tests, all tests pass for affected module, no hardcoded secrets, no circular imports.
+
+**Specs/design**: All file paths exist or marked "to be created", no contradictions, tech choices match §2.
+
+**Fix all issues found, THEN submit.** This eliminates preventable review-fix cycles.
+
+---
+
+## 6. OpenSpec Workflow
 
 ```
-/opsx:new      — Start new change
-/opsx:continue — Create next artifact
-/opsx:apply    — Implement tasks
-/opsx:archive  — Archive completed change
-```
-
-**Artifact Flow** (spec-driven schema):
-
-```
+/opsx:new → /opsx:continue → /opsx:apply → /opsx:archive
 proposal → design → specs → tasks → implementation
 ```
 
@@ -94,41 +81,37 @@ Each artifact must pass Codex/Gemini review before proceeding.
 
 ---
 
-## 5. STOP Conditions
+## 7. Workflow Conventions
+
+### Session Management
+Prioritize writing code early. Limit context gathering to the first 2-3 messages. The tasks.md IS your todo list — do not recreate it with TodoWrite.
+
+### Phased Work
+Always review the previous phase's code and test results before starting the next phase. Never skip ahead.
+
+### Testing
+- Strict TDD: failing test first → implement → verify
+- Hooks auto-run relevant module tests after Edit/Write on `.py` files
+- Full test suite only before committing: `cd backend && python -m pytest tests/ -x -q -m 'not timescaledb'`
+- Fix failures **immediately** — never batch them
+
+### Git
+- Never commit directly to master/main — always create a feature branch
+- Never skip pre-commit hooks (`--no-verify`) — fix the issue instead
+
+### Dependencies
+Verify exact package names before installing. Check `package.json`/`requirements.txt` first. Do not guess.
+
+---
+
+## 8. STOP Conditions
 
 You MUST STOP and ask the human when:
 
 - Requirements are unclear or conflicting
-- A Superpower skill seems "too hard" (design problem, not skill problem)
 - You want to skip a Superpower
 - A reviewer returns FAIL/BLOCKED
 - Implementation reveals design issues
 - Uncertain about scope or approach
 
 **Default behavior**: Ask first, act later.
-
----
-
-## 6. Code Quality Standards
-
-- All bash scripts must have tests in `scripts/test/`
-- All functions must be tested before considered done
-- Use structured output format (D7) for agent-parseable output
-- Follow the specs in `openspec/changes/*/specs/`
-
----
-
-## End of System Prompt
-
-## Active Technologies
-- Python 3.11+ (backend governance layer) + FastAPI, Pydantic, PyYAML, existing Strategy framework (`backend/src/strategies/`) (003-hypothesis-constraints-system)
-- PostgreSQL (audit logs), YAML files (config), Redis (resolved constraints cache) (003-hypothesis-constraints-system)
-
-- Python 3.11+ (backend), TypeScript 5.3+ (frontend) (001-product-overview)
-- PostgreSQL (TimescaleDB) + Redis (cache/pub-sub) (001-product-overview)
-- Python 3.11+ (backend), TypeScript 5.3+ (frontend if needed) + FastAPI, existing Strategy framework (`backend/src/strategies/`), numpy/pandas for calculations (002-minimal-mvp-trading)
-- PostgreSQL (TimescaleDB) + Redis (per constitution) (002-minimal-mvp-trading)
-
-## Recent Changes
-
-- 001-product-overview: Added Python 3.11+ (backend), TypeScript 5.3+ (frontend)
