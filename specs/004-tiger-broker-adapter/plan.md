@@ -34,13 +34,14 @@ callbacks (fills, quotes) into async queues using `call_soon_threadsafe`.
 
 | Principle | Gate | Status |
 |-----------|------|--------|
-| I. Authority & Control | Feature scope approved by human (spec.md reviewed) | PASS |
-| II. Immutable Assumptions | Capital safety: LiveBroker risk controls wrap TigerBroker; credentials secured with 0600 perms | PASS |
-| III. Decision Boundaries | New class (TigerBroker) is additive, conforms to existing Protocol — no new abstractions | PASS |
-| III. Decision Boundaries | LiveBroker refactor (FR-007) changes existing behavior — APPROVED in spec | PASS |
-| IV. Change Discipline | All changes traceable to spec FR-001 through FR-013 | PASS |
-| V. Failure & Uncertainty | SDK async support: confirmed synchronous-only, will use thread pool | PASS |
-| VI. Scope of Autonomy | No irreversible decisions; adapter is config-driven and reversible | PASS |
+| I. Superpower-First Development | TDD skill invoked for all implementation tasks; brainstorming for spec | PASS |
+| II. Human Sovereignty | Feature scope approved by human (spec.md reviewed); plan approved | PASS |
+| III. Intellectual Honesty | SDK capabilities verified via research.md; no fabricated API claims | PASS |
+| IV. Proactive Guidance | Checkpoints and next actions defined in tasks.md | PASS |
+| V. External AI Review Gate | spec.md passed Codex+Gemini; plan passed Codex; tasks pending review | PASS |
+| Standing: Capital Safety | LiveBroker risk controls wrap TigerBroker; credentials secured with 0600 perms | PASS |
+| Standing: Traceability | All changes traceable to spec FR-001 through FR-013 | PASS |
+| Standing: Minimal Change | TigerBroker is additive; LiveBroker refactor (FR-007) approved in spec | PASS |
 
 ## Project Structure
 

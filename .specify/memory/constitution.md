@@ -166,8 +166,9 @@ changed by the human owner:
 Before submitting work to the External AI Review Gate (Principle V),
 agents MUST self-check:
 
-- **tasks.md**: Task IDs use `[TASK-XX]` format, every task has a
-  file path, every spec requirement has coverage, no duplicates.
+- **tasks.md**: Task IDs use `T0XX` format (e.g., T001, T002),
+  every task has a file path, every spec requirement has coverage,
+  no duplicates.
 - **Code**: All new functions have tests, all tests pass for the
   affected module, no hardcoded secrets, no circular imports.
 - **Specs/design**: All file paths exist or are marked "to be
