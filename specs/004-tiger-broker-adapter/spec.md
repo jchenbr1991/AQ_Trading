@@ -50,8 +50,8 @@ As a trader, I want the system to fetch my current positions and account balance
 
 **Acceptance Scenarios**:
 
-1. **Given** a connected Tiger account with existing positions, **When** get_positions is called, **Then** all positions are returned with correct symbol, quantity, average cost, and market value
-2. **Given** a connected Tiger account, **When** get_account is called, **Then** account cash, buying power, and total equity are returned accurately
+1. **Given** a connected Tiger account with existing positions, **When** get_positions is called, **Then** all positions are returned with correct symbol, quantity, average cost, market value, and asset type (matching the BrokerPosition dataclass)
+2. **Given** a connected Tiger account, **When** get_account is called, **Then** account cash, buying power, total equity, and margin used are returned accurately (matching the BrokerAccount dataclass)
 
 ---
 
@@ -88,11 +88,11 @@ As a risk manager, I want the existing LiveBroker pre-trade validation (position
 - **FR-003**: System MUST load Tiger API credentials from an external config file (not hardcoded), with the credentials path specified in the strategy YAML config
 - **FR-004**: System MUST map Tiger order statuses to the existing OrderStatus enum (PENDING, SUBMITTED, PARTIAL_FILL, FILLED, CANCELLED, REJECTED, EXPIRED)
 - **FR-005**: System MUST support Tiger's fill notification mechanism and deliver fills to the registered callback with unique fill_ids
-- **FR-006**: The broker config loader (load_broker) MUST support `broker_type: "tiger"` and create a TigerBroker instance
-- **FR-007**: The LiveBroker MUST accept any Broker Protocol implementation as an inner broker (decorator pattern) rather than containing broker-specific logic directly
+- **FR-006**: The broker config loader (load_broker) MUST support `broker.type: "tiger"` in YAML config (consistent with existing `broker.type` key convention) and create a TigerBroker instance
+- **FR-007**: The LiveBroker MUST be refactored to accept any Broker Protocol implementation as an inner broker (decorator pattern) rather than containing broker-specific logic directly. This requires changing the current constructor from `broker_type: Literal["futu", "ibkr", "stub"]` to accept an `inner_broker: Broker` parameter
 - **FR-008**: System MUST handle Tiger API connection lifecycle (connect, disconnect, reconnect on failure)
 - **FR-009**: System MUST ensure thread safety for fill callbacks from Tiger's SDK
-- **FR-010**: Credentials (private keys, account IDs) MUST NOT be committed to version control; credentials files MUST be listed in .gitignore
+- **FR-010**: Credentials (private keys, account IDs) MUST NOT be committed to version control; credentials files MUST be listed in .gitignore. Credentials files on disk MUST have restricted file permissions (owner-read-only, 0600). The system MUST NOT log or expose credential content in error messages or stack traces
 
 ### Key Entities
 
@@ -109,7 +109,7 @@ As a risk manager, I want the existing LiveBroker pre-trade validation (position
 - **SC-003**: Order submission through Tiger completes within 5 seconds under normal network conditions
 - **SC-004**: All order lifecycle events (submit, fill, partial fill, cancel) are correctly received and processed with zero lost fills during normal operation
 - **SC-005**: Risk controls (position limits, order value limits, daily loss limits) apply identically whether using Paper, Tiger, or any future broker
-- **SC-006**: Credential management passes security review — no secrets in code, config, or version control
+- **SC-006**: Zero credentials appear in version control history, application logs, or error output. Credentials files have 0600 permissions. Pre-commit hooks detect and block any credential commits
 
 ## Assumptions
 
