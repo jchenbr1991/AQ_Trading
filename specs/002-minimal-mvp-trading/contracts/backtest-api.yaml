@@ -1,0 +1,257 @@
+# OpenAPI 3.0 Contract: Backtest API with Attribution
+# Feature: 002-minimal-mvp-trading
+
+openapi: "3.0.3"
+info:
+  title: AQ Trading Backtest API
+  description: Backtest execution with factor PnL attribution
+  version: "1.0.0"
+
+paths:
+  /api/backtest:
+    post:
+      summary: Run backtest with TrendBreakout strategy
+      description: |
+        Execute a historical backtest using the TrendBreakout strategy.
+        Returns trades, metrics, and factor PnL attribution.
+      operationId: runBacktest
+      tags:
+        - Backtest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BacktestRequest"
+      responses:
+        "200":
+          description: Backtest completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BacktestResponse"
+        "400":
+          description: Invalid request parameters
+        "500":
+          description: Backtest execution error
+
+  /api/backtest/{backtest_id}/attribution:
+    get:
+      summary: Get factor attribution for a backtest
+      description: Returns detailed PnL attribution by factor
+      operationId: getAttribution
+      tags:
+        - Backtest
+      parameters:
+        - name: backtest_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Attribution data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttributionResponse"
+        "404":
+          description: Backtest not found
+
+components:
+  schemas:
+    BacktestRequest:
+      type: object
+      required:
+        - strategy
+        - start_date
+        - end_date
+      properties:
+        strategy:
+          type: string
+          description: Strategy identifier
+          example: "trend_breakout"
+        universe:
+          type: string
+          description: "Universe name (default: mvp-universe)"
+          example: "mvp-universe"
+        start_date:
+          type: string
+          format: date
+          description: Backtest start date
+          example: "2025-01-01"
+        end_date:
+          type: string
+          format: date
+          description: Backtest end date
+          example: "2025-12-31"
+        initial_capital:
+          type: number
+          description: Starting capital
+          default: 100000
+        config:
+          $ref: "#/components/schemas/StrategyConfig"
+
+    StrategyConfig:
+      type: object
+      properties:
+        entry_threshold:
+          type: number
+          description: Composite score threshold for buy signal
+          default: 0.0
+        exit_threshold:
+          type: number
+          description: Composite score threshold for sell signal
+          default: -0.02
+        position_sizing:
+          type: string
+          enum: [equal_weight, fixed_risk]
+          description: Position sizing method (FR-015, FR-016)
+          default: equal_weight
+        position_size:
+          type: integer
+          description: Shares per position (for equal_weight mode, FR-015)
+          default: 100
+        risk_per_trade:
+          type: number
+          description: Risk percentage per trade (for fixed_risk mode, FR-016). E.g., 0.02 = 2% risk per trade.
+          default: 0.02
+        feature_weights:
+          type: object
+          additionalProperties:
+            type: number
+          description: Weights for features in factors
+        factor_weights:
+          type: object
+          additionalProperties:
+            type: number
+          description: Weights for factors in composite
+
+    BacktestResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Backtest run identifier
+        status:
+          type: string
+          enum: [completed, failed]
+        metrics:
+          $ref: "#/components/schemas/Metrics"
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/Trade"
+        attribution_summary:
+          $ref: "#/components/schemas/AttributionSummary"
+        equity_curve:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+                format: date
+              equity:
+                type: number
+
+    Metrics:
+      type: object
+      properties:
+        total_return:
+          type: number
+          description: Total return percentage
+        sharpe_ratio:
+          type: number
+          description: Annualized Sharpe ratio
+        max_drawdown:
+          type: number
+          description: Maximum drawdown percentage
+        win_rate:
+          type: number
+          description: Percentage of winning trades
+        total_trades:
+          type: integer
+          description: Number of completed trades
+
+    Trade:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        symbol:
+          type: string
+        entry_date:
+          type: string
+          format: date-time
+        entry_price:
+          type: number
+        exit_date:
+          type: string
+          format: date-time
+        exit_price:
+          type: number
+        quantity:
+          type: integer
+        pnl:
+          type: number
+        entry_factors:
+          type: object
+          additionalProperties:
+            type: number
+          description: Factor scores at entry
+        exit_factors:
+          type: object
+          additionalProperties:
+            type: number
+          description: Factor scores at exit
+        attribution:
+          type: object
+          additionalProperties:
+            type: number
+          description: PnL attributed to each factor
+
+    AttributionSummary:
+      type: object
+      properties:
+        momentum_factor:
+          type: number
+          description: Total PnL attributed to momentum factor
+        breakout_factor:
+          type: number
+          description: Total PnL attributed to breakout factor
+        total:
+          type: number
+          description: Total PnL (should match portfolio)
+
+    AttributionResponse:
+      type: object
+      properties:
+        backtest_id:
+          type: string
+          format: uuid
+        summary:
+          $ref: "#/components/schemas/AttributionSummary"
+        by_trade:
+          type: array
+          items:
+            type: object
+            properties:
+              trade_id:
+                type: string
+                format: uuid
+              symbol:
+                type: string
+              pnl:
+                type: number
+              attribution:
+                type: object
+                additionalProperties:
+                  type: number
+        by_symbol:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/AttributionSummary"
