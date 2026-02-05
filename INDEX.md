@@ -215,7 +215,8 @@ Dated design documents by feature:
 | Phase 1 (MVP) | ✅ COMPLETED | Core trading infrastructure |
 | Phase 2 (Analytics) | ✅ COMPLETED | Backtesting, monitoring |
 | Phase 3 (Advanced) | ✅ COMPLETED | Options, AI agents, degradation |
-| Phase 4+ | 🚀 IN PROGRESS | Extensions |
+| Phase 4 (Strategy) | ✅ COMPLETED | First runnable trading strategy |
+| Phase 5 (Governance) | ✅ COMPLETED | Hypothesis + Constraints system |
 
 ---
 
@@ -229,4 +230,4 @@ Dated design documents by feature:
 
 ---
 
-*Last updated: 2026-02-02*
+*Last updated: 2026-02-05*
