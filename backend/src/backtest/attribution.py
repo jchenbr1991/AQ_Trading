@@ -79,14 +79,25 @@ class AttributionCalculator:
             default_weight = Decimal("1") / Decimal(num_factors)
             factor_weights = {f: default_weight for f in entry_factors}
 
-        # Calculate raw attribution per FR-023
-        raw_attribution: dict[str, Decimal] = {}
-        for factor_name, factor_score in entry_factors.items():
-            weight = factor_weights.get(factor_name, Decimal("0"))
-            raw_attribution[factor_name] = weight * factor_score * pnl
+        # Weight-proportional attribution (scale-invariant)
+        # attr[f] = (weight[f] / sum(weights)) * PnL
+        # This avoids the score-magnitude distortion of the old formula
+        # (weight * score * PnL) where factors with larger scores absorb
+        # disproportionate PnL regardless of their actual predictive contribution.
+        total_weight = sum(factor_weights.get(f, Decimal("0")) for f in entry_factors)
 
-        # Normalize to satisfy SC-003 (sum equals pnl)
-        return self._normalize_attribution(raw_attribution, pnl)
+        if total_weight == Decimal("0"):
+            # All weights are zero — distribute equally
+            num_factors = len(entry_factors)
+            equal_share = pnl / Decimal(num_factors)
+            return {f: equal_share for f in entry_factors}
+
+        attribution: dict[str, Decimal] = {}
+        for factor_name in entry_factors:
+            weight = factor_weights.get(factor_name, Decimal("0"))
+            attribution[factor_name] = (weight / total_weight) * pnl
+
+        return attribution
 
     def _normalize_attribution(
         self,

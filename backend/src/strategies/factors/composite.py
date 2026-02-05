@@ -3,6 +3,9 @@
 
 Formula: composite = w_mom * momentum_factor + w_brk * breakout_factor
 
+Optionally normalizes factor scores via rolling z-score before combining,
+so that factors with different natural scales contribute equally.
+
 Default weights: w_mom=0.5, w_brk=0.5
 
 See specs/002-minimal-mvp-trading/data-model.md for factor formulas.
@@ -11,6 +14,7 @@ See specs/002-minimal-mvp-trading/data-model.md for factor formulas.
 from decimal import Decimal
 
 from src.strategies.factors.base import BaseFactor, FactorResult
+from src.strategies.factors.normalizer import ScoreNormalizer
 
 
 class CompositeFactor(BaseFactor):
@@ -20,8 +24,8 @@ class CompositeFactor(BaseFactor):
     - momentum_factor: Overall price momentum signal
     - breakout_factor: Breakout potential signal
 
-    The composite score is compared against entry/exit thresholds
-    to generate trading signals.
+    Optionally normalizes factor scores via rolling z-score before combining,
+    so that factors with different natural scales contribute equally.
 
     Example:
         >>> factor = CompositeFactor()
@@ -42,18 +46,34 @@ class CompositeFactor(BaseFactor):
         self,
         momentum_weight: Decimal = Decimal("0.5"),
         breakout_weight: Decimal = Decimal("0.5"),
+        normalize: bool = False,
+        normalize_min_periods: int = 20,
+        normalize_window_size: int = 60,
     ) -> None:
         """Initialize composite factor with configurable weights.
 
         Args:
             momentum_weight: Weight for momentum factor. Default: 0.5
             breakout_weight: Weight for breakout factor. Default: 0.5
+            normalize: If True, z-score normalize factor scores before combining.
+                      Default: False (backward compatible).
+            normalize_min_periods: Minimum observations before normalization activates.
+            normalize_window_size: Rolling window size for normalization statistics.
 
         Note:
             Weights do not need to sum to 1.0, but are typically normalized.
         """
         self._momentum_weight = momentum_weight
         self._breakout_weight = breakout_weight
+        self._normalize = normalize
+        self._normalizer: ScoreNormalizer | None = (
+            ScoreNormalizer(
+                min_periods=normalize_min_periods,
+                window_size=normalize_window_size,
+            )
+            if normalize
+            else None
+        )
 
     @property
     def weights(self) -> dict[str, Decimal]:
@@ -81,10 +101,27 @@ class CompositeFactor(BaseFactor):
         if breakout_weight is not None:
             self._breakout_weight = breakout_weight
 
-    def calculate(
-        self, indicators: dict[str, Decimal | None]
-    ) -> FactorResult | None:
+    def update_normalizer(self, factor_scores: dict[str, Decimal]) -> None:
+        """Record raw factor scores for normalization statistics.
+
+        Should be called each bar with the raw (un-normalized) factor scores
+        before calculate() is called.
+
+        Args:
+            factor_scores: Raw factor scores, e.g.
+                {"momentum_factor": Decimal("0.01"), "breakout_factor": Decimal("0.50")}
+        """
+        if self._normalizer is None:
+            return
+        for name, value in factor_scores.items():
+            self._normalizer.update(name, value)
+
+    def calculate(self, indicators: dict[str, Decimal | None]) -> FactorResult | None:
         """Calculate composite factor from sub-factor scores.
+
+        If normalization is enabled and the normalizer has enough history,
+        factor scores are z-score normalized before the weighted sum.
+        During warmup (insufficient history), raw scores are used.
 
         Args:
             indicators: Dictionary containing:
@@ -102,14 +139,27 @@ class CompositeFactor(BaseFactor):
         if momentum_value is None or breakout_value is None:
             return None
 
+        # Store raw components for result reporting
         components = {
             self.MOMENTUM_KEY: momentum_value,
             self.BREAKOUT_KEY: breakout_value,
         }
 
+        # Optionally normalize scores before combining
+        calc_values = dict(components)
+        if self._normalizer is not None:
+            norm_momentum = self._normalizer.normalize(self.MOMENTUM_KEY, momentum_value)
+            norm_breakout = self._normalizer.normalize(self.BREAKOUT_KEY, breakout_value)
+            # If both can be normalized, use normalized values; otherwise fall back to raw
+            if norm_momentum is not None and norm_breakout is not None:
+                calc_values = {
+                    self.MOMENTUM_KEY: norm_momentum,
+                    self.BREAKOUT_KEY: norm_breakout,
+                }
+
         weights = self.weights
 
-        score = self._weighted_sum(components, weights)
+        score = self._weighted_sum(calc_values, weights)
 
         return FactorResult(
             score=score,

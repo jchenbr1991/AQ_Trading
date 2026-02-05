@@ -68,6 +68,7 @@ class TestFullFlow:
                 "momentum_factor": 0.5,
                 "breakout_factor": 0.5,
             },
+            "normalize_scores": False,
         }
 
     @pytest.fixture

@@ -464,3 +464,112 @@ class TestFactorEdgeCases:
         assert result is not None
         # 0.5 * 100 + 0.5 * 50 = 50 + 25 = 75
         assert result.score == Decimal("75")
+
+
+class TestCompositeFactorNormalization:
+    """Tests for CompositeFactor with score normalization."""
+
+    def test_normalize_flag_default_false(self) -> None:
+        """Normalization is disabled by default."""
+        factor = CompositeFactor()
+        assert factor._normalize is False
+
+    def test_normalize_flag_can_be_enabled(self) -> None:
+        """Normalization can be enabled via constructor."""
+        factor = CompositeFactor(normalize=True)
+        assert factor._normalize is True
+
+    def test_calculate_without_normalization_unchanged(self) -> None:
+        """Without normalize flag, behavior is identical to before."""
+        factor = CompositeFactor(normalize=False)
+        indicators = {
+            "momentum_factor": Decimal("0.035"),
+            "breakout_factor": Decimal("0.74"),
+        }
+        result = factor.calculate(indicators)
+        assert result is not None
+        assert result.score == Decimal("0.3875")
+
+    def test_calculate_during_warmup_uses_raw_scores(self) -> None:
+        """During normalizer warmup, falls back to raw scores."""
+        factor = CompositeFactor(normalize=True, normalize_min_periods=10)
+        # Only 1 observation, not enough for normalization
+        factor.update_normalizer(
+            {
+                "momentum_factor": Decimal("0.01"),
+                "breakout_factor": Decimal("0.50"),
+            }
+        )
+        indicators = {
+            "momentum_factor": Decimal("0.035"),
+            "breakout_factor": Decimal("0.74"),
+        }
+        result = factor.calculate(indicators)
+        assert result is not None
+        # Should use raw scores (same as non-normalized)
+        assert result.score == Decimal("0.3875")
+
+    def test_normalized_scores_equalize_influence(self) -> None:
+        """With normalization, factors of different scales have equal influence.
+
+        Momentum scores ~0.01 scale, breakout ~0.5 scale.
+        Without normalization, breakout dominates. With normalization,
+        similar z-scores yield similar contributions.
+        """
+        factor = CompositeFactor(normalize=True, normalize_min_periods=5)
+
+        # Feed history: momentum ~0.01 scale, breakout ~0.5 scale
+        history = [
+            {"momentum_factor": Decimal("0.008"), "breakout_factor": Decimal("0.35")},
+            {"momentum_factor": Decimal("0.012"), "breakout_factor": Decimal("0.45")},
+            {"momentum_factor": Decimal("0.010"), "breakout_factor": Decimal("0.40")},
+            {"momentum_factor": Decimal("0.009"), "breakout_factor": Decimal("0.38")},
+            {"momentum_factor": Decimal("0.011"), "breakout_factor": Decimal("0.42")},
+        ]
+        for h in history:
+            factor.update_normalizer(h)
+
+        # Both at ~1 std above mean: momentum=0.014, breakout=0.50
+        # Without normalization: composite = 0.5*0.014 + 0.5*0.50 = 0.257
+        # With normalization: both z-scores ~similar, so composite is balanced
+        indicators_raw = {
+            "momentum_factor": Decimal("0.014"),
+            "breakout_factor": Decimal("0.50"),
+        }
+        result_norm = factor.calculate(indicators_raw)
+        assert result_norm is not None
+
+        # Also compute without normalization for comparison
+        factor_raw = CompositeFactor(normalize=False)
+        result_raw = factor_raw.calculate(indicators_raw)
+        assert result_raw is not None
+
+        # The raw composite is dominated by breakout (0.257, mostly from 0.5*0.50=0.25)
+        # The normalized composite should be more balanced
+        # Key assertion: normalized result is different from raw
+        assert result_norm.score != result_raw.score
+
+    def test_update_normalizer_records_history(self) -> None:
+        """update_normalizer adds values to the internal normalizer."""
+        factor = CompositeFactor(normalize=True, normalize_min_periods=2)
+        factor.update_normalizer(
+            {
+                "momentum_factor": Decimal("0.01"),
+                "breakout_factor": Decimal("0.50"),
+            }
+        )
+        factor.update_normalizer(
+            {
+                "momentum_factor": Decimal("0.02"),
+                "breakout_factor": Decimal("0.60"),
+            }
+        )
+        # After 2 updates, normalizer should have enough history
+        indicators = {
+            "momentum_factor": Decimal("0.03"),
+            "breakout_factor": Decimal("0.70"),
+        }
+        result = factor.calculate(indicators)
+        assert result is not None
+        # Both above mean -> positive composite
+        assert result.score > Decimal("0")

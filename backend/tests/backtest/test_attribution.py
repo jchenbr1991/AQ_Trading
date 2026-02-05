@@ -629,30 +629,142 @@ class TestComprehensiveAttributionValidation:
         # (normalization distributes based on raw values)
         assert sum(attribution.values()) == pnl
 
-    def test_attribution_preserves_relative_proportions(self) -> None:
-        """Test that attribution preserves relative factor contributions."""
+    def test_attribution_follows_weight_proportions(self) -> None:
+        """Test that attribution follows weight proportions, not score magnitude.
+
+        With weight-proportional attribution, the ratio of attributions
+        matches the ratio of weights, regardless of factor score values.
+        """
         calc = AttributionCalculator()
         pnl = Decimal("1000")
 
-        # Factors with clear 2:1 ratio in contribution
+        # Factors with different scores
         factors = {
             "factor_a": Decimal("0.4"),
-            "factor_b": Decimal("0.2"),  # Half of factor_a
+            "factor_b": Decimal("0.2"),
         }
-        # With equal weights (0.5 each):
-        # raw_a = 0.5 * 0.4 * 1000 = 200
-        # raw_b = 0.5 * 0.2 * 1000 = 100
-        # After normalization to 1000:
-        # a = 200 * 1000 / 300 = 666.67
-        # b = 100 * 1000 / 300 = 333.33
+        # With unequal weights (2:1 ratio):
+        factor_weights = {
+            "factor_a": Decimal("0.6"),
+            "factor_b": Decimal("0.3"),
+        }
+        # 0.6 / (0.6 + 0.3) = 2/3 -> factor_a gets 666.67
+        # 0.3 / (0.6 + 0.3) = 1/3 -> factor_b gets 333.33
 
-        attribution = calc.calculate_trade_attribution(pnl, factors)
+        attribution = calc.calculate_trade_attribution(pnl, factors, factor_weights)
 
-        # Check relative proportion is maintained (a should be 2x b)
+        # Check relative proportion matches weight ratio (2:1)
         ratio = float(attribution["factor_a"] / attribution["factor_b"])
         assert (
             abs(ratio - 2.0) < 0.001
-        ), f"Relative proportion not maintained: ratio = {ratio}, expected 2.0"
+        ), f"Weight proportion not maintained: ratio = {ratio}, expected 2.0"
+
+
+class TestWeightProportionalAttribution:
+    """Tests for weight-proportional attribution (scale-invariant).
+
+    The attribution formula should distribute PnL based on weight proportions,
+    not based on factor score magnitudes, to avoid scale-dependent distortion.
+    """
+
+    def test_equal_weights_equal_attribution(self) -> None:
+        """With equal weights, PnL is split equally regardless of score magnitude."""
+        calc = AttributionCalculator()
+        pnl = Decimal("100")
+        entry_factors = {
+            "momentum_factor": Decimal("0.01"),  # small score
+            "breakout_factor": Decimal("0.50"),  # large score (50x bigger)
+        }
+        factor_weights = {
+            "momentum_factor": Decimal("0.5"),
+            "breakout_factor": Decimal("0.5"),
+        }
+
+        attribution = calc.calculate_trade_attribution(pnl, entry_factors, factor_weights)
+
+        # With weight-proportional: each gets 50% of PnL
+        assert attribution["momentum_factor"] == Decimal("50")
+        assert attribution["breakout_factor"] == Decimal("50")
+
+    def test_unequal_weights_proportional_attribution(self) -> None:
+        """Attribution follows weight proportions, not score magnitude."""
+        calc = AttributionCalculator()
+        pnl = Decimal("100")
+        entry_factors = {
+            "momentum_factor": Decimal("0.01"),
+            "breakout_factor": Decimal("0.50"),
+        }
+        factor_weights = {
+            "momentum_factor": Decimal("0.7"),
+            "breakout_factor": Decimal("0.3"),
+        }
+
+        attribution = calc.calculate_trade_attribution(pnl, entry_factors, factor_weights)
+
+        # 0.7 / (0.7 + 0.3) = 0.7 -> momentum gets 70
+        # 0.3 / (0.7 + 0.3) = 0.3 -> breakout gets 30
+        assert attribution["momentum_factor"] == Decimal("70")
+        assert attribution["breakout_factor"] == Decimal("30")
+
+    def test_sc003_still_satisfied(self) -> None:
+        """SC-003: Sum of attributions still equals PnL."""
+        calc = AttributionCalculator()
+        pnl = Decimal("1234.56")
+        entry_factors = {
+            "momentum_factor": Decimal("0.01"),
+            "breakout_factor": Decimal("0.50"),
+        }
+        factor_weights = {
+            "momentum_factor": Decimal("0.5"),
+            "breakout_factor": Decimal("0.5"),
+        }
+
+        attribution = calc.calculate_trade_attribution(pnl, entry_factors, factor_weights)
+
+        assert calc.validate_attribution(attribution, pnl)
+
+    def test_negative_pnl_weight_proportional(self) -> None:
+        """Negative PnL is also distributed by weight proportion."""
+        calc = AttributionCalculator()
+        pnl = Decimal("-200")
+        entry_factors = {
+            "momentum_factor": Decimal("0.01"),
+            "breakout_factor": Decimal("0.50"),
+        }
+        factor_weights = {
+            "momentum_factor": Decimal("0.5"),
+            "breakout_factor": Decimal("0.5"),
+        }
+
+        attribution = calc.calculate_trade_attribution(pnl, entry_factors, factor_weights)
+
+        assert attribution["momentum_factor"] == Decimal("-100")
+        assert attribution["breakout_factor"] == Decimal("-100")
+
+    def test_scale_invariant(self) -> None:
+        """Attribution is identical regardless of factor score scale."""
+        calc = AttributionCalculator()
+        pnl = Decimal("100")
+        factor_weights = {
+            "momentum_factor": Decimal("0.5"),
+            "breakout_factor": Decimal("0.5"),
+        }
+
+        # Small scores
+        attr_small = calc.calculate_trade_attribution(
+            pnl,
+            {"momentum_factor": Decimal("0.001"), "breakout_factor": Decimal("0.001")},
+            factor_weights,
+        )
+
+        # Large scores
+        attr_large = calc.calculate_trade_attribution(
+            pnl,
+            {"momentum_factor": Decimal("100"), "breakout_factor": Decimal("100")},
+            factor_weights,
+        )
+
+        assert attr_small == attr_large
 
 
 # Helper functions
