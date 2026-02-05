@@ -23,6 +23,12 @@ class BrokerConfig:
     futu_port: int = 11111
     futu_trade_env: str = "SIMULATE"
 
+    # Tiger broker settings
+    tiger_credentials_path: str = ""
+    tiger_account_id: str = ""
+    tiger_env: str = "PROD"
+    tiger_max_reconnect_attempts: int = 3
+
     @classmethod
     def from_yaml(cls, path: str) -> "BrokerConfig":
         """Load broker config from YAML file."""
@@ -36,6 +42,7 @@ class BrokerConfig:
         broker_data = data.get("broker", {})
         paper_data = broker_data.get("paper", {})
         futu_data = broker_data.get("futu", {})
+        tiger_data = broker_data.get("tiger", {})
 
         return cls(
             broker_type=broker_data.get("type", "paper"),
@@ -45,6 +52,10 @@ class BrokerConfig:
             futu_host=futu_data.get("host", "127.0.0.1"),
             futu_port=futu_data.get("port", 11111),
             futu_trade_env=futu_data.get("trade_env", "SIMULATE"),
+            tiger_credentials_path=tiger_data.get("credentials_path", ""),
+            tiger_account_id=tiger_data.get("account_id", ""),
+            tiger_env=tiger_data.get("env", "PROD"),
+            tiger_max_reconnect_attempts=tiger_data.get("max_reconnect_attempts", 3),
         )
 
 
@@ -59,6 +70,15 @@ def load_broker(config_path: str):
             fill_delay=config.paper_fill_delay,
             slippage_bps=config.paper_slippage_bps,
             partial_fill_probability=config.paper_partial_fill_probability,
+        )
+    elif config.broker_type == "tiger":
+        from src.broker.tiger_broker import TigerBroker
+
+        return TigerBroker(
+            credentials_path=config.tiger_credentials_path,
+            account_id=config.tiger_account_id,
+            env=config.tiger_env,
+            max_reconnect_attempts=config.tiger_max_reconnect_attempts,
         )
     elif config.broker_type == "futu":
         raise NotImplementedError("FutuBroker not yet implemented")

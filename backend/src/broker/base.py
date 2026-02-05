@@ -1,6 +1,8 @@
 # backend/src/broker/base.py
 """Abstract broker interface for order execution."""
-from typing import Protocol, Callable, runtime_checkable
+
+from collections.abc import Callable
+from typing import Protocol, runtime_checkable
 
 from src.orders.models import Order, OrderStatus
 from src.strategies.signals import OrderFill
@@ -13,6 +15,7 @@ class Broker(Protocol):
 
     Implementations:
     - PaperBroker: Simulated execution for paper trading
+    - TigerBroker: Live execution via Tiger Trading (tigeropen SDK)
     - FutuBroker: Real execution via Futu OpenD (Phase 2)
     """
 

@@ -24,6 +24,7 @@ from src.broker.live_broker import (
     RiskLimitExceededError,
     RiskLimits,
 )
+from src.broker.paper_broker import PaperBroker
 from src.orders.models import Order, OrderStatus
 from src.strategies.base import MarketData
 from src.strategies.context import StrategyContext
@@ -80,9 +81,9 @@ class TestLiveBrokerRiskLimits:
 
     @pytest.fixture
     def live_broker(self, risk_limits: RiskLimits) -> LiveBroker:
-        """Create a live broker with stub mode for testing."""
+        """Create a live broker wrapping PaperBroker for testing."""
         return LiveBroker(
-            broker_type="stub",
+            inner_broker=PaperBroker(fill_delay=0.01),
             account_id="TEST001",
             risk_limits=risk_limits,
             require_confirmation=True,
@@ -110,7 +111,7 @@ class TestLiveBrokerRiskLimits:
         # Should succeed after confirmation
         live_broker.confirm_live_trading()
         broker_id = await live_broker.submit_order(order)
-        assert broker_id.startswith("LIVE-STUB-")
+        assert broker_id.startswith("PAPER-")
 
     @pytest.mark.asyncio
     async def test_position_size_limit(self, live_broker: LiveBroker):
@@ -152,7 +153,7 @@ class TestLiveBrokerRiskLimits:
         """Test that open orders limit is enforced."""
         # Create broker with very low limit
         broker = LiveBroker(
-            broker_type="stub",
+            inner_broker=PaperBroker(fill_delay=0.01),
             account_id="TEST001",
             risk_limits=RiskLimits(
                 max_position_size=10000,
@@ -179,7 +180,7 @@ class TestLiveBrokerRiskLimits:
     async def test_daily_loss_limit(self, risk_limits: RiskLimits):
         """Test that daily loss limit is enforced."""
         broker = LiveBroker(
-            broker_type="stub",
+            inner_broker=PaperBroker(fill_delay=0.01),
             account_id="TEST001",
             risk_limits=risk_limits,
             require_confirmation=False,
@@ -439,7 +440,7 @@ class TestLiveModeIntegration:
     async def test_live_broker_with_risk_validation_workflow(self):
         """Test complete workflow: connect -> validate -> submit -> cancel."""
         broker = LiveBroker(
-            broker_type="stub",
+            inner_broker=PaperBroker(fill_delay=0.01),
             account_id="INTEGRATION_TEST",
             risk_limits=RiskLimits(
                 max_position_size=500,
@@ -465,7 +466,7 @@ class TestLiveModeIntegration:
         # Step 4: Submit valid order
         order = create_test_order(quantity=100, order_id="WORKFLOW-001")
         broker_id = await broker.submit_order(order)
-        assert broker_id.startswith("LIVE-STUB-")
+        assert broker_id.startswith("PAPER-")
 
         # Step 5: Check order status
         status = await broker.get_order_status(broker_id)
@@ -504,7 +505,7 @@ class TestLiveModeIntegration:
     async def test_validation_result_details(self):
         """Test that validation provides detailed check results."""
         broker = LiveBroker(
-            broker_type="stub",
+            inner_broker=PaperBroker(fill_delay=0.01),
             account_id="TEST",
             risk_limits=RiskLimits(),
             require_confirmation=True,

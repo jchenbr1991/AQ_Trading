@@ -2,22 +2,23 @@
 """Live broker adapter with pre-trade validation.
 
 Implements T047: Pre-trade validation checks for live trading.
-This is a stub implementation for MVP - actual broker integration (e.g., Futu, IBKR)
-will be implemented in Phase 2.
+Decorator pattern: wraps any Broker implementation with risk validation.
 
 Supports:
+- FR-007: LiveBroker decorator pattern
 - FR-021: Same interface as PaperBroker for mode-agnostic strategy execution
 - Pre-trade validation with configurable risk limits
 - Broker connection verification
 """
 
+from __future__ import annotations
+
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Literal
 
-from src.broker.errors import BrokerError, OrderCancelError, OrderSubmissionError
+from src.broker.errors import BrokerError, OrderSubmissionError
 from src.broker.query import BrokerAccount, BrokerPosition
 from src.orders.models import Order, OrderStatus
 
@@ -63,7 +64,7 @@ class RiskLimits:
     max_open_orders: int = 10  # Maximum concurrent open orders
 
     @classmethod
-    def from_dict(cls, data: dict) -> "RiskLimits":
+    def from_dict(cls, data: dict) -> RiskLimits:
         """Create RiskLimits from dictionary (e.g., YAML config)."""
         return cls(
             max_position_size=data.get("max_position_size", 1000),
@@ -85,31 +86,29 @@ class ValidationResult:
 class LiveBroker:
     """Live broker adapter with pre-trade validation.
 
-    This is a stub implementation for MVP. The actual broker communication
-    (e.g., Futu OpenD, Interactive Brokers TWS) will be implemented in Phase 2.
+    Wraps any Broker implementation with risk validation (decorator pattern).
+    All order execution is delegated to the inner broker after validation.
 
-    The stub validates orders against risk limits and simulates connection
-    status for testing the live trading workflow.
-
-    Implements the same interface as PaperBroker for mode-agnostic behavior (FR-021).
+    Implements the same interface as PaperBroker for mode-agnostic
+    behavior (FR-021).
     """
 
     def __init__(
         self,
-        broker_type: Literal["futu", "ibkr", "stub"] = "stub",
+        inner_broker: object,
         account_id: str | None = None,
         risk_limits: RiskLimits | None = None,
         require_confirmation: bool = True,
     ):
-        """Initialize live broker.
+        """Initialize live broker decorator.
 
         Args:
-            broker_type: Type of broker adapter ("futu", "ibkr", "stub").
+            inner_broker: The actual Broker implementation to delegate to.
             account_id: Broker account ID for live trading.
             risk_limits: Risk limits configuration.
-            require_confirmation: Whether to require explicit confirmation for orders.
+            require_confirmation: Whether to require explicit confirmation.
         """
-        self._broker_type = broker_type
+        self._inner_broker = inner_broker
         self._account_id = account_id
         self._risk_limits = risk_limits or RiskLimits()
         self._require_confirmation = require_confirmation
@@ -118,19 +117,17 @@ class LiveBroker:
         self._connected = False
         self._connection_verified = False
 
-        # Order tracking
-        self._orders: dict[str, Order] = {}
-        self._order_statuses: dict[str, OrderStatus] = {}
+        # Order tracking (open order count only -- inner broker tracks orders)
         self._open_order_count = 0
         self._daily_pnl = Decimal("0")
-
-        # Fill callback
-        self._fill_callback: Callable | None = None
 
         # Confirmation state
         self._confirmed = False
 
-        logger.info(f"LiveBroker initialized: type={broker_type}, account={account_id}")
+        logger.info(
+            "LiveBroker initialized with inner broker: %s",
+            type(inner_broker).__name__,
+        )
 
     @property
     def is_connected(self) -> bool:
@@ -150,8 +147,7 @@ class LiveBroker:
     async def connect(self) -> bool:
         """Establish connection to live broker.
 
-        For stub mode, this always succeeds.
-        For real brokers, this will connect to the trading API.
+        Delegates to inner broker connect() if available.
 
         Returns:
             True if connection successful.
@@ -159,21 +155,19 @@ class LiveBroker:
         Raises:
             BrokerConnectionError: If connection fails.
         """
-        if self._broker_type == "stub":
-            self._connected = True
-            self._connection_verified = True
-            logger.info("LiveBroker stub connection established")
-            return True
+        if hasattr(self._inner_broker, "connect"):
+            await self._inner_broker.connect()
 
-        # TODO: Implement real broker connections in Phase 2
-        # For now, raise error for non-stub brokers
-        raise BrokerConnectionError(
-            f"Broker type '{self._broker_type}' not yet implemented",
-            broker=self._broker_type,
-        )
+        self._connected = True
+        self._connection_verified = True
+        logger.info("LiveBroker connection established")
+        return True
 
     async def disconnect(self) -> None:
         """Disconnect from live broker."""
+        if hasattr(self._inner_broker, "disconnect"):
+            await self._inner_broker.disconnect()
+
         self._connected = False
         self._connection_verified = False
         logger.info("LiveBroker disconnected")
@@ -184,7 +178,6 @@ class LiveBroker:
         Checks:
         - Connection is established
         - Account is accessible
-        - Market data is flowing (for real brokers)
 
         Returns:
             ValidationResult with check details.
@@ -193,11 +186,6 @@ class LiveBroker:
             "connection_established": self._connected,
             "account_configured": self._account_id is not None,
         }
-
-        if self._broker_type != "stub":
-            # Real brokers would check additional things
-            checks["market_data_active"] = False  # Would be checked in real impl
-            checks["trading_enabled"] = False
 
         passed = all(checks.values())
         message = "Connection verified" if passed else "Connection verification failed"
@@ -256,7 +244,8 @@ class LiveBroker:
         checks["position_size_ok"] = order.quantity <= self._risk_limits.max_position_size
         if not checks["position_size_ok"]:
             messages.append(
-                f"Position size {order.quantity} exceeds limit {self._risk_limits.max_position_size}"
+                f"Position size {order.quantity} exceeds limit "
+                f"{self._risk_limits.max_position_size}"
             )
 
         # Check 4: Order value limit
@@ -265,7 +254,8 @@ class LiveBroker:
             checks["order_value_ok"] = order_value <= self._risk_limits.max_order_value
             if not checks["order_value_ok"]:
                 messages.append(
-                    f"Order value {order_value} exceeds limit {self._risk_limits.max_order_value}"
+                    f"Order value {order_value} exceeds limit "
+                    f"{self._risk_limits.max_order_value}"
                 )
         else:
             # Can't check without price - assume OK but note it
@@ -275,14 +265,15 @@ class LiveBroker:
         checks["open_orders_ok"] = self._open_order_count < self._risk_limits.max_open_orders
         if not checks["open_orders_ok"]:
             messages.append(
-                f"Open orders {self._open_order_count} at limit {self._risk_limits.max_open_orders}"
+                f"Open orders {self._open_order_count} at limit "
+                f"{self._risk_limits.max_open_orders}"
             )
 
         # Check 6: Daily loss limit
         checks["daily_loss_ok"] = abs(self._daily_pnl) < self._risk_limits.max_daily_loss
         if not checks["daily_loss_ok"]:
             messages.append(
-                f"Daily loss {self._daily_pnl} exceeds limit {self._risk_limits.max_daily_loss}"
+                f"Daily loss {self._daily_pnl} exceeds limit " f"{self._risk_limits.max_daily_loss}"
             )
 
         passed = all(checks.values())
@@ -293,11 +284,14 @@ class LiveBroker:
     async def submit_order(self, order: Order) -> str:
         """Submit order to live broker with pre-trade validation.
 
+        Validates the order against risk limits first, then delegates
+        to the inner broker for actual execution.
+
         Args:
             order: Order to submit.
 
         Returns:
-            Broker order ID.
+            Broker order ID from inner broker.
 
         Raises:
             BrokerConnectionError: If not connected.
@@ -344,23 +338,14 @@ class LiveBroker:
 
             raise OrderSubmissionError(validation.message, symbol=order.symbol)
 
-        # For stub mode, simulate order submission
-        if self._broker_type == "stub":
-            broker_id = f"LIVE-STUB-{len(self._orders) + 1:06d}"
-            self._orders[broker_id] = order
-            self._order_statuses[broker_id] = OrderStatus.SUBMITTED
-            self._open_order_count += 1
-            logger.info(f"LiveBroker stub order submitted: {broker_id}")
-            return broker_id
-
-        # TODO: Implement real broker order submission in Phase 2
-        raise OrderSubmissionError(
-            f"Broker type '{self._broker_type}' not yet implemented",
-            symbol=order.symbol,
-        )
+        # Delegate to inner broker
+        broker_id = await self._inner_broker.submit_order(order)
+        self._open_order_count += 1
+        logger.info("LiveBroker order submitted via inner broker: %s", broker_id)
+        return broker_id
 
     async def cancel_order(self, broker_order_id: str) -> bool:
-        """Cancel an open order.
+        """Cancel an open order by delegating to inner broker.
 
         Args:
             broker_order_id: Broker order ID.
@@ -371,35 +356,39 @@ class LiveBroker:
         Raises:
             OrderCancelError: If cancellation fails.
         """
-        if broker_order_id not in self._orders:
-            raise OrderCancelError("Order not found", broker_order_id)
-
-        if self._order_statuses.get(broker_order_id) == OrderStatus.FILLED:
-            raise OrderCancelError("Order already filled", broker_order_id)
-
-        self._order_statuses[broker_order_id] = OrderStatus.CANCELLED
+        result = await self._inner_broker.cancel_order(broker_order_id)
         self._open_order_count = max(0, self._open_order_count - 1)
-        logger.info(f"LiveBroker order cancelled: {broker_order_id}")
-        return True
+        logger.info("LiveBroker order cancelled: %s", broker_order_id)
+        return result
 
     async def get_order_status(self, broker_order_id: str) -> OrderStatus:
-        """Get current order status."""
-        return self._order_statuses.get(broker_order_id, OrderStatus.PENDING)
+        """Get current order status from inner broker."""
+        return await self._inner_broker.get_order_status(broker_order_id)
 
     def subscribe_fills(self, callback: Callable) -> None:
-        """Register fill callback."""
-        self._fill_callback = callback
+        """Register fill callback on inner broker.
 
-    # BrokerQuery protocol implementation for consistency
+        Wraps the callback to decrement open order count on fills.
+        """
+
+        def _wrapped_callback(fill):
+            self._open_order_count = max(0, self._open_order_count - 1)
+            callback(fill)
+
+        self._inner_broker.subscribe_fills(_wrapped_callback)
+
+    # BrokerQuery protocol delegation
 
     async def get_positions(self, account_id: str) -> list[BrokerPosition]:
-        """Get positions from broker (stub returns empty list)."""
-        # TODO: Implement for real brokers in Phase 2
+        """Get positions -- delegate to inner broker if it supports BrokerQuery."""
+        if hasattr(self._inner_broker, "get_positions"):
+            return await self._inner_broker.get_positions(account_id)
         return []
 
     async def get_account(self, account_id: str) -> BrokerAccount:
-        """Get account info from broker (stub returns placeholder)."""
-        # TODO: Implement for real brokers in Phase 2
+        """Get account info -- delegate to inner broker if it supports BrokerQuery."""
+        if hasattr(self._inner_broker, "get_account"):
+            return await self._inner_broker.get_account(account_id)
         return BrokerAccount(
             account_id=account_id,
             cash=Decimal("0"),
