@@ -40,7 +40,24 @@ As a system operator, I want to select Tiger or Paper broker through a YAML conf
 
 ---
 
-### User Story 3 - Query Positions and Account from Tiger (Priority: P2)
+### User Story 3 - Stream Real-Time Market Data from Tiger (Priority: P1)
+
+As a trader, I want the system to receive real-time quote data from Tiger Trading so that my strategies can generate signals based on live market prices instead of mock data.
+
+**Why this priority**: Without real-time market data, strategies cannot generate meaningful signals. This is a prerequisite for any live trading — the system needs prices to make trading decisions. The existing `DataSource` protocol and `MarketDataService` already define the integration point.
+
+**Independent Test**: Can be tested by subscribing to AAPL quotes via Tiger, verifying that `MarketData` events (price, bid, ask, volume, timestamp) flow through the `MarketDataService` to a test consumer. Delivers the ability to run strategies on real market data.
+
+**Acceptance Scenarios**:
+
+1. **Given** a valid Tiger API connection and a strategy subscribed to AAPL, **When** Tiger sends a quote update, **Then** a `MarketData` event with correct price, bid, ask, volume, and timestamp is delivered to the strategy via `MarketDataService`
+2. **Given** a strategy config with `market_data.source: "tiger"`, **When** the strategy starts, **Then** the system connects to Tiger's quote feed and begins streaming data for configured symbols
+3. **Given** a strategy config with `market_data.source: "mock"`, **When** the strategy starts, **Then** the existing mock data source is used (existing behavior unchanged)
+4. **Given** a Tiger quote feed connection drop, **When** the connection is lost, **Then** the system logs a warning and attempts to reconnect; stale quotes are detected via the existing `QuoteSnapshot` staleness mechanism
+
+---
+
+### User Story 4 - Query Positions and Account from Tiger (Priority: P2)
 
 As a trader, I want the system to fetch my current positions and account balance from Tiger so that the reconciliation service can verify local state against broker state.
 
@@ -55,7 +72,7 @@ As a trader, I want the system to fetch my current positions and account balance
 
 ---
 
-### User Story 4 - LiveBroker Wraps Tiger with Risk Controls (Priority: P2)
+### User Story 5 - LiveBroker Wraps Tiger with Risk Controls (Priority: P2)
 
 As a risk manager, I want the existing LiveBroker pre-trade validation (position limits, order value limits, daily loss limits) to apply to Tiger orders so that risk controls are enforced regardless of which broker is used.
 
@@ -93,10 +110,14 @@ As a risk manager, I want the existing LiveBroker pre-trade validation (position
 - **FR-008**: System MUST handle Tiger API connection lifecycle (connect, disconnect, reconnect on failure)
 - **FR-009**: System MUST ensure thread safety for fill callbacks from Tiger's SDK
 - **FR-010**: Credentials (private keys, account IDs) MUST NOT be committed to version control; credentials files MUST be listed in .gitignore. Credentials files on disk MUST have restricted file permissions (owner-read-only, 0600). The system MUST NOT log or expose credential content in error messages or stack traces
+- **FR-011**: System MUST implement a TigerDataSource class that conforms to the existing `DataSource` protocol, producing `MarketData` events (symbol, price, bid, ask, volume, timestamp) from Tiger's real-time quote feed
+- **FR-012**: The market data source MUST be configurable via strategy YAML config (`market_data.source: "tiger" | "mock"`), with the TigerDataSource sharing the same Tiger credentials as TigerBroker
+- **FR-013**: The TigerDataSource MUST handle quote feed disconnections gracefully, with automatic reconnection and stale quote detection via the existing `QuoteSnapshot` mechanism
 
 ### Key Entities
 
 - **TigerBroker**: The adapter that translates between AQ Trading's Broker Protocol and Tiger Trading's API. Holds connection state and credential references.
+- **TigerDataSource**: The adapter that translates Tiger's real-time quote feed into the existing `DataSource` protocol, producing `MarketData` events for the `MarketDataService`.
 - **BrokerConfig**: Extended configuration dataclass that includes Tiger-specific settings (credentials path, environment, account ID) alongside existing paper and futu settings.
 - **Order Mapping**: Translation layer between AQ Trading's Order model and Tiger's order format, including order type mapping (market, limit) and status mapping.
 
@@ -110,6 +131,8 @@ As a risk manager, I want the existing LiveBroker pre-trade validation (position
 - **SC-004**: All order lifecycle events (submit, fill, partial fill, cancel) are correctly received and processed with zero lost fills during normal operation
 - **SC-005**: Risk controls (position limits, order value limits, daily loss limits) apply identically whether using Paper, Tiger, or any future broker
 - **SC-006**: Zero credentials appear in version control history, application logs, or error output. Credentials files have 0600 permissions. Pre-commit hooks detect and block any credential commits
+- **SC-007**: Strategies receive real-time market data from Tiger with quote latency under 2 seconds from Tiger's feed to strategy signal generation under normal network conditions
+- **SC-008**: Switching market data source between mock and Tiger requires changing only the `market_data.source` field in the strategy YAML config
 
 ## Assumptions
 
