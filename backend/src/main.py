@@ -15,7 +15,9 @@ from src.api.portfolio import router as portfolio_mock_router
 from src.api.reconciliation import router as reconciliation_router
 from src.api.risk import router as risk_router
 from src.api.routes import agents_router, derivatives_router, portfolio_router
+from src.api.routes.governance import router as governance_router
 from src.api.storage import router as storage_router
+from src.api.strategies import router as strategies_router
 from src.degradation.setup import init_degradation, shutdown_degradation
 from src.health.setup import init_health_monitor
 
@@ -54,6 +56,8 @@ app.include_router(options_router)
 app.include_router(greeks_router)
 app.include_router(derivatives_router, prefix="/api")
 app.include_router(agents_router, prefix="/api")
+app.include_router(governance_router, prefix="/api")
+app.include_router(strategies_router)
 
 
 @app.get("/health")

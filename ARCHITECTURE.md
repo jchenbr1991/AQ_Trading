@@ -282,3 +282,29 @@ aq_trading/
 - Enhanced alert channels (Slack, email)
 - Audit logging for compliance
 - Real agent tool implementations (currently scaffolds)
+
+---
+
+## Recent Changes
+
+### 2026-02-01: Phase 4 - First Runnable Trading Strategy
+
+Added new modules for the minimal MVP trading system:
+
+**New Components** (`backend/src/strategies/`):
+- `indicators/` - Feature calculations (ROC, price_vs_ma, price_vs_high, volume_zscore, volatility)
+- `factors/` - Factor composition (momentum_factor, breakout_factor)
+- `examples/trend_breakout.py` - TrendBreakoutStrategy implementation
+
+**New Components** (`backend/src/backtest/`):
+- `attribution.py` - Factor PnL attribution
+
+**New Components** (`backend/src/universe/`):
+- `static.py` - YAML-based universe configuration
+
+**Data Flow**:
+```
+Bar → Features → Factors → Composite Score → Signal → Trade → Attribution
+```
+
+See `specs/002-minimal-mvp-trading/` for full specification and design.

@@ -66,7 +66,7 @@ export function DashboardPage() {
         />
 
         <AlertsPanel
-          alerts={alerts.data}
+          alerts={alerts.data?.alerts}
           isLoading={alerts.isLoading}
         />
       </main>

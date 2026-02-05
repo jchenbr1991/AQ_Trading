@@ -1,0 +1,32 @@
+# Example factor configuration for the governance system.
+# Factor files starting with underscore (_) are skipped by the loader.
+#
+# Copy this file and remove the underscore prefix to create a real factor.
+# Every factor MUST have at least one failure_rule (gate:factor_requires_failure_rule).
+
+id: momentum_factor
+name: Momentum Factor
+description: >
+  Ranks stocks by recent return momentum over a configurable lookback window.
+  Links to the momentum_persistence hypothesis which asserts that stocks with
+  strong recent performance tend to continue outperforming over the medium term.
+
+hypothesis_ids:
+  - momentum_persistence
+
+failure_rules:
+  - metric: rolling_ic_mean
+    operator: "<"
+    threshold: 0.0
+    window: 6m
+    action: disable
+
+  - metric: win_rate
+    operator: "<"
+    threshold: 0.35
+    window: 3m
+    action: review
+
+# Optional fields (defaults shown):
+# status: ENABLED
+# enabled: true

@@ -225,3 +225,180 @@ def _create_sell_trade(
         commission=commission,
         signal_bar_timestamp=datetime(2024, 1, 15, 16, 0, 0, tzinfo=timezone.utc),
     )
+
+
+class TestPerformanceMetricsOutput:
+    """Tests for FR-024: Backtest engine produces performance metrics.
+
+    Verifies that BacktestEngine output includes:
+    - total_return
+    - sharpe_ratio
+    - max_drawdown
+    - win_rate
+
+    All metrics must be Decimal type and within reasonable ranges.
+    """
+
+    def test_metrics_are_decimal_type(self) -> None:
+        """All performance metrics must be Decimal type."""
+        initial_capital = Decimal("100000")
+        equity_curve = [
+            (datetime(2024, 1, 1, 16, 0, 0, tzinfo=timezone.utc), Decimal("100000")),
+            (datetime(2024, 1, 2, 16, 0, 0, tzinfo=timezone.utc), Decimal("105000")),
+            (datetime(2024, 1, 3, 16, 0, 0, tzinfo=timezone.utc), Decimal("110000")),
+        ]
+        trades: list[Trade] = []
+
+        metrics = MetricsCalculator.compute(
+            equity_curve=equity_curve,
+            trades=trades,
+            initial_capital=initial_capital,
+        )
+
+        # FR-024: Verify all key metrics are Decimal type
+        assert isinstance(metrics["total_return"], Decimal)
+        assert isinstance(metrics["sharpe_ratio"], Decimal)
+        assert isinstance(metrics["max_drawdown"], Decimal)
+        assert isinstance(metrics["win_rate"], Decimal)
+
+    def test_total_return_reasonable_range(self) -> None:
+        """Total return should be within reasonable range (-1.0 to 10.0).
+
+        -100% to +1000% covers realistic scenarios.
+        """
+        initial_capital = Decimal("100000")
+        equity_curve = [
+            (datetime(2024, 1, 1, 16, 0, 0, tzinfo=timezone.utc), Decimal("100000")),
+            (datetime(2024, 1, 2, 16, 0, 0, tzinfo=timezone.utc), Decimal("150000")),
+        ]
+        trades: list[Trade] = []
+
+        metrics = MetricsCalculator.compute(
+            equity_curve=equity_curve,
+            trades=trades,
+            initial_capital=initial_capital,
+        )
+
+        # Return should be 50%
+        assert metrics["total_return"] == Decimal("0.50")
+        # Verify reasonable range
+        assert Decimal("-1.0") <= metrics["total_return"] <= Decimal("10.0")
+
+    def test_sharpe_ratio_is_decimal_and_computed(self) -> None:
+        """Sharpe ratio is computed as Decimal type.
+
+        Note: Sharpe ratio range depends heavily on data characteristics.
+        In real-world scenarios with longer periods, it typically falls
+        between -3 and 3. This test verifies the computation works.
+        """
+        from datetime import timedelta
+
+        initial_capital = Decimal("100000")
+        # Create equity curve with some volatility
+        base_date = datetime(2024, 1, 1, 16, 0, 0, tzinfo=timezone.utc)
+        equity_curve = [
+            (base_date, Decimal("100000")),
+            (base_date + timedelta(days=1), Decimal("101000")),
+            (base_date + timedelta(days=2), Decimal("99000")),  # Down day
+            (base_date + timedelta(days=3), Decimal("102000")),
+            (base_date + timedelta(days=4), Decimal("100500")),  # Another down
+            (base_date + timedelta(days=5), Decimal("103000")),
+        ]
+        trades: list[Trade] = []
+
+        metrics = MetricsCalculator.compute(
+            equity_curve=equity_curve,
+            trades=trades,
+            initial_capital=initial_capital,
+        )
+
+        # Verify Sharpe ratio is Decimal and computed
+        assert isinstance(metrics["sharpe_ratio"], Decimal)
+        # With mixed returns, Sharpe should be reasonable
+        # (can still be high with short periods)
+
+    def test_max_drawdown_reasonable_range(self) -> None:
+        """Max drawdown should be between 0 and 1 (0% to 100%)."""
+        initial_capital = Decimal("100000")
+        equity_curve = [
+            (datetime(2024, 1, 1, 16, 0, 0, tzinfo=timezone.utc), Decimal("100000")),
+            (datetime(2024, 1, 2, 16, 0, 0, tzinfo=timezone.utc), Decimal("120000")),
+            (datetime(2024, 1, 3, 16, 0, 0, tzinfo=timezone.utc), Decimal("90000")),
+            (datetime(2024, 1, 4, 16, 0, 0, tzinfo=timezone.utc), Decimal("100000")),
+        ]
+        trades: list[Trade] = []
+
+        metrics = MetricsCalculator.compute(
+            equity_curve=equity_curve,
+            trades=trades,
+            initial_capital=initial_capital,
+        )
+
+        # Max drawdown should be 25% ((120000 - 90000) / 120000)
+        assert metrics["max_drawdown"] == Decimal("0.25")
+        # Verify reasonable range (0% to 100%)
+        assert Decimal("0") <= metrics["max_drawdown"] <= Decimal("1.0")
+
+    def test_win_rate_reasonable_range(self) -> None:
+        """Win rate should be between 0 and 1 (0% to 100%)."""
+        initial_capital = Decimal("100000")
+        equity_curve = [
+            (datetime(2024, 1, 1, 16, 0, 0, tzinfo=timezone.utc), Decimal("100000")),
+            (datetime(2024, 1, 5, 16, 0, 0, tzinfo=timezone.utc), Decimal("110000")),
+        ]
+        trades = [
+            _create_buy_trade(quantity=100, fill_price=Decimal("100.00")),
+            _create_sell_trade(quantity=100, fill_price=Decimal("110.00")),
+        ]
+
+        metrics = MetricsCalculator.compute(
+            equity_curve=equity_curve,
+            trades=trades,
+            initial_capital=initial_capital,
+        )
+
+        # Win rate should be between 0 and 1
+        assert Decimal("0") <= metrics["win_rate"] <= Decimal("1.0")
+
+    def test_metrics_with_negative_return(self) -> None:
+        """Metrics should handle negative returns correctly."""
+        initial_capital = Decimal("100000")
+        equity_curve = [
+            (datetime(2024, 1, 1, 16, 0, 0, tzinfo=timezone.utc), Decimal("100000")),
+            (datetime(2024, 1, 2, 16, 0, 0, tzinfo=timezone.utc), Decimal("95000")),
+            (datetime(2024, 1, 3, 16, 0, 0, tzinfo=timezone.utc), Decimal("90000")),
+        ]
+        trades: list[Trade] = []
+
+        metrics = MetricsCalculator.compute(
+            equity_curve=equity_curve,
+            trades=trades,
+            initial_capital=initial_capital,
+        )
+
+        # Should have negative return
+        assert metrics["total_return"] == Decimal("-0.10")
+        # All metrics should still be Decimal
+        assert isinstance(metrics["total_return"], Decimal)
+        assert isinstance(metrics["sharpe_ratio"], Decimal)
+        assert isinstance(metrics["max_drawdown"], Decimal)
+
+    def test_all_required_metrics_present(self) -> None:
+        """FR-024: Verify all required metrics are present in output."""
+        initial_capital = Decimal("100000")
+        equity_curve = [
+            (datetime(2024, 1, 1, 16, 0, 0, tzinfo=timezone.utc), Decimal("100000")),
+            (datetime(2024, 1, 2, 16, 0, 0, tzinfo=timezone.utc), Decimal("110000")),
+        ]
+        trades: list[Trade] = []
+
+        metrics = MetricsCalculator.compute(
+            equity_curve=equity_curve,
+            trades=trades,
+            initial_capital=initial_capital,
+        )
+
+        # FR-024 required metrics
+        required_metrics = ["total_return", "sharpe_ratio", "max_drawdown", "win_rate"]
+        for metric_name in required_metrics:
+            assert metric_name in metrics, f"Missing required metric: {metric_name}"

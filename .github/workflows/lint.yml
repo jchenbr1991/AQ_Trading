@@ -1,0 +1,30 @@
+name: Governance Lint — Alpha Path Isolation
+
+on:
+  push:
+    branches:
+      - "003-*"
+      - "main"
+  pull_request:
+    branches:
+      - "003-*"
+      - "main"
+
+jobs:
+  alpha-path-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run alpha path lint tests
+        run: python -m pytest tests/governance/lint/ -q

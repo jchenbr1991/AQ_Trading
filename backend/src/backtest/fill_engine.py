@@ -68,4 +68,5 @@ class SimulatedFillEngine:
             slippage=slippage,
             commission=commission,
             signal_bar_timestamp=signal.timestamp,
+            entry_factors=dict(signal.factor_scores),  # FR-025: Persist factor scores
         )

@@ -8,15 +8,56 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.backtest.bar_loader import CSVBarLoader
 from src.backtest.engine import BacktestEngine
-from src.backtest.models import BacktestConfig
+from src.backtest.models import BacktestConfig, BacktestResult
+
+# In-memory storage for backtest results (MVP - use database in production)
+_backtest_results: dict[str, BacktestResult] = {}
+
+
+def get_backtest_results() -> dict[str, BacktestResult]:
+    """Get the backtest results storage. Override in tests."""
+    return _backtest_results
+
+
+def clear_backtest_results() -> None:
+    """Clear the backtest results storage (for testing)."""
+    _backtest_results.clear()
+
+
+# ============================================================================
+# Request/Response Models matching OpenAPI Contract (backtest-api.yaml)
+# ============================================================================
+
+
+class StrategyConfig(BaseModel):
+    """Strategy configuration options."""
+
+    entry_threshold: float = 0.0
+    exit_threshold: float = -0.02
+    position_sizing: str = "equal_weight"
+    position_size: int = 100
+    risk_per_trade: float = 0.02
+    feature_weights: dict[str, float] | None = None
+    factor_weights: dict[str, float] | None = None
 
 
 class BacktestRequest(BaseModel):
-    """Request body for running a backtest."""
+    """Request body for running a backtest (matches OpenAPI contract)."""
+
+    strategy: str = Field(..., description="Strategy identifier")
+    universe: str = Field(default="mvp-universe", description="Universe name")
+    start_date: date = Field(..., description="Backtest start date")
+    end_date: date = Field(..., description="Backtest end date")
+    initial_capital: Decimal = Field(default=Decimal("100000"), description="Starting capital")
+    config: StrategyConfig | None = Field(default=None, description="Strategy configuration")
+
+
+class LegacyBacktestRequest(BaseModel):
+    """Legacy request body for backward compatibility."""
 
     strategy_class: str
     strategy_params: dict
@@ -96,7 +137,7 @@ class BenchmarkComparisonResponse(BaseModel):
 
 
 class BacktestResultSchema(BaseModel):
-    """Schema for backtest result metrics."""
+    """Schema for backtest result metrics (legacy format)."""
 
     final_equity: str
     final_cash: str
@@ -112,8 +153,8 @@ class BacktestResultSchema(BaseModel):
     warm_up_bars_used: int
 
 
-class BacktestResponse(BaseModel):
-    """Response body for backtest endpoint."""
+class LegacyBacktestResponse(BaseModel):
+    """Legacy response body for backward compatibility."""
 
     backtest_id: str
     status: str  # "completed" or "failed"
@@ -121,6 +162,95 @@ class BacktestResponse(BaseModel):
     benchmark: BenchmarkComparisonResponse | None = None
     traces: list[SignalTraceResponse] = []
     error: str | None = None
+
+
+# ============================================================================
+# New OpenAPI Contract Models (backtest-api.yaml)
+# ============================================================================
+
+
+class MetricsResponse(BaseModel):
+    """Performance metrics matching OpenAPI Metrics schema."""
+
+    total_return: float
+    sharpe_ratio: float
+    max_drawdown: float
+    win_rate: float
+    total_trades: int
+
+
+class TradeResponse(BaseModel):
+    """Trade record matching OpenAPI Trade schema."""
+
+    id: str
+    symbol: str
+    entry_date: str  # ISO datetime
+    entry_price: float
+    exit_date: str | None  # ISO datetime, None if position still open
+    exit_price: float | None
+    quantity: int
+    pnl: float | None  # None if position still open
+    entry_factors: dict[str, float]
+    exit_factors: dict[str, float]
+    attribution: dict[str, float]
+
+
+class AttributionSummaryResponse(BaseModel):
+    """Attribution summary matching OpenAPI AttributionSummary schema."""
+
+    momentum_factor: float
+    breakout_factor: float
+    total: float
+
+
+class EquityCurvePoint(BaseModel):
+    """Single point in equity curve."""
+
+    date: str  # ISO date
+    equity: float
+
+
+class BacktestResponse(BaseModel):
+    """Response body for POST /api/backtest (matches OpenAPI BacktestResponse)."""
+
+    id: str
+    status: str  # "completed" or "failed"
+    metrics: MetricsResponse | None = None
+    trades: list[TradeResponse] = []
+    attribution_summary: AttributionSummaryResponse | None = None
+    equity_curve: list[EquityCurvePoint] = []
+    error: str | None = None
+
+
+# ============================================================================
+# Attribution Response Models
+# ============================================================================
+
+
+class TradeAttributionResponse(BaseModel):
+    """Per-trade attribution data."""
+
+    trade_id: str
+    symbol: str
+    pnl: float
+    attribution: dict[str, float]
+
+
+class SymbolAttributionResponse(BaseModel):
+    """Per-symbol attribution breakdown."""
+
+    momentum_factor: float
+    breakout_factor: float
+    total: float
+
+
+class AttributionResponse(BaseModel):
+    """Response for GET /api/backtest/{id}/attribution."""
+
+    backtest_id: str
+    summary: AttributionSummaryResponse
+    by_trade: list[TradeAttributionResponse]
+    by_symbol: dict[str, SymbolAttributionResponse]
 
 
 def get_bar_loader():
@@ -192,15 +322,293 @@ def _convert_trace(trace) -> SignalTraceResponse:
 router = APIRouter(prefix="/api/backtest", tags=["backtest"])
 
 
-@router.post("", response_model=BacktestResponse)
-async def run_backtest(request: BacktestRequest) -> BacktestResponse:
-    """Run a backtest with given configuration.
+# Strategy name to class mapping for the new API
+STRATEGY_CLASS_MAP = {
+    "trend_breakout": "src.strategies.examples.trend_breakout.TrendBreakoutStrategy",
+    "momentum": "src.strategies.examples.momentum.MomentumStrategy",
+}
+
+
+def _convert_trade_to_response(trade, entry_trade=None) -> TradeResponse:
+    """Convert a Trade model to TradeResponse.
 
     Args:
-        request: Backtest configuration including strategy, symbol, and date range.
+        trade: The trade to convert
+        entry_trade: If this is a sell trade, the corresponding entry trade
 
     Returns:
-        BacktestResponse with status and results or error.
+        TradeResponse matching the OpenAPI schema
+    """
+    # Determine if this is an entry or exit
+    is_exit = trade.side == "sell"
+
+    if is_exit and entry_trade:
+        # This is an exit trade - pair with entry
+        pnl = float(
+            (trade.fill_price - entry_trade.fill_price) * trade.quantity
+            - trade.commission
+            - entry_trade.commission
+        )
+        return TradeResponse(
+            id=entry_trade.trade_id,  # Use entry trade ID as the trade ID
+            symbol=trade.symbol,
+            entry_date=entry_trade.timestamp.isoformat(),
+            entry_price=float(entry_trade.fill_price),
+            exit_date=trade.timestamp.isoformat(),
+            exit_price=float(trade.fill_price),
+            quantity=trade.quantity,
+            pnl=pnl,
+            entry_factors={k: float(v) for k, v in entry_trade.entry_factors.items()},
+            exit_factors={k: float(v) for k, v in trade.exit_factors.items()},
+            attribution={k: float(v) for k, v in trade.attribution.items()},
+        )
+    else:
+        # This is an entry trade without matching exit (open position)
+        return TradeResponse(
+            id=trade.trade_id,
+            symbol=trade.symbol,
+            entry_date=trade.timestamp.isoformat(),
+            entry_price=float(trade.fill_price),
+            exit_date=None,
+            exit_price=None,
+            quantity=trade.quantity,
+            pnl=None,
+            entry_factors={k: float(v) for k, v in trade.entry_factors.items()},
+            exit_factors={},
+            attribution={},
+        )
+
+
+def _build_trade_responses(trades: list) -> list[TradeResponse]:
+    """Build trade responses from raw trades, pairing entries with exits.
+
+    Args:
+        trades: List of Trade objects from backtest
+
+    Returns:
+        List of TradeResponse objects with paired entry/exit trades
+    """
+    responses = []
+    pending_entries: dict[str, Any] = {}  # symbol -> entry trade
+
+    for trade in trades:
+        if trade.side == "buy":
+            pending_entries[trade.symbol] = trade
+        elif trade.side == "sell":
+            entry_trade = pending_entries.pop(trade.symbol, None)
+            responses.append(_convert_trade_to_response(trade, entry_trade))
+
+    # Add any remaining open positions
+    for entry_trade in pending_entries.values():
+        responses.append(_convert_trade_to_response(entry_trade))
+
+    return responses
+
+
+def _build_attribution_summary(result: BacktestResult) -> AttributionSummaryResponse:
+    """Build attribution summary from backtest result."""
+    summary = result.attribution_summary or {}
+    total_pnl = sum(float(v) for v in summary.values()) if summary else 0.0
+
+    return AttributionSummaryResponse(
+        momentum_factor=float(summary.get("momentum_factor", 0)),
+        breakout_factor=float(summary.get("breakout_factor", 0)),
+        total=total_pnl,
+    )
+
+
+def _build_equity_curve(result: BacktestResult) -> list[EquityCurvePoint]:
+    """Build equity curve from backtest result."""
+    return [
+        EquityCurvePoint(
+            date=ts.date().isoformat(),
+            equity=float(equity),
+        )
+        for ts, equity in result.equity_curve
+    ]
+
+
+@router.post("", response_model=BacktestResponse)
+async def run_backtest(request: BacktestRequest) -> BacktestResponse:
+    """Run a backtest with given configuration (OpenAPI contract).
+
+    Args:
+        request: Backtest configuration including strategy, universe, and date range.
+
+    Returns:
+        BacktestResponse with id, status, metrics, trades, attribution, and equity curve.
+
+    Raises:
+        HTTPException: 400 if strategy is not found or invalid parameters.
+        HTTPException: 500 if backtest execution fails.
+    """
+    backtest_id = str(uuid.uuid4())
+
+    try:
+        # Map strategy name to class
+        strategy_class = STRATEGY_CLASS_MAP.get(request.strategy)
+        if not strategy_class:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown strategy: {request.strategy}. "
+                f"Available strategies: {list(STRATEGY_CLASS_MAP.keys())}",
+            )
+
+        # Build strategy params from config
+        strategy_params: dict[str, Any] = {"name": request.strategy}
+        if request.config:
+            strategy_params["entry_threshold"] = request.config.entry_threshold
+            strategy_params["exit_threshold"] = request.config.exit_threshold
+            strategy_params["position_sizing"] = request.config.position_sizing
+            strategy_params["position_size"] = request.config.position_size
+            if request.config.feature_weights:
+                strategy_params["feature_weights"] = request.config.feature_weights
+            if request.config.factor_weights:
+                strategy_params["factor_weights"] = request.config.factor_weights
+
+        # For MVP, use a default symbol (first in universe or AAPL)
+        # In production, this would iterate over universe symbols
+        symbol = "AAPL"  # Default for MVP
+
+        config = BacktestConfig(
+            strategy_class=strategy_class,
+            strategy_params=strategy_params,
+            symbol=symbol,
+            start_date=request.start_date,
+            end_date=request.end_date,
+            initial_capital=request.initial_capital,
+        )
+
+        engine = BacktestEngine(bar_loader=get_bar_loader())
+        result = await engine.run(config)
+
+        # Store result for attribution endpoint
+        backtest_results = get_backtest_results()
+        backtest_results[backtest_id] = result
+
+        # Build response
+        metrics = MetricsResponse(
+            total_return=float(result.total_return),
+            sharpe_ratio=float(result.sharpe_ratio),
+            max_drawdown=float(result.max_drawdown),
+            win_rate=float(result.win_rate),
+            total_trades=result.total_trades,
+        )
+
+        trades = _build_trade_responses(result.trades)
+        attribution_summary = _build_attribution_summary(result)
+        equity_curve = _build_equity_curve(result)
+
+        return BacktestResponse(
+            id=backtest_id,
+            status="completed",
+            metrics=metrics,
+            trades=trades,
+            attribution_summary=attribution_summary,
+            equity_curve=equity_curve,
+            error=None,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        # Strategy validation or insufficient data
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        # Other failures
+        return BacktestResponse(
+            id=backtest_id,
+            status="failed",
+            metrics=None,
+            trades=[],
+            attribution_summary=None,
+            equity_curve=[],
+            error=str(e),
+        )
+
+
+@router.get("/{backtest_id}/attribution", response_model=AttributionResponse)
+async def get_attribution(backtest_id: str) -> AttributionResponse:
+    """Get factor attribution for a completed backtest.
+
+    Args:
+        backtest_id: UUID of the backtest run.
+
+    Returns:
+        AttributionResponse with summary, per-trade, and per-symbol breakdowns.
+
+    Raises:
+        HTTPException: 404 if backtest not found.
+    """
+    backtest_results = get_backtest_results()
+    result = backtest_results.get(backtest_id)
+
+    if result is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Backtest not found: {backtest_id}",
+        )
+
+    # Build summary
+    summary = _build_attribution_summary(result)
+
+    # Build per-trade attribution
+    by_trade: list[TradeAttributionResponse] = []
+    for trade in result.trades:
+        if trade.side == "sell" and trade.attribution:
+            # Calculate PnL from trade
+            pnl = float(sum(Decimal(str(v)) for v in trade.attribution.values()))
+            by_trade.append(
+                TradeAttributionResponse(
+                    trade_id=trade.trade_id,
+                    symbol=trade.symbol,
+                    pnl=pnl,
+                    attribution={k: float(v) for k, v in trade.attribution.items()},
+                )
+            )
+
+    # Build per-symbol attribution
+    by_symbol: dict[str, SymbolAttributionResponse] = {}
+    symbol_totals: dict[str, dict[str, float]] = {}
+
+    for trade in result.trades:
+        if trade.side == "sell" and trade.attribution:
+            if trade.symbol not in symbol_totals:
+                symbol_totals[trade.symbol] = {"momentum_factor": 0.0, "breakout_factor": 0.0}
+            for factor, value in trade.attribution.items():
+                if factor in symbol_totals[trade.symbol]:
+                    symbol_totals[trade.symbol][factor] += float(value)
+
+    for symbol, totals in symbol_totals.items():
+        by_symbol[symbol] = SymbolAttributionResponse(
+            momentum_factor=totals.get("momentum_factor", 0.0),
+            breakout_factor=totals.get("breakout_factor", 0.0),
+            total=totals.get("momentum_factor", 0.0) + totals.get("breakout_factor", 0.0),
+        )
+
+    return AttributionResponse(
+        backtest_id=backtest_id,
+        summary=summary,
+        by_trade=by_trade,
+        by_symbol=by_symbol,
+    )
+
+
+# ============================================================================
+# Legacy Endpoint (backward compatibility)
+# ============================================================================
+
+
+@router.post("/legacy", response_model=LegacyBacktestResponse)
+async def run_backtest_legacy(request: LegacyBacktestRequest) -> LegacyBacktestResponse:
+    """Run a backtest with legacy configuration format.
+
+    This endpoint maintains backward compatibility with the original API.
+
+    Args:
+        request: Legacy backtest configuration.
+
+    Returns:
+        LegacyBacktestResponse with status and results or error.
 
     Raises:
         HTTPException: 400 if strategy is not allowed or insufficient data.
@@ -223,6 +631,10 @@ async def run_backtest(request: BacktestRequest) -> BacktestResponse:
         engine = BacktestEngine(bar_loader=get_bar_loader())
         result = await engine.run(config)
 
+        # Store result for attribution endpoint
+        backtest_results = get_backtest_results()
+        backtest_results[backtest_id] = result
+
         # Convert benchmark comparison if present
         benchmark_response = None
         if result.benchmark:
@@ -241,7 +653,7 @@ async def run_backtest(request: BacktestRequest) -> BacktestResponse:
         # Convert traces to response format
         traces_response = [_convert_trace(trace) for trace in result.traces]
 
-        return BacktestResponse(
+        return LegacyBacktestResponse(
             backtest_id=backtest_id,
             status="completed",
             result=BacktestResultSchema(
@@ -267,7 +679,7 @@ async def run_backtest(request: BacktestRequest) -> BacktestResponse:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         # Other failures (import errors, etc.)
-        return BacktestResponse(
+        return LegacyBacktestResponse(
             backtest_id=backtest_id,
             status="failed",
             result=None,
