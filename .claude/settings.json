@@ -87,6 +87,19 @@
       ".github/**/*"
     ]
   },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "filepath=\"$CLAUDE_FILE_PATH\"; if echo \"$filepath\" | grep -qv '\\.py$'; then exit 0; fi; if echo \"$filepath\" | grep -q 'backend/tests/'; then cd /home/tochat/aq_trading/backend && python -m pytest \"$filepath\" -x -q --tb=short 2>&1 | tail -15; elif echo \"$filepath\" | grep -q 'backend/src/'; then module=$(echo \"$filepath\" | sed -n 's|.*backend/src/\\([^/]*\\)/.*|\\1|p'); if [ -d \"/home/tochat/aq_trading/backend/tests/$module\" ]; then cd /home/tochat/aq_trading/backend && python -m pytest \"tests/$module/\" -x -q --tb=short -m 'not timescaledb' 2>&1 | tail -15; fi; elif echo \"$filepath\" | grep -q 'agents/'; then cd /home/tochat/aq_trading && python -m pytest agents/tests/ -x -q --tb=short 2>&1 | tail -15; fi"
+          }
+        ]
+      }
+    ]
+  },
   "autoUpdate": false,
   "verbose": false
 }
