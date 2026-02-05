@@ -292,6 +292,28 @@ Implementation backlog for AQ Trading. Track development phases and progress.
 - SC-006: Paper → Live transition via config only ✅
 - SC-007: Zero lookahead bias validated ✅
 
+### Bugfix: Factor Score Normalization & Attribution Formula
+
+**PR:** #38 (merged to master)
+
+**Problem:** Two related bugs distorted composite signal and PnL attribution:
+1. **Score scale mismatch** — Breakout scores (~0.42) were ~39× larger than momentum scores (~0.011), causing breakout to dominate the composite signal regardless of weight allocation
+2. **Attribution formula distortion** — Old formula `weight × score × PnL` assigned ~90% of PnL to breakout due to its larger score magnitude, masking momentum's actual contribution
+
+**Fix:**
+
+| Change | File | Description |
+|--------|------|-------------|
+| ScoreNormalizer | `backend/src/strategies/factors/normalizer.py` (new) | Rolling z-score normalization standardizes factor scores to zero mean / unit variance before combining |
+| CompositeFactor | `backend/src/strategies/factors/composite.py` | Optional normalization path (`normalize=True`), warmup fallback to raw scores |
+| TrendBreakoutStrategy | `backend/src/strategies/examples/trend_breakout.py` | Wires normalization params (`normalize_scores=True` default) |
+| Attribution | `backend/src/backtest/attribution.py` | Weight-proportional formula `(weight / total_weight) × PnL` replaces score-dependent formula |
+| Tests | 23 new tests | ScoreNormalizer (12), CompositeFactor normalization (6), attribution weight-proportional (5) |
+
+**Validation:** Multi-symbol backtest confirms correct 50/50 attribution split with equal weights. SC-003 (attribution sums to PnL) preserved.
+
+---
+
 **Exit Criteria Met:** Can run TrendBreakoutStrategy with manual or IC-based factor weights across backtest/paper/live modes.
 
 ---
