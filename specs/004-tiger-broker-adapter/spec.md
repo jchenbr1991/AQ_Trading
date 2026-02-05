@@ -95,6 +95,8 @@ As a risk manager, I want the existing LiveBroker pre-trade validation (position
 - What happens when Tiger returns a rate limit error? The system should retry with backoff up to 3 times before raising an error.
 - What happens when Tiger's order status mapping doesn't align with our OrderStatus enum? Each Tiger status must be explicitly mapped; unmapped statuses should be logged and treated as PENDING.
 - What happens when credentials file is missing or malformed? A clear error at startup, not a cryptic runtime failure.
+- What happens when Tiger imposes subscription limits on the number of symbols for real-time quotes? The system should respect API limits, log a warning if the requested symbol count exceeds the allowed maximum, and subscribe to as many as permitted.
+- What happens when the Tiger quote feed sends duplicate or out-of-order quotes? The system should deduplicate by timestamp and discard stale quotes that arrive after newer ones.
 
 ## Requirements *(mandatory)*
 
@@ -110,7 +112,7 @@ As a risk manager, I want the existing LiveBroker pre-trade validation (position
 - **FR-008**: System MUST handle Tiger API connection lifecycle (connect, disconnect, reconnect on failure)
 - **FR-009**: System MUST ensure thread safety for fill callbacks from Tiger's SDK
 - **FR-010**: Credentials (private keys, account IDs) MUST NOT be committed to version control; credentials files MUST be listed in .gitignore. Credentials files on disk MUST have restricted file permissions (owner-read-only, 0600). The system MUST NOT log or expose credential content in error messages or stack traces
-- **FR-011**: System MUST implement a TigerDataSource class that conforms to the existing `DataSource` protocol, producing `MarketData` events (symbol, price, bid, ask, volume, timestamp) from Tiger's real-time quote feed
+- **FR-011**: System MUST implement a TigerDataSource class that conforms to the existing `DataSource` protocol, producing `MarketData` events (symbol, price, bid, ask, volume, timestamp) from Tiger's real-time quote feed. The TigerDataSource receives its symbol list from the strategy configuration (same symbols the strategy trades) and subscribes to Tiger's quote feed for those symbols at startup
 - **FR-012**: The market data source MUST be configurable via strategy YAML config (`market_data.source: "tiger" | "mock"`), with the TigerDataSource sharing the same Tiger credentials as TigerBroker
 - **FR-013**: The TigerDataSource MUST handle quote feed disconnections gracefully, with automatic reconnection and stale quote detection via the existing `QuoteSnapshot` mechanism
 
@@ -141,3 +143,4 @@ As a risk manager, I want the existing LiveBroker pre-trade validation (position
 - Tiger's API supports async or can be wrapped in async (thread pool executor)
 - The system only needs to support stock orders initially (not options or futures through Tiger)
 - Tiger's fill notification mechanism provides unique fill identifiers or sufficient data to generate them
+- Tiger's API permissions grant both trading and real-time market data access under the same credentials and account entitlement. If separate entitlements are required, this will be discovered during implementation and the credential configuration will be extended accordingly
