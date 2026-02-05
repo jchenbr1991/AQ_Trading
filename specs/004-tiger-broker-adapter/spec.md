@@ -108,7 +108,7 @@ As a risk manager, I want the existing LiveBroker pre-trade validation (position
 - **FR-004**: System MUST map Tiger order statuses to the existing OrderStatus enum (PENDING, SUBMITTED, PARTIAL_FILL, FILLED, CANCELLED, REJECTED, EXPIRED)
 - **FR-005**: System MUST support Tiger's fill notification mechanism and deliver fills to the registered callback with unique fill_ids
 - **FR-006**: The broker config loader (load_broker) MUST support `broker.type: "tiger"` in YAML config (consistent with existing `broker.type` key convention) and create a TigerBroker instance
-- **FR-007**: The LiveBroker MUST be refactored to accept any Broker Protocol implementation as an inner broker (decorator pattern) rather than containing broker-specific logic directly. This requires changing the current constructor from `broker_type: Literal["futu", "ibkr", "stub"]` to accept an `inner_broker: Broker` parameter
+- **FR-007**: The LiveBroker MUST be refactored to accept any Broker Protocol implementation as an inner broker (decorator pattern) rather than containing broker-specific logic directly
 - **FR-008**: System MUST handle Tiger API connection lifecycle (connect, disconnect, reconnect on failure)
 - **FR-009**: System MUST ensure thread safety for fill callbacks from Tiger's SDK
 - **FR-010**: Credentials (private keys, account IDs) MUST NOT be committed to version control; credentials files MUST be listed in .gitignore. Credentials files on disk MUST have restricted file permissions (owner-read-only, 0600). The system MUST NOT log or expose credential content in error messages or stack traces
