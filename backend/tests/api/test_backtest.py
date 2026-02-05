@@ -60,11 +60,11 @@ def create_test_bars(
 
 
 class TestRunBacktest:
-    """Tests for POST /api/backtest endpoint."""
+    """Tests for POST /api/backtest/legacy endpoint (backward compatibility)."""
 
     @pytest.mark.asyncio
     async def test_run_backtest_success(self, client):
-        """POST /api/backtest runs successfully with valid request."""
+        """POST /api/backtest/legacy runs successfully with valid request."""
         # Create enough bars for warmup (momentum requires lookback_period) + backtest period
         test_bars = create_test_bars(
             symbol="AAPL",
@@ -75,7 +75,7 @@ class TestRunBacktest:
 
         with patch("src.api.backtest.get_bar_loader", return_value=mock_loader):
             response = await client.post(
-                "/api/backtest",
+                "/api/backtest/legacy",
                 json={
                     "strategy_class": "src.strategies.examples.momentum.MomentumStrategy",
                     "strategy_params": {"name": "test", "symbols": ["AAPL"], "lookback_period": 3},
@@ -101,9 +101,9 @@ class TestRunBacktest:
 
     @pytest.mark.asyncio
     async def test_run_backtest_invalid_strategy(self, client):
-        """POST /api/backtest returns 400 for non-allowlist strategy."""
+        """POST /api/backtest/legacy returns 400 for non-allowlist strategy."""
         response = await client.post(
-            "/api/backtest",
+            "/api/backtest/legacy",
             json={
                 "strategy_class": "malicious.module.BadStrategy",
                 "strategy_params": {},
@@ -123,7 +123,7 @@ class TestRunBacktest:
 
     @pytest.mark.asyncio
     async def test_run_backtest_insufficient_data(self, client):
-        """POST /api/backtest returns 400 when not enough data for warmup."""
+        """POST /api/backtest/legacy returns 400 when not enough data for warmup."""
         # Create only 2 bars - not enough for warmup
         test_bars = create_test_bars(
             symbol="AAPL",
@@ -134,7 +134,7 @@ class TestRunBacktest:
 
         with patch("src.api.backtest.get_bar_loader", return_value=mock_loader):
             response = await client.post(
-                "/api/backtest",
+                "/api/backtest/legacy",
                 json={
                     "strategy_class": "src.strategies.examples.momentum.MomentumStrategy",
                     "strategy_params": {"name": "test", "symbols": ["AAPL"], "lookback_period": 5},
@@ -155,10 +155,10 @@ class TestBacktestSchemas:
     """Tests for Backtest API schemas."""
 
     def test_backtest_request_accepts_benchmark_symbol(self):
-        """BacktestRequest accepts optional benchmark_symbol."""
-        from src.api.backtest import BacktestRequest
+        """LegacyBacktestRequest accepts optional benchmark_symbol."""
+        from src.api.backtest import LegacyBacktestRequest
 
-        request = BacktestRequest(
+        request = LegacyBacktestRequest(
             strategy_class="test.Strategy",
             strategy_params={},
             symbol="AAPL",
@@ -170,10 +170,10 @@ class TestBacktestSchemas:
         assert request.benchmark_symbol == "SPY"
 
     def test_backtest_request_benchmark_symbol_defaults_to_none(self):
-        """BacktestRequest benchmark_symbol defaults to None."""
-        from src.api.backtest import BacktestRequest
+        """LegacyBacktestRequest benchmark_symbol defaults to None."""
+        from src.api.backtest import LegacyBacktestRequest
 
-        request = BacktestRequest(
+        request = LegacyBacktestRequest(
             strategy_class="test.Strategy",
             strategy_params={},
             symbol="AAPL",
@@ -208,11 +208,11 @@ class TestBacktestSchemas:
         assert response.down_capture == "0.9"
 
     def test_backtest_response_includes_benchmark_field(self):
-        """BacktestResponse includes optional benchmark field."""
+        """LegacyBacktestResponse includes optional benchmark field."""
         from src.api.backtest import (
-            BacktestResponse,
             BacktestResultSchema,
             BenchmarkComparisonResponse,
+            LegacyBacktestResponse,
         )
 
         benchmark = BenchmarkComparisonResponse(
@@ -242,7 +242,7 @@ class TestBacktestSchemas:
             warm_up_bars_used=5,
         )
 
-        response = BacktestResponse(
+        response = LegacyBacktestResponse(
             backtest_id="test-id",
             status="completed",
             result=result,
@@ -252,10 +252,10 @@ class TestBacktestSchemas:
         assert response.benchmark.benchmark_symbol == "SPY"
 
     def test_backtest_response_benchmark_defaults_to_none(self):
-        """BacktestResponse benchmark defaults to None."""
-        from src.api.backtest import BacktestResponse
+        """LegacyBacktestResponse benchmark defaults to None."""
+        from src.api.backtest import LegacyBacktestResponse
 
-        response = BacktestResponse(
+        response = LegacyBacktestResponse(
             backtest_id="test-id",
             status="completed",
             result=None,
@@ -413,11 +413,11 @@ class TestBacktestSchemas:
         assert trace.commission is None
 
     def test_backtest_response_includes_traces(self):
-        """BacktestResponse includes traces field."""
+        """LegacyBacktestResponse includes traces field."""
         from src.api.backtest import (
-            BacktestResponse,
             BacktestResultSchema,
             BarSnapshotResponse,
+            LegacyBacktestResponse,
             PortfolioSnapshotResponse,
             SignalTraceResponse,
         )
@@ -475,7 +475,7 @@ class TestBacktestSchemas:
             warm_up_bars_used=5,
         )
 
-        response = BacktestResponse(
+        response = LegacyBacktestResponse(
             backtest_id="test-id",
             status="completed",
             result=result,
@@ -487,10 +487,10 @@ class TestBacktestSchemas:
         assert response.traces[0].symbol == "AAPL"
 
     def test_backtest_response_traces_defaults_to_empty_list(self):
-        """BacktestResponse traces defaults to empty list."""
-        from src.api.backtest import BacktestResponse
+        """LegacyBacktestResponse traces defaults to empty list."""
+        from src.api.backtest import LegacyBacktestResponse
 
-        response = BacktestResponse(
+        response = LegacyBacktestResponse(
             backtest_id="test-id",
             status="completed",
             result=None,

@@ -67,6 +67,9 @@ class Trade:
         fill_price: Actual execution price (computed from gross_price and slippage).
         commission: Total commission for the trade.
         signal_bar_timestamp: When the signal was generated (bar close time).
+        entry_factors: Factor scores at trade entry for attribution (FR-025).
+        exit_factors: Factor scores at trade exit for attribution.
+        attribution: PnL attribution by factor after trade close (FR-023).
     """
 
     trade_id: str
@@ -79,6 +82,9 @@ class Trade:
     commission: Decimal
     signal_bar_timestamp: datetime
     fill_price: Decimal = field(init=False)
+    entry_factors: dict[str, Decimal] = field(default_factory=dict)
+    exit_factors: dict[str, Decimal] = field(default_factory=dict)
+    attribution: dict[str, Decimal] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Compute fill_price based on side and slippage."""
@@ -149,6 +155,7 @@ class BacktestResult:
         benchmark: Optional BenchmarkComparison when benchmark comparison was computed.
         traces: List of SignalTrace objects capturing the audit trail from signal
             generation to order fill, including slippage analysis.
+        attribution_summary: Total PnL attributed to each factor across all trades (FR-023).
     """
 
     config: BacktestConfig
@@ -171,3 +178,4 @@ class BacktestResult:
     completed_at: datetime
     benchmark: BenchmarkComparison | None = None
     traces: list[SignalTrace] = field(default_factory=list)
+    attribution_summary: dict[str, Decimal] = field(default_factory=dict)
