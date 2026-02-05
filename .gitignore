@@ -92,3 +92,6 @@ frontend/build/
 *.key
 credentials.json
 secrets.json
+
+# Broker credentials
+config/brokers/

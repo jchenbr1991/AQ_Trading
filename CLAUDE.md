@@ -115,3 +115,10 @@ You MUST STOP and ask the human when:
 - Uncertain about scope or approach
 
 **Default behavior**: Ask first, act later.
+
+## Active Technologies
+- Python 3.11+ + tigeropen (3.3.3), FastAPI, Pydantic, asyncio (004-tiger-broker-adapter)
+- N/A (stateless adapter; Redis for quote caching via existing MarketDataService) (004-tiger-broker-adapter)
+
+## Recent Changes
+- 004-tiger-broker-adapter: Added Python 3.11+ + tigeropen (3.3.3), FastAPI, Pydantic, asyncio
