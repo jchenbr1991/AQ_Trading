@@ -42,10 +42,10 @@ def _ensure_tiger_imports():
         return
     from tigeropen.common.consts import Language as _Language
     from tigeropen.common.util.contract_utils import stock_contract as _stock_contract
+    from tigeropen.common.util.order_utils import limit_order as _limit_order
+    from tigeropen.common.util.order_utils import market_order as _market_order
     from tigeropen.push.push_client import PushClient as _PushClient
     from tigeropen.tiger_open_config import TigerOpenClientConfig as _TigerOpenClientConfig
-    from tigeropen.trade.domain.order import limit_order as _limit_order
-    from tigeropen.trade.domain.order import market_order as _market_order
     from tigeropen.trade.trade_client import TradeClient as _TradeClient
 
     TigerOpenClientConfig = _TigerOpenClientConfig
