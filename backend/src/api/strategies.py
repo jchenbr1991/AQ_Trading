@@ -194,22 +194,33 @@ async def _setup_live_broker(
         )
 
     # Get broker configuration
-    broker_type = mode_config.get("broker", "stub")
+    broker_type = mode_config.get("broker", "paper")
     account_id = mode_config.get("account_id")
 
     if not account_id:
         raise HTTPException(
             status_code=400,
-            detail=f"Live mode requires account_id to be configured for strategy '{strategy_name}'",
+            detail=(
+                "Live mode requires account_id to be configured " f"for strategy '{strategy_name}'"
+            ),
         )
 
     # Parse risk limits from config
     risk_limits_config = mode_config.get("risk_limits", {})
     risk_limits = RiskLimits.from_dict(risk_limits_config)
 
-    # Create live broker
+    # Create inner broker based on type
+    if broker_type == "paper":
+        inner_broker = PaperBroker(fill_delay=0.1)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported broker type: {broker_type}",
+        )
+
+    # Wrap with LiveBroker for risk validation
     broker = LiveBroker(
-        broker_type=broker_type,
+        inner_broker=inner_broker,
         account_id=account_id,
         risk_limits=risk_limits,
         require_confirmation=require_confirmation,

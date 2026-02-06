@@ -14,6 +14,7 @@ class DataSource(Protocol):
 
     Implementations:
     - MockDataSource: Random walk with scenarios (Phase 1)
+    - TigerDataSource: Real-time quotes via Tiger Trading (tigeropen SDK)
     - FutuDataSource: Real Futu OpenD connection (Phase 2)
     - HistoricalReplaySource: Historical data replay (Phase 2)
     """

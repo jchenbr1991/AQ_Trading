@@ -31,7 +31,7 @@ class MarketDataService:
     Generates mock quotes, caches to Redis, distributes via queue.
     """
 
-    def __init__(self, redis: RedisClient, config: MarketDataConfig):
+    def __init__(self, redis: RedisClient, config: MarketDataConfig, source=None):
         self._redis = redis
         self._config = config
         self._subscribed: set[str] = set()
@@ -40,7 +40,7 @@ class MarketDataService:
         self._overflow_count = 0
         self._task: asyncio.Task | None = None
 
-        self._source = MockDataSource(config)
+        self._source = source or MockDataSource(config)
         self._processor = QuoteProcessor(redis=redis, faults=config.faults)
 
     async def start(self) -> None:

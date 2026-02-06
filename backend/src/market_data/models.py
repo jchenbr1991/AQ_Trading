@@ -89,6 +89,7 @@ class MarketDataConfig:
     staleness_threshold_ms: int = 5000
     symbols: dict[str, SymbolScenario] = field(default_factory=dict)
     faults: FaultConfig = field(default_factory=FaultConfig)
+    source: str = "mock"
 
     @classmethod
     def from_yaml(cls, path: str) -> "MarketDataConfig":
@@ -132,4 +133,5 @@ class MarketDataConfig:
             staleness_threshold_ms=md_data.get("staleness_threshold_ms", 5000),
             symbols=symbols,
             faults=faults,
+            source=md_data.get("source", "mock"),
         )
