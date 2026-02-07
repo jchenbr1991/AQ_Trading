@@ -1,4 +1,3 @@
-import { Header } from '../components/Header';
 import { AccountSummary } from '../components/AccountSummary';
 import { PositionsTable } from '../components/PositionsTable';
 import { AlertsPanel } from '../components/AlertsPanel';
@@ -7,8 +6,9 @@ import { useAccountId } from '../contexts/AccountContext';
 import { useAccount } from '../hooks/useAccount';
 import { usePositions } from '../hooks/usePositions';
 import { useTradingState } from '../hooks/useTradingState';
-import { useAlerts } from '../hooks/useAlerts';
 import { useFreshness } from '../hooks/useFreshness';
+import { useQuery } from '@tanstack/react-query';
+import { fetchRecentAlerts } from '../api/reconciliation';
 import { closePosition } from '../api/orders';
 
 export function DashboardPage() {
@@ -16,17 +16,17 @@ export function DashboardPage() {
   const account = useAccount(accountId);
   const positions = usePositions(accountId);
   const tradingState = useTradingState();
-  const alerts = useAlerts();
+  const alerts = useQuery({
+    queryKey: ['reconciliation', 'recent'],
+    queryFn: fetchRecentAlerts,
+    refetchInterval: 30000,
+  });
 
   const positionsFreshness = useFreshness(
     positions.dataUpdatedAt,
     positions.isError,
     positions.failureCount ?? 0
   );
-
-  const handleKillSwitch = async () => {
-    await tradingState.triggerKillSwitch();
-  };
 
   const handleClosePosition = async (symbol: string) => {
     await closePosition({
@@ -40,36 +40,29 @@ export function DashboardPage() {
 
   return (
     <>
-      <Header
-        tradingState={tradingState.data?.state ?? 'RUNNING'}
-        onKillSwitch={handleKillSwitch}
+      <ErrorBanner
+        failureCount={positions.failureCount ?? 0}
+        lastSuccessful={positions.dataUpdatedAt ? new Date(positions.dataUpdatedAt).toISOString() : undefined}
+        onRetry={() => positions.refetch()}
       />
 
-      <main className="max-w-7xl mx-auto px-4 py-6">
-        <ErrorBanner
-          failureCount={positions.failureCount ?? 0}
-          lastSuccessful={positions.dataUpdatedAt ? new Date(positions.dataUpdatedAt).toISOString() : undefined}
-          onRetry={() => positions.refetch()}
-        />
+      <AccountSummary
+        account={account.data}
+        isLoading={account.isLoading}
+      />
 
-        <AccountSummary
-          account={account.data}
-          isLoading={account.isLoading}
-        />
+      <PositionsTable
+        positions={positions.data}
+        isLoading={positions.isLoading}
+        tradingState={tradingState.data?.state ?? 'RUNNING'}
+        freshness={positionsFreshness}
+        onClosePosition={handleClosePosition}
+      />
 
-        <PositionsTable
-          positions={positions.data}
-          isLoading={positions.isLoading}
-          tradingState={tradingState.data?.state ?? 'RUNNING'}
-          freshness={positionsFreshness}
-          onClosePosition={handleClosePosition}
-        />
-
-        <AlertsPanel
-          alerts={alerts.data?.alerts}
-          isLoading={alerts.isLoading}
-        />
-      </main>
+      <AlertsPanel
+        alerts={alerts.data}
+        isLoading={alerts.isLoading}
+      />
     </>
   );
 }
