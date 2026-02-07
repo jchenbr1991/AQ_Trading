@@ -70,8 +70,8 @@ export function EquityChart({ data, benchmarkData, benchmarkSymbol }: EquityChar
               width={80}
             />
             <Tooltip
-              formatter={(value: number, name: string) => [
-                formatCurrency(value),
+              formatter={(value, name) => [
+                formatCurrency(Number(value ?? 0)),
                 name === 'benchmark' ? benchmarkSymbol || 'Benchmark' : 'Strategy',
               ]}
               labelFormatter={(label) => new Date(String(label)).toLocaleDateString()}

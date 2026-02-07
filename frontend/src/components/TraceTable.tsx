@@ -59,7 +59,7 @@ function formatTimestamp(isoString: string): string {
   return new Date(isoString).toLocaleDateString();
 }
 
-function formatSlippageBps(bps: string | null, direction: string): JSX.Element {
+function formatSlippageBps(bps: string | null, _direction: string): JSX.Element {
   if (bps === null) return <span>-</span>;
   const value = parseFloat(bps);
   // Positive slippage is bad (paid more / received less)

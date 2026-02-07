@@ -132,7 +132,7 @@ export function OptionsExpiringPage() {
   };
 
   return (
-    <div className="p-6">
+    <>
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">Expiring Options</h1>
         {data && (
@@ -249,6 +249,6 @@ export function OptionsExpiringPage() {
         onCancel={() => setCloseModalOpen(false)}
         isLoading={actionLoading}
       />
-    </div>
+    </>
   );
 }

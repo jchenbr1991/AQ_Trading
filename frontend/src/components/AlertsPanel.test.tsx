@@ -31,6 +31,7 @@ describe('AlertsPanel', () => {
         type: 'POSITION_MISMATCH',
         symbol: 'AAPL',
         local_value: '100',
+        broker_value: '50',
         message: 'Position mismatch detected',
       },
       {
@@ -39,6 +40,7 @@ describe('AlertsPanel', () => {
         type: 'PRICE_STALE',
         symbol: 'TSLA',
         local_value: null,
+        broker_value: null,
         message: 'Price data is stale',
       },
     ];
@@ -60,6 +62,7 @@ describe('AlertsPanel', () => {
         type: 'ERROR',
         symbol: null,
         local_value: null,
+        broker_value: null,
         message: 'Critical error',
       },
       {
@@ -68,6 +71,7 @@ describe('AlertsPanel', () => {
         type: 'WARN',
         symbol: null,
         local_value: null,
+        broker_value: null,
         message: 'Warning message',
       },
       {
@@ -76,6 +80,7 @@ describe('AlertsPanel', () => {
         type: 'INFO',
         symbol: null,
         local_value: null,
+        broker_value: null,
         message: 'Info message',
       },
     ];
@@ -102,6 +107,7 @@ describe('AlertsPanel', () => {
         type: 'SYSTEM',
         symbol: null,
         local_value: null,
+        broker_value: null,
         message: 'System notification',
       },
     ];
