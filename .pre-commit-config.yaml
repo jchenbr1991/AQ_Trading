@@ -42,7 +42,7 @@ repos:
       # Prevent secrets in code
       - id: no-secrets
         name: Check for secrets
-        entry: bash -c 'grep -rn --exclude-dir=.venv "password\s*=\s*[\"'\''][^\"'\'']*[\"'\'']" --include="*.py" backend/ && exit 1 || exit 0'
+        entry: bash -c 'grep -rn --exclude-dir=.venv --exclude-dir=venv "password\s*=\s*[\"'\''][^\"'\'']*[\"'\'']" --include="*.py" backend/ && exit 1 || exit 0'
         language: system
         pass_filenames: false
 
