@@ -22,6 +22,8 @@ class BrokerConfig:
     futu_host: str = "127.0.0.1"
     futu_port: int = 11111
     futu_trade_env: str = "SIMULATE"
+    futu_account_id: str = ""
+    futu_unlock_password: str = ""
 
     # Tiger broker settings
     tiger_credentials_path: str = ""
@@ -52,6 +54,8 @@ class BrokerConfig:
             futu_host=futu_data.get("host", "127.0.0.1"),
             futu_port=futu_data.get("port", 11111),
             futu_trade_env=futu_data.get("trade_env", "SIMULATE"),
+            futu_account_id=futu_data.get("account_id", ""),
+            futu_unlock_password=futu_data.get("unlock_password", ""),
             tiger_credentials_path=tiger_data.get("credentials_path", ""),
             tiger_account_id=tiger_data.get("account_id", ""),
             tiger_env=tiger_data.get("env", "PROD"),
@@ -81,6 +85,14 @@ def load_broker(config_path: str):
             max_reconnect_attempts=config.tiger_max_reconnect_attempts,
         )
     elif config.broker_type == "futu":
-        raise NotImplementedError("FutuBroker not yet implemented")
+        from src.broker.futu_broker import FutuBroker
+
+        return FutuBroker(
+            host=config.futu_host,
+            port=config.futu_port,
+            trade_env=config.futu_trade_env,
+            account_id=config.futu_account_id,
+            unlock_password=config.futu_unlock_password,
+        )
     else:
         raise ValueError(f"Unknown broker type: {config.broker_type}")

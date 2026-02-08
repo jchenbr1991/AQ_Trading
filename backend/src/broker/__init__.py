@@ -3,6 +3,7 @@
 from src.broker.base import Broker
 from src.broker.config import BrokerConfig, load_broker
 from src.broker.errors import BrokerError, OrderCancelError, OrderSubmissionError
+from src.broker.futu_broker import FutuBroker
 from src.broker.live_broker import (
     BrokerConnectionError,
     LiveBroker,
@@ -21,6 +22,7 @@ __all__ = [
     "BrokerError",
     "BrokerPosition",
     "BrokerQuery",
+    "FutuBroker",
     "LiveBroker",
     "LiveTradingNotConfirmedError",
     "OrderCancelError",
